@@ -16,10 +16,10 @@ class Student(BaseModel):
         UUID(as_uuid=True), ForeignKey("users.id"), unique=True, nullable=False, index=True
     )
     registration_number: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
-    course_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("courses.id"), nullable=True, index=True
+    course_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("courses.id"), nullable=False, index=True
     )
-    enrollment_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    enrollment_year: Mapped[int] = mapped_column(Integer, nullable=False)
 
     user = relationship("User", back_populates="student")
     course = relationship("Course", back_populates="students")

@@ -1,10 +1,16 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Book, Home, Users, BarChart, FileText, ChevronsLeft, ChevronsRight } from 'lucide-react';
-import { useState } from 'react';
+import { Book, Home, Users, BarChart, FileText, ChevronsLeft, ChevronsRight, Shield, Building2, School, KeyRound } from 'lucide-react';
+import { useMemo, useState } from 'react';
+import { useAuth } from '../../auth/AuthContext';
 
 const navItems = [
   { name: 'Dashboard', icon: Home, path: '/', color: 'text-indigo-600' },
-  { name: 'Students', icon: Users, path: '/students', color: 'text-blue-600' },
+  { name: 'Users', icon: Shield, path: '/users', color: 'text-rose-600', permission: 'users.read' },
+  { name: 'Roles', icon: KeyRound, path: '/roles', color: 'text-orange-600', permission: 'roles.read' },
+  { name: 'Institutions', icon: Building2, path: '/institutions', color: 'text-emerald-600', permission: 'institutions.read' },
+  { name: 'Departments', icon: School, path: '/departments', color: 'text-cyan-600', permission: 'departments.read' },
+  { name: 'Courses', icon: Book, path: '/courses', color: 'text-amber-600', permission: 'courses.read' },
+  { name: 'Students', icon: Users, path: '/students', color: 'text-blue-600', permission: 'students.read' },
   { name: 'Subjects', icon: Book, path: '/subjects', color: 'text-amber-600' },
   { name: 'Progress', icon: BarChart, path: '/progress', color: 'text-emerald-600' },
   { name: 'Reports', icon: FileText, path: '/reports', color: 'text-purple-600' },
@@ -13,6 +19,19 @@ const navItems = [
 const Sidebar = () => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const location = useLocation();
+  const { user } = useAuth();
+  const items = useMemo(() => {
+    const permissions = user?.permissions ?? {};
+    return navItems.filter((item) => {
+      if (!item.permission) {
+        return true;
+      }
+      if (permissions['*']) {
+        return true;
+      }
+      return permissions[item.permission];
+    });
+  }, [user]);
 
   return (
     <div className={`bg-white border-r border-gray-200 transition-all duration-300 flex flex-col ${isCollapsed ? 'w-20' : 'w-64'} shadow-sm`}>
@@ -29,7 +48,7 @@ const Sidebar = () => {
       </div>
       <nav className="mt-2 flex-1 px-2">
         <ul className="space-y-1">
-          {navItems.map((item) => (
+          {items.map((item) => (
             <li key={item.name}>
               <Link
                 to={item.path}

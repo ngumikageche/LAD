@@ -1,28 +1,53 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
-
-const studentsData = [
-  { id: 1, name: 'John Doe', class: '8A', score: 85, status: 'Good' },
-  { id: 2, name: 'Jane Smith', class: '8B', score: 92, status: 'Good' },
-  { id: 3, name: 'Mike Johnson', class: '8A', score: 72, status: 'Average' },
-  { id: 4, name: 'Emily Davis', class: '8C', score: 65, status: 'At Risk' },
-  { id: 5, name: 'Chris Lee', class: '8B', score: 88, status: 'Good' },
-];
-
-const StatusBadge = ({ status }: { status: string }) => {
-  const baseClasses = "px-2 py-1 text-xs font-medium rounded-full";
-  if (status === 'Good') return <span className={`${baseClasses} bg-emerald-100 text-emerald-800`}>Good</span>;
-  if (status === 'Average') return <span className={`${baseClasses} bg-amber-100 text-amber-800`}>Average</span>;
-  return <span className={`${baseClasses} bg-red-100 text-red-800`}>At Risk</span>;
+import { apiRequest } from '../../api/client';
+import { useAuth } from '../../auth/AuthContext';
+type Student = {
+  id: string;
+  registration_number: string;
+  course_id: string;
+  enrollment_year: number;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    phone: string | null;
+  };
 };
 
 const StudentsTable = () => {
+  const { token } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterClass, setFilterClass] = useState('All');
+  const [students, setStudents] = useState<Student[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const filteredStudents = studentsData
-    .filter(student => student.name.toLowerCase().includes(searchTerm.toLowerCase()))
-    .filter(student => filterClass === 'All' || student.class === filterClass);
+  useEffect(() => {
+    const loadStudents = async () => {
+      try {
+        const data = await apiRequest<Student[]>('/students', { token });
+        setStudents(data);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to load students';
+        setError(message);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadStudents();
+  }, [token]);
+
+  const filteredStudents = useMemo(() => {
+    const search = searchTerm.toLowerCase();
+    return students.filter((student) => {
+      return (
+        student.user.name.toLowerCase().includes(search) ||
+        student.user.email.toLowerCase().includes(search) ||
+        student.registration_number.toLowerCase().includes(search)
+      );
+    });
+  }, [searchTerm, students]);
 
   return (
     <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
@@ -37,41 +62,38 @@ const StudentsTable = () => {
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
-          <select
-            className="px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all font-medium"
-            onChange={(e) => setFilterClass(e.target.value)}
-          >
-            <option value="All">All Classes</option>
-            <option value="8A">Class 8A</option>
-            <option value="8B">Class 8B</option>
-            <option value="8C">Class 8C</option>
-          </select>
         </div>
       </div>
+      {isLoading ? (
+        <div className="p-6 text-sm text-gray-600">Loading students...</div>
+      ) : error ? (
+        <div className="p-6 text-sm text-red-600">{error}</div>
+      ) : (
       <div className="overflow-x-auto">
         <table className="w-full text-left">
           <thead className="bg-gray-50 border-b border-gray-200">
             <tr>
               <th className="px-6 py-4 text-xs font-bold text-gray-600 uppercase tracking-wider">Name</th>
-              <th className="px-6 py-4 text-xs font-bold text-gray-600 uppercase tracking-wider">Class</th>
-              <th className="px-6 py-4 text-xs font-bold text-gray-600 uppercase tracking-wider">Average Score</th>
-              <th className="px-6 py-4 text-xs font-bold text-gray-600 uppercase tracking-wider">Status</th>
+              <th className="px-6 py-4 text-xs font-bold text-gray-600 uppercase tracking-wider">Email</th>
+              <th className="px-6 py-4 text-xs font-bold text-gray-600 uppercase tracking-wider">Reg No</th>
+              <th className="px-6 py-4 text-xs font-bold text-gray-600 uppercase tracking-wider">Enrollment Year</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-200">
             {filteredStudents.map(student => (
               <tr key={student.id} className="hover:bg-gray-50 transition-colors">
-                <td className="px-6 py-4 font-medium text-gray-900">{student.name}</td>
-                <td className="px-6 py-4 text-gray-600">{student.class}</td>
-                <td className="px-6 py-4 text-gray-600"><span className="font-bold">{student.score}%</span></td>
-                <td className="px-6 py-4"><StatusBadge status={student.status} /></td>
+                <td className="px-6 py-4 font-medium text-gray-900">{student.user.name}</td>
+                <td className="px-6 py-4 text-gray-600">{student.user.email}</td>
+                <td className="px-6 py-4 text-gray-600">{student.registration_number}</td>
+                <td className="px-6 py-4 text-gray-600">{student.enrollment_year}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      )}
       <div className="flex justify-between items-center p-6 border-t border-gray-200 bg-gray-50">
-        <span className="text-sm text-gray-600">Showing 1 to {filteredStudents.length} of {studentsData.length} results</span>
+        <span className="text-sm text-gray-600">Showing {filteredStudents.length} of {students.length} students</span>
         <div className="flex items-center space-x-2">
           <button className="px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-100 transition-colors font-medium">Previous</button>
           <button className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors font-medium">1</button>

@@ -15,8 +15,8 @@ class Trainer(BaseModel):
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), unique=True, nullable=False, index=True
     )
-    department_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("departments.id"), nullable=True, index=True
+    department_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("departments.id"), nullable=False, index=True
     )
     specialization: Mapped[str | None] = mapped_column(String(255), nullable=True)
 

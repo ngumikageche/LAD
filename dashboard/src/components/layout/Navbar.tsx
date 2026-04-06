@@ -1,6 +1,16 @@
 import { Search, Bell, User } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../../auth/AuthContext';
 
 const Navbar = () => {
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login', { replace: true });
+  };
+
   return (
     <header className="flex items-center justify-between p-6 bg-white border-b border-gray-200 shadow-sm sticky top-0 z-40">
       <div className="relative flex-1 max-w-md">
@@ -21,13 +31,19 @@ const Navbar = () => {
             <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-600 to-blue-600 flex items-center justify-center shadow-md">
               <User size={18} className="text-white" />
             </div>
-            <span className="text-sm font-medium text-gray-700 hidden md:inline">Admin</span>
+            <span className="text-sm font-medium text-gray-700 hidden md:inline">{user?.name ?? 'User'}</span>
           </button>
           <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-gray-200 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 p-4 space-y-2">
             <a href="#" className="block text-sm text-gray-700 hover:text-indigo-600 transition-colors">Profile</a>
             <a href="#" className="block text-sm text-gray-700 hover:text-indigo-600 transition-colors">Settings</a>
             <hr className="my-2" />
-            <a href="#" className="block text-sm text-red-600 hover:text-red-700 transition-colors">Logout</a>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="block w-full text-left text-sm text-red-600 hover:text-red-700 transition-colors"
+            >
+              Logout
+            </button>
           </div>
         </div>
       </div>

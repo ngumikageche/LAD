@@ -8,6 +8,20 @@ from ..extensions import db
 from ..models.user import User
 
 
+def _user_payload(user: User) -> dict:
+    return {
+        "id": str(user.id),
+        "name": user.name,
+        "email": user.email,
+        "phone": user.phone,
+        "role_id": str(user.role_id),
+        "role_name": user.role.role_name if user.role else None,
+        "permissions": user.role.permissions if user.role else {},
+        "institution_id": str(user.institution_id) if user.institution_id else None,
+    }
+
+
+
 bp = Blueprint("auth", __name__, url_prefix="/auth")
 
 
@@ -71,14 +85,7 @@ def login():
     return {
         "access_token": token,
         "token_type": "bearer",
-        "user": {
-            "id": str(user.id),
-            "name": user.name,
-            "email": user.email,
-            "phone": user.phone,
-            "role_id": str(user.role_id),
-            "institution_id": str(user.institution_id) if user.institution_id else None,
-        },
+        "user": _user_payload(user),
     }, 200
 
 
@@ -92,11 +99,4 @@ def me():
     if not user:
         return {"error": "Invalid or expired token"}, 401
 
-    return {
-        "id": str(user.id),
-        "name": user.name,
-        "email": user.email,
-        "phone": user.phone,
-        "role_id": str(user.role_id),
-        "institution_id": str(user.institution_id) if user.institution_id else None,
-    }, 200
+    return _user_payload(user), 200

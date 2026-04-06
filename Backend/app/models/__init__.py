@@ -5,6 +5,7 @@ from .role_permission import RolePermission
 from .student import Student
 from .trainer import Trainer
 from .user import User
+from .system_log import SystemLog
 
 __all__ = [
 	"Course",
@@ -14,4 +15,5 @@ __all__ = [
 	"Student",
 	"Trainer",
 	"User",
+	"SystemLog",
 ]
