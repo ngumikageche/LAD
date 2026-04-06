@@ -13,6 +13,31 @@ type Institution = {
   name: string;
 };
 
+type Course = {
+  id: string;
+  name: string;
+};
+
+type Department = {
+  id: string;
+  name: string;
+};
+
+type StudentRecord = {
+  id: string;
+  user_id: string;
+  course_id: string;
+  registration_number: string;
+  enrollment_year: number;
+};
+
+type TrainerRecord = {
+  id: string;
+  user_id: string;
+  department_id: string;
+  specialization: string | null;
+};
+
 type UserItem = {
   id: string;
   name: string;
@@ -35,6 +60,8 @@ type UserFormState = {
   institution_id: string;
 };
 
+type UserType = 'none' | 'student' | 'trainer';
+
 const emptyForm: UserFormState = {
   name: '',
   email: '',
@@ -49,25 +76,56 @@ const UsersPage = () => {
   const [users, setUsers] = useState<UserItem[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [institutions, setInstitutions] = useState<Institution[]>([]);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
+  const [studentRecords, setStudentRecords] = useState<StudentRecord[]>([]);
+  const [trainerRecords, setTrainerRecords] = useState<TrainerRecord[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formState, setFormState] = useState<UserFormState>(emptyForm);
+  const [userType, setUserType] = useState<UserType>('none');
+  const [studentCourseId, setStudentCourseId] = useState('');
+  const [enrollmentYear, setEnrollmentYear] = useState('');
+  const [trainerDepartmentId, setTrainerDepartmentId] = useState('');
+  const [trainerSpecialization, setTrainerSpecialization] = useState('');
+  const [studentRecordId, setStudentRecordId] = useState('');
+  const [trainerRecordId, setTrainerRecordId] = useState('');
+
+  const canReadStudents = Boolean(user?.permissions?.['students.read'] || user?.permissions?.['*']);
+  const canReadTrainers = Boolean(user?.permissions?.['trainers.read'] || user?.permissions?.['*']);
+  const canWriteStudents = Boolean(
+    user?.permissions?.['students.create'] || user?.permissions?.['students.update'] || user?.permissions?.['*']
+  );
+  const canWriteTrainers = Boolean(
+    user?.permissions?.['trainers.create'] || user?.permissions?.['trainers.update'] || user?.permissions?.['*']
+  );
+  const canDeleteStudents = Boolean(user?.permissions?.['students.delete'] || user?.permissions?.['*']);
+  const canDeleteTrainers = Boolean(user?.permissions?.['trainers.delete'] || user?.permissions?.['*']);
 
   const loadData = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const [usersData, rolesData, institutionsData] = await Promise.all([
-        apiRequest<UserItem[]>('/users', { token }),
-        apiRequest<Role[]>('/roles', { token }),
-        apiRequest<Institution[]>('/institutions', { token }),
-      ]);
+      const [usersData, rolesData, institutionsData, coursesData, departmentsData, studentsData, trainersData] =
+        await Promise.all([
+          apiRequest<UserItem[]>('/users', { token }),
+          apiRequest<Role[]>('/roles', { token }),
+          apiRequest<Institution[]>('/institutions', { token }),
+          apiRequest<Course[]>('/courses', { token }),
+          apiRequest<Department[]>('/departments', { token }),
+          canReadStudents ? apiRequest<StudentRecord[]>('/students', { token }) : Promise.resolve([]),
+          canReadTrainers ? apiRequest<TrainerRecord[]>('/trainers', { token }) : Promise.resolve([]),
+        ]);
       setUsers(usersData);
       setRoles(rolesData);
       setInstitutions(institutionsData);
+      setCourses(coursesData);
+      setDepartments(departmentsData);
+      setStudentRecords(studentsData);
+      setTrainerRecords(trainersData);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to load users';
       setError(message);
@@ -80,7 +138,21 @@ const UsersPage = () => {
     if (token) {
       loadData();
     }
-  }, [token]);
+  }, [token, canReadStudents, canReadTrainers]);
+
+  const studentsByUserId = useMemo(() => {
+    return studentRecords.reduce<Record<string, StudentRecord>>((acc, record) => {
+      acc[record.user_id] = record;
+      return acc;
+    }, {});
+  }, [studentRecords]);
+
+  const trainersByUserId = useMemo(() => {
+    return trainerRecords.reduce<Record<string, TrainerRecord>>((acc, record) => {
+      acc[record.user_id] = record;
+      return acc;
+    }, {});
+  }, [trainerRecords]);
 
   const filteredUsers = useMemo(() => {
     const search = searchTerm.toLowerCase();
@@ -95,10 +167,19 @@ const UsersPage = () => {
 
   const openCreateModal = () => {
     setFormState(emptyForm);
+    setUserType('none');
+    setStudentCourseId('');
+    setEnrollmentYear('');
+    setTrainerDepartmentId('');
+    setTrainerSpecialization('');
+    setStudentRecordId('');
+    setTrainerRecordId('');
     setIsModalOpen(true);
   };
 
   const openEditModal = (item: UserItem) => {
+    const studentRecord = studentsByUserId[item.id];
+    const trainerRecord = trainersByUserId[item.id];
     setFormState({
       id: item.id,
       name: item.name,
@@ -108,12 +189,40 @@ const UsersPage = () => {
       role_id: item.role_id,
       institution_id: item.institution_id ?? '',
     });
+    if (studentRecord) {
+      setUserType('student');
+      setStudentCourseId(studentRecord.course_id);
+      setEnrollmentYear(String(studentRecord.enrollment_year));
+      setStudentRecordId(studentRecord.id);
+      setTrainerRecordId('');
+    } else if (trainerRecord) {
+      setUserType('trainer');
+      setTrainerDepartmentId(trainerRecord.department_id);
+      setTrainerSpecialization(trainerRecord.specialization ?? '');
+      setTrainerRecordId(trainerRecord.id);
+      setStudentRecordId('');
+    } else {
+      setUserType('none');
+      setStudentCourseId('');
+      setEnrollmentYear('');
+      setTrainerDepartmentId('');
+      setTrainerSpecialization('');
+      setStudentRecordId('');
+      setTrainerRecordId('');
+    }
     setIsModalOpen(true);
   };
 
   const closeModal = () => {
     setIsModalOpen(false);
     setFormState(emptyForm);
+    setUserType('none');
+    setStudentCourseId('');
+    setEnrollmentYear('');
+    setTrainerDepartmentId('');
+    setTrainerSpecialization('');
+    setStudentRecordId('');
+    setTrainerRecordId('');
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -131,6 +240,8 @@ const UsersPage = () => {
         institution_id: formState.institution_id.trim() ? formState.institution_id.trim() : null,
       };
 
+      let targetUserId = formState.id;
+
       if (formState.id) {
         await apiRequest(`/users/${formState.id}`, {
           method: 'PUT',
@@ -138,11 +249,107 @@ const UsersPage = () => {
           body: payload,
         });
       } else {
-        await apiRequest('/users', {
+        const created = await apiRequest<UserItem>('/users', {
           method: 'POST',
           token,
           body: { ...payload, password: formState.password },
         });
+        targetUserId = created.id;
+      }
+
+      if (userType === 'student') {
+        if (trainerRecordId) {
+          if (!canDeleteTrainers) {
+            throw new Error('You do not have permission to remove trainer assignments.');
+          }
+          await apiRequest(`/trainers/${trainerRecordId}`, {
+            method: 'DELETE',
+            token,
+          });
+          setTrainerRecordId('');
+        }
+        const yearNumber = Number(enrollmentYear);
+        if (!Number.isInteger(yearNumber)) {
+          throw new Error('Enrollment year must be a number.');
+        }
+        if (studentRecordId) {
+          await apiRequest(`/students/${studentRecordId}`, {
+            method: 'PUT',
+            token,
+            body: {
+              user_id: targetUserId,
+              course_id: studentCourseId,
+              enrollment_year: yearNumber,
+            },
+          });
+        } else {
+          await apiRequest('/students', {
+            method: 'POST',
+            token,
+            body: {
+              user_id: targetUserId,
+              course_id: studentCourseId,
+              enrollment_year: yearNumber,
+            },
+          });
+        }
+      }
+
+      if (userType === 'trainer') {
+        if (studentRecordId) {
+          if (!canDeleteStudents) {
+            throw new Error('You do not have permission to remove student assignments.');
+          }
+          await apiRequest(`/students/${studentRecordId}`, {
+            method: 'DELETE',
+            token,
+          });
+          setStudentRecordId('');
+        }
+        if (trainerRecordId) {
+          await apiRequest(`/trainers/${trainerRecordId}`, {
+            method: 'PUT',
+            token,
+            body: {
+              user_id: targetUserId,
+              department_id: trainerDepartmentId,
+              specialization: trainerSpecialization.trim() || null,
+            },
+          });
+        } else {
+          await apiRequest('/trainers', {
+            method: 'POST',
+            token,
+            body: {
+              user_id: targetUserId,
+              department_id: trainerDepartmentId,
+              specialization: trainerSpecialization.trim() || null,
+            },
+          });
+        }
+      }
+
+      if (userType === 'none') {
+        if (studentRecordId) {
+          if (!canDeleteStudents) {
+            throw new Error('You do not have permission to remove student assignments.');
+          }
+          await apiRequest(`/students/${studentRecordId}`, {
+            method: 'DELETE',
+            token,
+          });
+          setStudentRecordId('');
+        }
+        if (trainerRecordId) {
+          if (!canDeleteTrainers) {
+            throw new Error('You do not have permission to remove trainer assignments.');
+          }
+          await apiRequest(`/trainers/${trainerRecordId}`, {
+            method: 'DELETE',
+            token,
+          });
+          setTrainerRecordId('');
+        }
       }
 
       closeModal();
@@ -168,6 +375,7 @@ const UsersPage = () => {
       setIsSubmitting(false);
     }
   };
+
 
   if (!user?.permissions?.['users.read'] && !user?.permissions?.['*']) {
     return (
@@ -349,6 +557,80 @@ const UsersPage = () => {
                     ))}
                   </select>
                 </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">User type</label>
+                  <select
+                    value={userType}
+                    onChange={(event) => setUserType(event.target.value as UserType)}
+                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  >
+                    <option value="none">Not assigned</option>
+                    {canWriteStudents ? <option value="student">Student</option> : null}
+                    {canWriteTrainers ? <option value="trainer">Trainer</option> : null}
+                  </select>
+                </div>
+                {userType === 'student' ? (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Course</label>
+                      <select
+                        required
+                        value={studentCourseId}
+                        onChange={(event) => setStudentCourseId(event.target.value)}
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      >
+                        <option value="">Select course</option>
+                        {courses.map((course) => (
+                          <option key={course.id} value={course.id}>
+                            {course.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Enrollment year</label>
+                      <input
+                        type="number"
+                        required
+                        value={enrollmentYear}
+                        onChange={(event) => setEnrollmentYear(event.target.value)}
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      />
+                      <p className="mt-1 text-xs text-gray-500">
+                        Registration number will be generated automatically.
+                      </p>
+                    </div>
+                  </>
+                ) : null}
+                {userType === 'trainer' ? (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Department</label>
+                      <select
+                        required
+                        value={trainerDepartmentId}
+                        onChange={(event) => setTrainerDepartmentId(event.target.value)}
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      >
+                        <option value="">Select department</option>
+                        {departments.map((dept) => (
+                          <option key={dept.id} value={dept.id}>
+                            {dept.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Specialization</label>
+                      <input
+                        type="text"
+                        value={trainerSpecialization}
+                        onChange={(event) => setTrainerSpecialization(event.target.value)}
+                        className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      />
+                    </div>
+                  </>
+                ) : null}
               </div>
               {error ? <p className="text-sm text-red-600">{error}</p> : null}
               <div className="flex justify-end gap-3 pt-4">
@@ -371,6 +653,7 @@ const UsersPage = () => {
           </div>
         </div>
       ) : null}
+
     </div>
   );
 };

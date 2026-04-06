@@ -6,6 +6,7 @@ from .student import Student
 from .trainer import Trainer
 from .user import User
 from .system_log import SystemLog
+from .notification import Notification
 
 __all__ = [
 	"Course",
@@ -16,4 +17,5 @@ __all__ = [
 	"Trainer",
 	"User",
 	"SystemLog",
+	"Notification",
 ]

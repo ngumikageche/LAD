@@ -12,6 +12,8 @@ import RolesPage from './pages/RolesPage';
 import InstitutionsPage from './pages/InstitutionsPage';
 import DepartmentsPage from './pages/DepartmentsPage';
 import CoursesPage from './pages/CoursesPage';
+import TrainersPage from './pages/TrainersPage';
+import TrainerDashboardPage from './pages/TrainerDashboardPage';
 import { AuthProvider } from './auth/AuthContext';
 import ProtectedRoute from './auth/ProtectedRoute';
 
@@ -31,6 +33,8 @@ function App() {
               <Route path="/departments" element={<DepartmentsPage />} />
               <Route path="/courses" element={<CoursesPage />} />
               <Route path="/students" element={<StudentsPage />} />
+              <Route path="/trainers" element={<TrainersPage />} />
+              <Route path="/trainer-hub" element={<TrainerDashboardPage />} />
               <Route path="/subjects" element={<SubjectsPage />} />
               <Route path="/progress" element={<ProgressPage />} />
               <Route path="/reports" element={<ReportsPage />} />

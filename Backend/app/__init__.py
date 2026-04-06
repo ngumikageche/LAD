@@ -22,6 +22,7 @@ def create_app() -> Flask:
         courses_bp,
         departments_bp,
         institutions_bp,
+        notifications_bp,
         roles_bp,
         students_bp,
         trainers_bp,
@@ -32,6 +33,7 @@ def create_app() -> Flask:
     app.register_blueprint(courses_bp)
     app.register_blueprint(departments_bp)
     app.register_blueprint(institutions_bp)
+    app.register_blueprint(notifications_bp)
     app.register_blueprint(roles_bp)
     app.register_blueprint(students_bp)
     app.register_blueprint(trainers_bp)

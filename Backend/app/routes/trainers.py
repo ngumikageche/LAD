@@ -6,10 +6,12 @@ from flask import Blueprint, request
 from sqlalchemy.exc import IntegrityError
 
 from ..extensions import db
+from ..models.course import Course
 from ..models.department import Department
+from ..models.student import Student
 from ..models.trainer import Trainer
 from ..models.user import User
-from .permissions import log_view, require_permission
+from .permissions import get_current_user, log_view, require_permission
 
 
 bp = Blueprint("trainers", __name__, url_prefix="/trainers")
@@ -40,6 +42,39 @@ def _trainer_payload(trainer: Trainer) -> dict:
         },
         "created_at": trainer.created_at.isoformat() if trainer.created_at else None,
     }
+
+
+def _course_payload(course: Course) -> dict:
+    return {
+        "id": str(course.id),
+        "department_id": str(course.department_id),
+        "name": course.name,
+        "cbet_level": course.cbet_level,
+        "created_at": course.created_at.isoformat() if course.created_at else None,
+    }
+
+
+def _student_payload(student: Student) -> dict:
+    return {
+        "id": str(student.id),
+        "user_id": str(student.user_id),
+        "registration_number": student.registration_number,
+        "course_id": str(student.course_id),
+        "enrollment_year": student.enrollment_year,
+        "user": {
+            "id": str(student.user.id),
+            "name": student.user.name,
+            "email": student.user.email,
+            "phone": student.user.phone,
+            "role_id": str(student.user.role_id),
+            "institution_id": str(student.user.institution_id) if student.user.institution_id else None,
+        },
+        "created_at": student.created_at.isoformat() if student.created_at else None,
+    }
+
+
+def _trainer_for_user(user_id: uuid.UUID) -> Trainer | None:
+    return db.session.query(Trainer).filter(Trainer.user_id == user_id).first()
 
 
 @bp.post("")
@@ -118,6 +153,68 @@ def get_trainer(trainer_id: str):
 
     log_view(user, "trainers", entity_id=trainer_id, metadata={"scope": "detail"})
     return _trainer_payload(trainer), 200
+
+
+@bp.get("/me")
+def get_my_trainer():
+    user, error, status = require_permission("trainers.read")
+    if error:
+        return error, status
+
+    trainer = _trainer_for_user(user.id)
+    if not trainer:
+        return {"error": "Trainer profile not found"}, 404
+
+    log_view(user, "trainers", entity_id=str(trainer.id), metadata={"scope": "self"})
+    return _trainer_payload(trainer), 200
+
+
+@bp.get("/me/courses")
+def get_my_courses():
+    user, error, status = require_permission("courses.read")
+    if error:
+        return error, status
+
+    trainer = _trainer_for_user(user.id)
+    if not trainer:
+        return {"error": "Trainer profile not found"}, 404
+
+    courses = (
+        db.session.query(Course)
+        .filter(Course.department_id == trainer.department_id)
+        .order_by(Course.name.asc())
+        .all()
+    )
+
+    log_view(user, "courses", metadata={"scope": "trainer"})
+    return [_course_payload(course) for course in courses], 200
+
+
+@bp.get("/me/students")
+def get_my_students():
+    user, error, status = require_permission("students.read")
+    if error:
+        return error, status
+
+    trainer = _trainer_for_user(user.id)
+    if not trainer:
+        return {"error": "Trainer profile not found"}, 404
+
+    course_ids = (
+        db.session.query(Course.id)
+        .filter(Course.department_id == trainer.department_id)
+        .subquery()
+    )
+
+    students = (
+        db.session.query(Student)
+        .filter(Student.course_id.in_(course_ids))
+        .order_by(Student.created_at.desc())
+        .all()
+    )
+
+    log_view(user, "students", metadata={"scope": "trainer"})
+    return [_student_payload(student) for student in students], 200
 
 
 @bp.put("/<trainer_id>")

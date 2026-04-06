@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Book, Home, Users, BarChart, FileText, ChevronsLeft, ChevronsRight, Shield, Building2, School, KeyRound } from 'lucide-react';
+import { Book, Home, Users, BarChart, FileText, ChevronsLeft, ChevronsRight, Shield, Building2, School, KeyRound, UserCog, Compass } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useAuth } from '../../auth/AuthContext';
 
@@ -11,6 +11,8 @@ const navItems = [
   { name: 'Departments', icon: School, path: '/departments', color: 'text-cyan-600', permission: 'departments.read' },
   { name: 'Courses', icon: Book, path: '/courses', color: 'text-amber-600', permission: 'courses.read' },
   { name: 'Students', icon: Users, path: '/students', color: 'text-blue-600', permission: 'students.read' },
+  { name: 'Trainers', icon: UserCog, path: '/trainers', color: 'text-sky-600', permission: 'trainers.read' },
+  { name: 'Trainer Hub', icon: Compass, path: '/trainer-hub', color: 'text-emerald-600', permission: 'trainers.read' },
   { name: 'Subjects', icon: Book, path: '/subjects', color: 'text-amber-600' },
   { name: 'Progress', icon: BarChart, path: '/progress', color: 'text-emerald-600' },
   { name: 'Reports', icon: FileText, path: '/reports', color: 'text-purple-600' },

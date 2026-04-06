@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+import random
 
 from flask import Blueprint, request
 from sqlalchemy.exc import IntegrityError
@@ -22,6 +23,16 @@ def _parse_uuid(value: str | None, field: str) -> uuid.UUID:
         return uuid.UUID(str(value))
     except (ValueError, TypeError) as exc:
         raise ValueError(f"Invalid '{field}'") from exc
+
+
+def _generate_registration_number(enrollment_year: int) -> str:
+    for _ in range(10):
+        suffix = random.randint(1000, 9999)
+        candidate = f"REG-{enrollment_year}-{suffix}"
+        exists = db.session.query(Student.id).filter(Student.registration_number == candidate).first()
+        if not exists:
+            return candidate
+    raise RuntimeError("Unable to generate unique registration number")
 
 
 def _student_payload(student: Student) -> dict:
@@ -53,10 +64,13 @@ def create_student():
     registration_number = payload.get("registration_number")
     enrollment_year = payload.get("enrollment_year")
 
-    if not registration_number or not isinstance(registration_number, str):
-        return {"error": "'registration_number' is required"}, 400
     if enrollment_year is None or not isinstance(enrollment_year, int):
         return {"error": "'enrollment_year' is required"}, 400
+
+    if registration_number is None:
+        registration_number = _generate_registration_number(enrollment_year)
+    elif not isinstance(registration_number, str) or not registration_number.strip():
+        return {"error": "'registration_number' must be a non-empty string"}, 400
 
     try:
         user_id = _parse_uuid(payload.get("user_id"), "user_id")
@@ -144,9 +158,17 @@ def update_student(student_id: str):
 
     registration_number = payload.get("registration_number")
     if registration_number is not None:
-        if not isinstance(registration_number, str) or not registration_number.strip():
+        if not isinstance(registration_number, str):
             return {"error": "'registration_number' must be a non-empty string"}, 400
-        student.registration_number = registration_number.strip()
+        if not registration_number.strip():
+            year_value = payload.get("enrollment_year")
+            if year_value is None:
+                year_value = student.enrollment_year
+            if year_value is None:
+                return {"error": "'enrollment_year' is required to generate registration number"}, 400
+            student.registration_number = _generate_registration_number(int(year_value))
+        else:
+            student.registration_number = registration_number.strip()
 
     if "enrollment_year" in payload:
         enrollment_year = payload.get("enrollment_year")

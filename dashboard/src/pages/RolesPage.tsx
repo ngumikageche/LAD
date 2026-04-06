@@ -28,6 +28,7 @@ const ENTITY_LABELS: Record<string, string> = {
   courses: 'Courses',
   students: 'Students',
   trainers: 'Trainers',
+  notifications: 'Notifications',
 };
 
 const CRUD_LABELS: Record<string, string> = {
