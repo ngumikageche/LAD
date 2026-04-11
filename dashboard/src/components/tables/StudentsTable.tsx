@@ -2,18 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import { apiRequest } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
-type Student = {
-  id: string;
-  registration_number: string;
-  course_id: string;
-  enrollment_year: number;
-  user: {
-    id: string;
-    name: string;
-    email: string;
-    phone: string | null;
-  };
-};
+import { Student } from '../../types/backend';
 
 const StudentsTable = () => {
   const { token } = useAuth();

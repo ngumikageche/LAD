@@ -2,13 +2,10 @@ import { useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
-const scoresData = [
-  { id: 1, student: 'John Doe', subject: 'Mathematics', score: 85, term: 'Term 1' },
-  { id: 2, student: 'Jane Smith', subject: 'Science', score: 92, term: 'Term 1' },
-  { id: 3, student: 'Mike Johnson', subject: 'History', score: 72, term: 'Term 2' },
-  { id: 4, student: 'Emily Davis', subject: 'English', score: 65, term: 'Term 1' },
-  { id: 5, student: 'Chris Lee', subject: 'Mathematics', score: 88, term: 'Term 2' },
-];
+import { Assessment } from '../../types/backend';
+
+// Placeholder for real data
+const scoresData: Assessment[] = [];
 
 const AddScoreModal = ({ isOpen, onClose }: { isOpen: boolean, onClose: () => void }) => {
   return (
