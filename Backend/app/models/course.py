@@ -20,4 +20,7 @@ class Course(BaseModel):
 
     department = relationship("Department", back_populates="courses")
     students = relationship("Student", back_populates="course")
-    modules = relationship("Module", back_populates="course")
+    enrollments = relationship("Enrollment", back_populates="course")
+    assessments = relationship("Assessment", back_populates="course")
+    announcements = relationship("Announcement", back_populates="course")
+    trainers = relationship("TrainerCourse", back_populates="course")

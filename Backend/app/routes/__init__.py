@@ -14,6 +14,10 @@ from .subjects import bp as subjects_bp
 from .trainer_subjects import bp as trainer_subjects_bp
 from .student_subjects import bp as student_subjects_bp
 from .scores import bp as scores_bp
+from .analytics import bp as analytics_bp
+from .announcements import bp as announcements_bp
+from .admin_analytics import bp as admin_analytics_bp
+from .admin_management import bp as admin_management_bp
 
 __all__ = [
 	"auth_bp",
@@ -31,4 +35,8 @@ __all__ = [
 	"trainer_subjects_bp",
 	"student_subjects_bp",
 	"scores_bp",
+	"analytics_bp",
+	"announcements_bp",
+	"admin_analytics_bp",
+	"admin_management_bp",
 ]

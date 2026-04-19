@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Book, Home, Users, BarChart, FileText, ChevronsLeft, ChevronsRight, Shield, Building2, School, KeyRound, UserCog, Compass } from 'lucide-react';
+import { Book, Home, Users, BarChart, FileText, ChevronsLeft, ChevronsRight, Shield, Building2, School, KeyRound, UserCog, Compass, MessageSquare, TrendingUp, BarChart3, Bell } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useAuth } from '../../auth/AuthContext';
 
@@ -13,6 +13,13 @@ const navItems = [
   { name: 'Students', icon: Users, path: '/students', color: 'text-blue-600', permission: 'students.read' },
   { name: 'Trainers', icon: UserCog, path: '/trainers', color: 'text-sky-600', permission: 'trainers.read' },
   { name: 'Trainer Hub', icon: Compass, path: '/trainer-hub', color: 'text-emerald-600', permission: 'trainers.read' },
+  { name: 'Trainer Reports', icon: FileText, path: '/trainer/reports', color: 'text-indigo-600', permission: 'trainers.read' },
+  { name: 'Provide Feedback', icon: MessageSquare, path: '/trainer/feedback', color: 'text-cyan-600', permission: 'trainers.read' },
+  { name: 'Student Profile', icon: TrendingUp, path: '/trainer/student-profile', color: 'text-purple-600', permission: 'trainers.read' },
+  { name: 'Admin Dashboard', icon: BarChart3, path: '/admin/dashboard', color: 'text-red-600', permission: 'admin.read' },
+  { name: 'Admin Analytics', icon: BarChart, path: '/admin/analytics', color: 'text-red-600', permission: 'admin.read' },
+  { name: 'Score Management', icon: FileText, path: '/admin/scores', color: 'text-red-600', permission: 'admin.read' },
+  { name: 'Admin Notifications', icon: Bell, path: '/admin/notifications', color: 'text-red-600', permission: 'admin.read' },
   { name: 'Modules', icon: Book, path: '/modules', color: 'text-indigo-600' },
   { name: 'Subjects', icon: Book, path: '/subjects', color: 'text-amber-600' },
   { name: 'Progress', icon: BarChart, path: '/progress', color: 'text-emerald-600' },

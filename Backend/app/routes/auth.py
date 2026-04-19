@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from flask import Blueprint, current_app, request
-from werkzeug.security import check_password_hash
+from werkzeug.security import check_password_hash, generate_password_hash
 
 from ..extensions import db
 from ..models.user import User
@@ -100,3 +100,50 @@ def me():
         return {"error": "Invalid or expired token"}, 401
 
     return _user_payload(user), 200
+
+
+@bp.put("/password")
+def change_password():
+    """Change password for the authenticated user"""
+    token = _get_bearer_token()
+    if not token:
+        return {"error": "Missing bearer token"}, 401
+
+    user = _verify_token(token)
+    if not user:
+        return {"error": "Invalid or expired token"}, 401
+
+    payload = request.get_json(silent=True) or {}
+    current_password = payload.get("current_password")
+    new_password = payload.get("new_password")
+    confirm_password = payload.get("confirm_password")
+
+    # Validate required fields
+    if not current_password or not isinstance(current_password, str):
+        return {"error": "'current_password' is required"}, 400
+    if not new_password or not isinstance(new_password, str):
+        return {"error": "'new_password' is required"}, 400
+    if not confirm_password or not isinstance(confirm_password, str):
+        return {"error": "'confirm_password' is required"}, 400
+
+    # Validate password length
+    if len(new_password) < 8:
+        return {"error": "New password must be at least 8 characters long"}, 400
+
+    # Verify current password
+    if not check_password_hash(user.password_hash, current_password):
+        return {"error": "Current password is incorrect"}, 401
+
+    # Verify passwords match
+    if new_password != confirm_password:
+        return {"error": "New password and confirm password do not match"}, 400
+
+    # Verify new password is different from current
+    if current_password == new_password:
+        return {"error": "New password must be different from current password"}, 400
+
+    # Update password
+    user.password_hash = generate_password_hash(new_password)
+    db.session.commit()
+
+    return {"message": "Password changed successfully"}, 200

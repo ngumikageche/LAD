@@ -6,15 +6,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy import and_, func
 from datetime import datetime
 from ..extensions import db
+from ..models.score import Score
 from ..models.assessment import Assessment
+from ..models.enrollment import Enrollment
 from ..models.student import Student
 from ..models.trainer import Trainer
-from ..models.module import Module
-from ..models.subject import Subject
-from ..models.competency import Competency
-from ..models.student_subject import StudentSubject
+from ..models.course import Course
+from ..models.notification import Notification
 from .permissions import log_view, require_permission
-from flask_cors import cross_origin
 
 bp = Blueprint('scores', __name__, url_prefix='/scores')
 
@@ -28,175 +27,272 @@ def _parse_uuid(value: str | None, field: str) -> uuid.UUID:
         raise ValueError(f"Invalid '{field}'") from exc
 
 
-def _assessment_payload(assessment: Assessment) -> dict:
-    """Build assessment payload with related details"""
+def _score_payload(score: Score) -> dict:
     return {
-        "id": str(assessment.id),
-        "student_id": str(assessment.student_id),
-        "trainer_id": str(assessment.trainer_id),
-        "module_id": str(assessment.module_id),
-        "competency_id": str(assessment.competency_id),
-        "score": assessment.score,
-        "performance_level": assessment.performance_level,
-        "status": assessment.status,
-        "recorded_at": assessment.recorded_at.isoformat() if assessment.recorded_at else None,
-        "source": assessment.source,
-        "term": assessment.term if hasattr(assessment, 'term') else None,
-        "competency": {
-            "id": str(assessment.competency.id),
-            "name": assessment.competency.name,
-        } if assessment.competency else None,
-        "module": {
-            "id": str(assessment.module.id),
-            "name": assessment.module.name,
-        } if assessment.module else None,
+        "id": str(score.id),
+        "enrollment_id": str(score.enrollment_id),
+        "assessment_id": str(score.assessment_id),
+        "marks_obtained": score.marks_obtained,
+        "grade": score.grade,
+        "feedback": score.feedback,
+        "is_passed": score.is_passed,
+        "assessment_name": score.assessment.name if score.assessment else None,
+        "course_name": score.enrollment.course.name if score.enrollment and score.enrollment.course else None,
+        "created_at": score.created_at.isoformat() if score.created_at else None,
     }
 
 
 @bp.post("")
-@cross_origin()
 def create_score():
-    """Create an assessment/score for a student
-    
-    Supports User Story: "As a student, I want to see my grades for each assessment"
-    """
-    _, error, status = require_permission("scores.create")
+    """Create a new score (trainer uploads student scores)"""
+    user, error, status = require_permission("scores.create")
     if error:
         return error, status
-    
+
     payload = request.get_json(silent=True) or {}
-    student_id = payload.get("student_id")
-    trainer_id = payload.get("trainer_id")
-    module_id = payload.get("module_id")
-    competency_id = payload.get("competency_id")
-    assessment_tasks = payload.get("assessment_tasks")
-    performance_level = payload.get("performance_level")
-    score = payload.get("score")
-    term = payload.get("term")
-    
+
     # Validate required fields
-    if not all([student_id, trainer_id, module_id, score is not None]):
-        return {
-            "error": "Missing required fields: student_id, trainer_id, module_id, score"
-        }, 400
-    
-    # Parse UUIDs
     try:
-        student_uuid = _parse_uuid(student_id, "student_id")
-        trainer_uuid = _parse_uuid(trainer_id, "trainer_id")
-        module_uuid = _parse_uuid(module_id, "module_id")
-        competency_uuid = _parse_uuid(competency_id, "competency_id") if competency_id else None
+        enrollment_id = _parse_uuid(payload.get("enrollment_id"), "enrollment_id")
+        assessment_id = _parse_uuid(payload.get("assessment_id"), "assessment_id")
     except ValueError as exc:
         return {"error": str(exc)}, 400
-    
-    # Validate score value
+
+    marks_obtained = payload.get("marks_obtained")
+    if marks_obtained is None or not isinstance(marks_obtained, (int, float)):
+        return {"error": "'marks_obtained' is required and must be a number"}, 400
+
+    # Verify enrollment exists
+    enrollment = db.session.get(Enrollment, enrollment_id)
+    if not enrollment:
+        return {"error": "Invalid 'enrollment_id'"}, 400
+
+    # Verify assessment exists and get total marks
+    assessment = db.session.get(Assessment, assessment_id)
+    if not assessment:
+        return {"error": "Invalid 'assessment_id'"}, 400
+
+    # Validate marks against total
+    if marks_obtained < 0 or marks_obtained > assessment.total_marks:
+        return {
+            "error": f"'marks_obtained' must be between 0 and {assessment.total_marks}"
+        }, 400
+
+    # Verify trainer has access to this course
+    trainer = db.session.query(Trainer).filter(Trainer.user_id == user["id"]).first()
+    if trainer:  # Only check if user is a trainer
+        from ..models.trainer_course import TrainerCourse
+        has_access = db.session.query(TrainerCourse).filter(
+            and_(TrainerCourse.trainer_id == trainer.id, TrainerCourse.course_id == enrollment.course_id)
+        ).first()
+        if not has_access:
+            return {"error": "You don't have access to this course"}, 403
+
+    # Calculate grade if pass_marks is defined
+    is_passed = None
+    if assessment.pass_marks is not None:
+        is_passed = marks_obtained >= assessment.pass_marks
+
+    # Create score
+    score = Score(
+        enrollment_id=enrollment_id,
+        assessment_id=assessment_id,
+        marks_obtained=marks_obtained,
+        is_passed=is_passed,
+        feedback=payload.get("feedback"),
+    )
+
+    db.session.add(score)
     try:
-        score = float(score)
-        if not 0 <= score <= 100:
-            return {"error": "Score must be between 0 and 100"}, 400
-    except (ValueError, TypeError):
-        return {"error": "Score must be a valid number"}, 400
-    
-    # Verify entities exist
-    if not db.session.get(Student, student_uuid):
-        return {"error": "Student not found"}, 404
-    if not db.session.get(Trainer, trainer_uuid):
-        return {"error": "Trainer not found"}, 404
-    if not db.session.get(Module, module_uuid):
-        return {"error": "Module not found"}, 404
-    # Resolve or create competency if needed
-    if competency_uuid:
-        if not db.session.get(Competency, competency_uuid):
-            return {"error": "Competency not found"}, 404
-    else:
-        # Always create a new competency with a generated unique 5-digit name
-        import random
-
-        def _generate_name():
-            return f"C{random.randint(10000, 99999)}"
-
-        for _ in range(10):
-            name_candidate = _generate_name()
-            exists = db.session.query(Competency.id).filter(Competency.name == name_candidate).first()
-            if not exists:
-                break
-        else:
-            return {"error": "Unable to generate unique competency name"}, 500
-
-        comp = Competency(
-            module_id=module_uuid,
-            name=name_candidate,
-            description=None,
-            expected_outcome=None,
-            mastery_threshold=payload.get('mastery_threshold') or 100.0,
-            assessment_tasks=assessment_tasks if assessment_tasks else None,
-            performance_levels={"4":"EE","3":"ME","2":"AE","1":"BE"}
-        )
-        db.session.add(comp)
-        try:
-            db.session.commit()
-        except Exception:
-            db.session.rollback()
-            return {"error": "Failed creating competency"}, 500
-        competency_uuid = comp.id
-    
-    try:
-        assessment = Assessment(
-            student_id=student_uuid,
-            trainer_id=trainer_uuid,
-            module_id=module_uuid,
-            competency_id=competency_uuid,
-            score=score,
-            status=payload.get("status", "active"),
-            recorded_at=datetime.utcnow(),
-            source=payload.get("source", "manual"),
-            term=term,
-            performance_level=int(performance_level) if performance_level is not None else None
-        )
-        db.session.add(assessment)
         db.session.commit()
-        return _assessment_payload(assessment), 201
     except IntegrityError:
         db.session.rollback()
-        return {"error": "Assessment already exists"}, 409
-    except Exception as e:
-        db.session.rollback()
-        return {"error": str(e)}, 500
+        return {"error": "Score already exists for this enrollment and assessment"}, 409
+
+    db.session.refresh(score)
+
+    # Create notification for student
+    student = enrollment.student
+    notification = Notification(
+        user_id=student.user_id,
+        title="New Score Available",
+        message=f"Your score for {assessment.name} in {enrollment.course.name} is now available.",
+        is_read=False,
+    )
+    db.session.add(notification)
+
+    # Create alert if score is poor
+    if is_passed is False:
+        alert = Notification(
+            user_id=student.user_id,
+            title="Performance Alert",
+            message=f"Your score in {enrollment.course.name} is below passing. Please take corrective action.",
+            is_read=False,
+        )
+        db.session.add(alert)
+
+    db.session.commit()
+
+    log_view(user, "scores", entity_id=str(score.id), metadata={"action": "created"})
+    return _score_payload(score), 201
+
+
+@bp.put("/<score_id>")
+def update_score(score_id: str):
+    """Update an existing score"""
+    user, error, status = require_permission("scores.update")
+    if error:
+        return error, status
+
+    try:
+        score_uuid = _parse_uuid(score_id, "score_id")
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+
+    score = db.session.get(Score, score_uuid)
+    if not score:
+        return {"error": "Score not found"}, 404
+
+    # Verify trainer has access
+    trainer = db.session.query(Trainer).filter(Trainer.user_id == user["id"]).first()
+    if trainer:
+        from ..models.trainer_course import TrainerCourse
+        has_access = db.session.query(TrainerCourse).filter(
+            and_(TrainerCourse.trainer_id == trainer.id, TrainerCourse.course_id == score.enrollment.course_id)
+        ).first()
+        if not has_access:
+            return {"error": "You don't have access to this score"}, 403
+
+    payload = request.get_json(silent=True) or {}
+
+    # Update marks if provided
+    if "marks_obtained" in payload:
+        marks = payload.get("marks_obtained")
+        if marks is None or not isinstance(marks, (int, float)):
+            return {"error": "'marks_obtained' must be a number"}, 400
+        if marks < 0 or marks > score.assessment.total_marks:
+            return {
+                "error": f"'marks_obtained' must be between 0 and {score.assessment.total_marks}"
+            }, 400
+        score.marks_obtained = marks
+
+        # Recalculate pass status
+        if score.assessment.pass_marks is not None:
+            score.is_passed = marks >= score.assessment.pass_marks
+
+    # Update feedback if provided
+    if "feedback" in payload:
+        score.feedback = payload.get("feedback")
+
+    # Update grade if provided
+    if "grade" in payload:
+        score.grade = payload.get("grade")
+
+    db.session.commit()
+
+    log_view(user, "scores", entity_id=score_id, metadata={"action": "updated"})
+    return _score_payload(score), 200
 
 
 @bp.get("")
 def list_scores():
-    """List all scores with optional filtering by student/module/term"""
-    _, error, status = require_permission("scores.read")
+    """List scores with optional filters"""
+    user, error, status = require_permission("scores.read")
     if error:
         return error, status
-    
-    query = db.session.query(Assessment)
-    
-    # Optional filters
-    student_id = request.args.get("student_id")
-    module_id = request.args.get("module_id")
-    term = request.args.get("term")
-    
+
+    query = db.session.query(Score).order_by(Score.created_at.desc())
+
+    # Filter by assessment
+    assessment_id = request.args.get("assessment_id")
+    if assessment_id:
+        try:
+            assessment_uuid = _parse_uuid(assessment_id, "assessment_id")
+        except ValueError as exc:
+            return {"error": str(exc)}, 400
+        query = query.filter(Score.assessment_id == assessment_uuid)
+
+    # Filter by enrollment
+    enrollment_id = request.args.get("enrollment_id")
+    if enrollment_id:
+        try:
+            enrollment_uuid = _parse_uuid(enrollment_id, "enrollment_id")
+        except ValueError as exc:
+            return {"error": str(exc)}, 400
+        query = query.filter(Score.enrollment_id == enrollment_uuid)
+
+    # Filter by course (for trainers)
+    course_id = request.args.get("course_id")
+    if course_id:
+        try:
+            course_uuid = _parse_uuid(course_id, "course_id")
+        except ValueError as exc:
+            return {"error": str(exc)}, 400
+        query = query.join(Enrollment).filter(Enrollment.course_id == course_uuid)
+
+    scores = query.all()
+    log_view(user, "scores", metadata={"scope": "list"})
+    return [_score_payload(score) for score in scores], 200
+
+
+@bp.get("/<score_id>")
+def get_score(score_id: str):
+    """Get a specific score"""
+    user, error, status = require_permission("scores.read")
+    if error:
+        return error, status
+
     try:
-        if student_id:
-            student_uuid = _parse_uuid(student_id, "student_id")
-            query = query.filter(Assessment.student_id == student_uuid)
-        if module_id:
-            module_uuid = _parse_uuid(module_id, "module_id")
-            query = query.filter(Assessment.module_id == module_uuid)
-        if term:
-            query = query.filter(Assessment.term == term)
+        score_uuid = _parse_uuid(score_id, "score_id")
     except ValueError as exc:
         return {"error": str(exc)}, 400
-    
-    assessments = query.order_by(Assessment.recorded_at.desc()).all()
-    log_view(None, "scores", metadata={"scope": "list", "filters": {"student": student_id, "module": module_id, "term": term}})
-    
-    return {
-        "scores": [_assessment_payload(a) for a in assessments],
-        "total": len(assessments)
-    }, 200
+
+    score = db.session.get(Score, score_uuid)
+    if not score:
+        return {"error": "Score not found"}, 404
+
+    log_view(user, "scores", entity_id=score_id, metadata={"scope": "detail"})
+    return _score_payload(score), 200
+
+
+@bp.post("/<score_id>/feedback")
+def add_feedback(score_id: str):
+    """Add or update feedback for a score"""
+    user, error, status = require_permission("scores.update")
+    if error:
+        return error, status
+
+    try:
+        score_uuid = _parse_uuid(score_id, "score_id")
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+
+    score = db.session.get(Score, score_uuid)
+    if not score:
+        return {"error": "Score not found"}, 404
+
+    payload = request.get_json(silent=True) or {}
+    feedback = payload.get("feedback")
+
+    if not feedback or not isinstance(feedback, str):
+        return {"error": "'feedback' is required and must be a string"}, 400
+
+    score.feedback = feedback
+    db.session.commit()
+
+    # Notify student
+    student = score.enrollment.student
+    notification = Notification(
+        user_id=student.user_id,
+        title="New Feedback",
+        message=f"Your trainer has provided feedback for {score.assessment.name}",
+        is_read=False,
+    )
+    db.session.add(notification)
+    db.session.commit()
+
+    log_view(user, "scores", entity_id=score_id, metadata={"action": "added_feedback"})
+    return _score_payload(score), 200
 
 
 @bp.get("/<assessment_id>")
