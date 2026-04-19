@@ -2,18 +2,54 @@ from __future__ import annotations
 
 import uuid
 import random
-
 from flask import Blueprint, request
 from sqlalchemy.exc import IntegrityError
-
+from sqlalchemy import and_
 from ..extensions import db
 from ..models.course import Course
 from ..models.student import Student
 from ..models.user import User
+from ..models.enrollment import Enrollment
+from ..models.student_subject import StudentSubject
+from ..models.subject import Subject
+from ..models.trainer_subject import TrainerSubject
+from ..models.trainer import Trainer
 from .permissions import log_view, require_permission
-
+from .permissions import get_current_user
 
 bp = Blueprint("students", __name__, url_prefix="/students")
+
+# Enroll or update a student's module assignment
+@bp.post("/<student_id>/enroll")
+def enroll_student(student_id):
+    user, error, status = require_permission("students.update")
+    if error:
+        return error, status
+    payload = request.get_json(silent=True) or {}
+    module_id = payload.get("module_id")
+    course_id = payload.get("course_id")
+    if not module_id or not course_id:
+        return {"error": "module_id and course_id are required"}, 400
+
+    # Update student course
+    student = db.session.get(Student, student_id)
+    if not student:
+        return {"error": "Student not found"}, 404
+    student.course_id = course_id
+
+    # Upsert enrollment
+    enrollment = db.session.query(Enrollment).filter_by(student_id=student_id).first()
+    if enrollment:
+        enrollment.module_id = module_id
+    else:
+        enrollment = Enrollment(student_id=student_id, module_id=module_id, status='active')
+        db.session.add(enrollment)
+
+    db.session.commit()
+    return {"status": "enrolled"}, 200
+
+
+
 
 
 def _parse_uuid(value: str | None, field: str) -> uuid.UUID:
@@ -122,6 +158,39 @@ def list_students():
     return [_student_payload(student) for student in students], 200
 
 
+@bp.get('/me')
+def get_my_student():
+    """Return the student record for the currently authenticated user."""
+    user, error, status = get_current_user()
+    if error:
+        return error, status
+
+    # find student with this user_id
+    student = db.session.query(Student).filter_by(user_id=user.id).first()
+    if not student:
+        return {"error": "Student record not found"}, 404
+
+    log_view(user, "students.me", entity_id=str(student.id))
+    return _student_payload(student), 200
+
+
+@bp.get('/me/subjects')
+def get_my_subjects():
+    """Return subjects the current authenticated student is enrolled in."""
+    user, error, status = get_current_user()
+    if error:
+        return error, status
+
+    student = db.session.query(Student).filter_by(user_id=user.id).first()
+    if not student:
+        return {"error": "Student record not found"}, 404
+
+    enrollments = db.session.query(StudentSubject).filter(StudentSubject.student_id == student.id).all()
+    subjects = [_subject_with_details_payload(ss.subject) for ss in enrollments]
+    log_view(user, "students.subjects.me", entity_id=str(student.id), metadata={"count": len(subjects)})
+    return {"student_id": str(student.id), "subjects": subjects, "total": len(subjects)}, 200
+
+
 @bp.get("/<student_id>")
 def get_student(student_id: str):
     user, error, status = require_permission("students.read")
@@ -220,4 +289,136 @@ def delete_student(student_id: str):
 
     db.session.delete(student)
     db.session.commit()
+    return {"status": "deleted"}, 200
+
+
+# ==================== STUDENT SUBJECTS ENDPOINTS ====================
+
+def _trainer_payload(trainer: Trainer) -> dict:
+    """Build trainer info payload"""
+    return {
+        "id": str(trainer.id),
+        "user_id": str(trainer.user_id),
+        "name": trainer.user.name if trainer.user else None,
+        "email": trainer.user.email if trainer.user else None,
+        "specialization": trainer.specialization,
+    }
+
+
+def _subject_with_details_payload(subject: Subject) -> dict:
+    """Build subject payload with module and trainer details"""
+    # Get trainers for this subject
+    trainer_subjects = db.session.query(TrainerSubject).filter(
+        TrainerSubject.subject_id == subject.id
+    ).all()
+    
+    return {
+        "id": str(subject.id),
+        "name": subject.name,
+        "description": subject.description,
+        "module": {
+            "id": str(subject.module.id),
+            "name": subject.module.name,
+            "description": subject.module.description,
+        } if subject.module else None,
+        "trainers": [_trainer_payload(ts.trainer) for ts in trainer_subjects if ts.trainer],
+    }
+
+
+@bp.get("/<student_id>/subjects")
+def get_student_enrolled_subjects(student_id: str):
+    """Get all subjects enrolled by a student with full details (module, trainers)
+    
+    This supports User Story: "As a student, I want to see all subjects I am enrolled in"
+    """
+    user, error, status = require_permission("students.read")
+    if error:
+        return error, status
+    
+    try:
+        student_uuid = _parse_uuid(student_id, "student_id")
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+    
+    student = db.session.get(Student, student_uuid)
+    if not student:
+        return {"error": "Student not found"}, 404
+    
+    # Get all student-subject enrollments
+    enrollments = db.session.query(StudentSubject).filter(
+        StudentSubject.student_id == student_uuid
+    ).all()
+    
+    subjects = [_subject_with_details_payload(ss.subject) for ss in enrollments]
+    log_view(user, "students.subjects", entity_id=student_id, metadata={"scope": "list"})
+    
+    return {
+        "student_id": str(student_uuid),
+        "subjects": subjects,
+        "total": len(subjects)
+    }, 200
+
+
+@bp.post("/<student_id>/subjects/<subject_id>")
+def enroll_student_in_subject(student_id: str, subject_id: str):
+    """Enroll a student in a subject"""
+    _, error, status = require_permission("students.update")
+    if error:
+        return error, status
+    
+    try:
+        student_uuid = _parse_uuid(student_id, "student_id")
+        subject_uuid = _parse_uuid(subject_id, "subject_id")
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+    
+    student = db.session.get(Student, student_uuid)
+    if not student:
+        return {"error": "Student not found"}, 404
+    
+    subject = db.session.get(Subject, subject_uuid)
+    if not subject:
+        return {"error": "Subject not found"}, 404
+    
+    try:
+        ss = StudentSubject(student_id=student_uuid, subject_id=subject_uuid)
+        db.session.add(ss)
+        db.session.commit()
+        return {
+            "id": str(ss.id),
+            "student_id": str(ss.student_id),
+            "subject_id": str(ss.subject_id),
+            "subject": _subject_with_details_payload(subject),
+        }, 201
+    except IntegrityError:
+        db.session.rollback()
+        return {"error": "Student already enrolled in this subject"}, 409
+
+
+@bp.delete("/<student_id>/subjects/<subject_id>")
+def unenroll_student_from_subject(student_id: str, subject_id: str):
+    """Remove a subject from a student's enrollment"""
+    _, error, status = require_permission("students.update")
+    if error:
+        return error, status
+    
+    try:
+        student_uuid = _parse_uuid(student_id, "student_id")
+        subject_uuid = _parse_uuid(subject_id, "subject_id")
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+    
+    enrollment = db.session.query(StudentSubject).filter(
+        and_(
+            StudentSubject.student_id == student_uuid,
+            StudentSubject.subject_id == subject_uuid
+        )
+    ).first()
+    
+    if not enrollment:
+        return {"error": "Enrollment not found"}, 404
+    
+    db.session.delete(enrollment)
+    db.session.commit()
+    
     return {"status": "deleted"}, 200

@@ -10,11 +10,15 @@ export interface User {
   created_at: string;
 }
 
+export type { User };
+
 export interface RolePermission {
   id: string;
   role_name: string;
   permissions: any;
 }
+
+export type { RolePermission };
 
 export interface Institution {
   id: string;
@@ -24,11 +28,15 @@ export interface Institution {
   created_at: string;
 }
 
+export type { Institution };
+
 export interface Department {
   id: string;
   institution_id: string;
   name: string;
 }
+
+export type { Department };
 
 export interface Course {
   id: string;
@@ -37,12 +45,36 @@ export interface Course {
   cbet_level: string;
 }
 
+export type { Course };
+
+export interface Subject {
+  id: string;
+  module_id: string;
+  name: string;
+  description?: string;
+  module?: Module;
+  trainers?: Trainer[];
+}
+
+export type { Subject };
+
+export interface StudentSubject {
+  id: string;
+  student_id: string;
+  subject_id: string;
+  subject?: Subject;
+}
+
+export type { StudentSubject };
+
 export interface Module {
   id: string;
   course_id: string;
   name: string;
   description?: string;
 }
+
+export type { Module };
 
 export interface Competency {
   id: string;
@@ -53,6 +85,8 @@ export interface Competency {
   mastery_threshold: number;
 }
 
+export type { Competency };
+
 export interface Student {
   id: string;
   user_id: string;
@@ -61,12 +95,19 @@ export interface Student {
   enrollment_year: number;
 }
 
+export type { Student };
+
 export interface Trainer {
   id: string;
   user_id: string;
   department_id: string;
   specialization?: string;
+  name?: string;
+  email?: string;
+  user?: User;
 }
+
+export type { Trainer };
 
 export interface Enrollment {
   id: string;
@@ -74,6 +115,8 @@ export interface Enrollment {
   module_id: string;
   status: string;
 }
+
+export type { Enrollment };
 
 export interface Assessment {
   id: string;
@@ -85,7 +128,11 @@ export interface Assessment {
   status: string;
   recorded_at: string;
   source: string;
+  term?: string;
+  competency?: { id: string; name: string };
+  module?: { id: string; name: string };
 }
+export type { Assessment };
 
 export interface CompetencyRecord {
   id: string;
@@ -95,6 +142,8 @@ export interface CompetencyRecord {
   status: string;
   last_updated: string;
 }
+
+export type { CompetencyRecord };
 
 export interface Attendance {
   id: string;
@@ -113,6 +162,8 @@ export interface PortfolioEvidence {
   verified_by?: string;
 }
 
+export type { PortfolioEvidence };
+
 export interface Alert {
   id: string;
   student_id: string;
@@ -123,6 +174,8 @@ export interface Alert {
   resolved: boolean;
 }
 
+export type { Alert };
+
 export interface DashboardMetric {
   id: string;
   module_id: string;
@@ -131,6 +184,7 @@ export interface DashboardMetric {
   at_risk_count: number;
   last_updated: string;
 }
+export type { DashboardMetric };
 
 export interface SystemLog {
   id: string;
@@ -139,6 +193,9 @@ export interface SystemLog {
   metadata: any;
   created_at: string;
 }
+
+export type { SystemLog };
+
 
 export interface Survey {
   id: string;
@@ -149,3 +206,5 @@ export interface Survey {
   behavioral_intention_score: number;
   submitted_at: string;
 }
+export type { Survey };
+

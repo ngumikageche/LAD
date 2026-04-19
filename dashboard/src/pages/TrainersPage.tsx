@@ -40,7 +40,137 @@ const emptyForm: TrainerForm = {
   specialization: '',
 };
 
+
+
+const AssignSubjectsModal = ({ isOpen, onClose, trainer, token }) => {
+  const [courses, setCourses] = useState([]);
+  const [modules, setModules] = useState([]);
+  const [subjects, setSubjects] = useState([]);
+  const [selectedCourseId, setSelectedCourseId] = useState('');
+  const [selectedModuleId, setSelectedModuleId] = useState('');
+  const [selectedSubjectIds, setSelectedSubjectIds] = useState([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [message, setMessage] = useState('');
+
+  useEffect(() => {
+    if (!isOpen) return;
+    apiRequest('/courses', { token })
+      .then(setCourses)
+      .catch(() => setCourses([]));
+    apiRequest('/modules', { token })
+      .then(setModules)
+      .catch(() => setModules([]));
+    apiRequest('/subjects', { token })
+      .then(setSubjects)
+      .catch(() => setSubjects([]));
+    setSelectedCourseId('');
+    setSelectedModuleId('');
+    setSelectedSubjectIds([]);
+  }, [isOpen, token]);
+
+  const filteredModules = selectedCourseId
+    ? modules.filter((m) => m.course_id === selectedCourseId)
+    : [];
+
+  const filteredSubjects = selectedModuleId
+    ? subjects.filter((s) => s.module_id === selectedModuleId)
+    : [];
+
+  const handleAssign = async () => {
+    if (!trainer?.id || selectedSubjectIds.length === 0) return;
+    setIsSubmitting(true);
+    setMessage('');
+    try {
+      await apiRequest(`/trainer-subjects/assign-multiple`, {
+        method: 'POST',
+        token,
+        body: {
+          trainer_id: trainer.id,
+          subject_ids: selectedSubjectIds,
+        },
+      });
+      setMessage('Subjects assigned successfully!');
+      setTimeout(onClose, 1000);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Failed to assign subjects');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="w-full max-w-lg rounded-2xl bg-white p-8 shadow-xl">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-bold text-gray-800">Assign Subjects to {trainer?.user?.name}</h2>
+          <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">
+            <X className="text-gray-600" />
+          </button>
+        </div>
+        <div className="mb-4">
+          <label className="block mb-1 font-medium">Course</label>
+          <select
+            className="w-full border rounded p-2 mb-2"
+            value={selectedCourseId}
+            onChange={e => {
+              setSelectedCourseId(e.target.value);
+              setSelectedModuleId('');
+              setSelectedSubjectIds([]);
+            }}
+          >
+            <option value="">Select Course</option>
+            {courses.map(course => (
+              <option key={course.id} value={course.id}>{course.name}</option>
+            ))}
+          </select>
+          <label className="block mb-1 font-medium">Module</label>
+          <select
+            className="w-full border rounded p-2 mb-2"
+            value={selectedModuleId}
+            onChange={e => {
+              setSelectedModuleId(e.target.value);
+              setSelectedSubjectIds([]);
+            }}
+            disabled={!selectedCourseId}
+          >
+            <option value="">Select Module</option>
+            {filteredModules.map(module => (
+              <option key={module.id} value={module.id}>{module.name}</option>
+            ))}
+          </select>
+          <label className="block mb-1 font-medium">Subjects</label>
+          <select
+            className="w-full border rounded p-2"
+            multiple
+            value={selectedSubjectIds}
+            onChange={e => {
+              const options = Array.from(e.target.selectedOptions).map(opt => opt.value);
+              setSelectedSubjectIds(options);
+            }}
+            disabled={!selectedModuleId}
+          >
+            {filteredSubjects.map(sub => (
+              <option key={sub.id} value={sub.id}>{sub.name}</option>
+            ))}
+          </select>
+        </div>
+        <button
+          className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50"
+          onClick={handleAssign}
+          disabled={isSubmitting || !trainer?.id || selectedSubjectIds.length === 0}
+        >
+          {isSubmitting ? 'Assigning...' : 'Assign Subjects'}
+        </button>
+        {message && <div className="mt-4 text-green-600">{message}</div>}
+      </div>
+    </div>
+  );
+};
+
 const TrainersPage = () => {
+    const [assignModalOpen, setAssignModalOpen] = useState(false);
+    const [selectedTrainer, setSelectedTrainer] = useState(null);
   const { token, user } = useAuth();
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -229,12 +359,20 @@ const TrainersPage = () => {
                     <td className="px-6 py-4 text-gray-600">
                       <div className="flex items-center gap-3">
                         {canUpdateTrainers ? (
-                          <button
-                            className="text-indigo-600 hover:text-indigo-700 text-sm font-medium"
-                            onClick={() => openEdit(item)}
-                          >
-                            Edit
-                          </button>
+                          <>
+                            <button
+                              className="text-indigo-600 hover:text-indigo-700 text-sm font-medium"
+                              onClick={() => openEdit(item)}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              className="ml-2 text-blue-600 hover:text-blue-700 text-sm font-medium"
+                              onClick={() => { setSelectedTrainer(item); setAssignModalOpen(true); }}
+                            >
+                              Assign Subjects
+                            </button>
+                          </>
                         ) : null}
                         {canDeleteTrainers ? (
                           <button
@@ -337,6 +475,14 @@ const TrainersPage = () => {
           </div>
         </div>
       ) : null}
+      {assignModalOpen && (
+        <AssignSubjectsModal
+          isOpen={assignModalOpen}
+          onClose={() => setAssignModalOpen(false)}
+          trainer={selectedTrainer}
+          token={token}
+        />
+      )}
     </div>
   );
 };

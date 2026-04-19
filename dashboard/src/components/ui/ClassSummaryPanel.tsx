@@ -1,35 +1,64 @@
 import { useEffect, useState } from 'react';
-import { DashboardMetric, Alert} from '../../types/backend';
+import type { DashboardMetric, Alert } from '../../types/backend';
 import { apiRequest } from '../../api/client';
+import { useAuth } from '../../auth/AuthContext';
 
 const ClassSummaryPanel = () => {
   const [metrics, setMetrics] = useState<DashboardMetric | null>(null);
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [loading, setLoading] = useState(true);
+  const [classTitle, setClassTitle] = useState<string>('Class Summary');
+  const { token, user } = useAuth();
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        // Example: fetch dashboard metrics for a module (id hardcoded for demo)
-        const metricData = await apiRequest<DashboardMetric>('/extra/modules/1/metrics');
-        setMetrics(metricData);
-        const alertData = await apiRequest<Alert[]>('/extra/modules/1/alerts');
-        setAlerts(alertData);
+        const role = (user?.role_name || '').toLowerCase();
+        const isStudent = role === 'student' || (user?.permissions && user.permissions['students_view_own_subjects']);
+        if (!isStudent) {
+          setMetrics({ average_score: 0, at_risk_count: 0 } as unknown as DashboardMetric);
+          setAlerts([]);
+          setClassTitle('Class Summary');
+          setLoading(false);
+          return;
+        }
+
+        // Get enrolled subjects for the current student
+        const subjectsResp = await apiRequest<any>('/students/me/subjects', { token });
+        const subjects = subjectsResp.subjects || [];
+        if (subjects.length === 0) {
+          setMetrics({ average_score: 0, at_risk_count: 0 } as unknown as DashboardMetric);
+          setAlerts([]);
+          setClassTitle('Class Summary');
+          return;
+        }
+        // For simplicity use first subject to compute metrics from marks
+        const firstSubject = subjects[0];
+        // derive a friendly class/subject title
+        const title = (firstSubject.module && firstSubject.module.name) ? firstSubject.module.name : (firstSubject.name || 'Class Summary');
+        setClassTitle(title);
+        const marksResp = await apiRequest<any>(`/subjects/${firstSubject.id}/marks`, { token });
+        const marks = marksResp.marks || [];
+        const values = marks.map((m: any) => Number(m.value)).filter((v: number) => !isNaN(v));
+        const avg = values.length ? (values.reduce((a: number, b: number) => a + b, 0) / values.length) : 0;
+        const atRisk = values.filter((v: number) => v < 50).length;
+        setMetrics({ average_score: Math.round(avg * 10) / 10, at_risk_count: atRisk } as unknown as DashboardMetric);
+        setAlerts([]);
       } catch (e) {
-        // handle error
+        // handle error silently
       } finally {
         setLoading(false);
       }
     };
     fetchData();
-  }, []);
+  }, [token, user]);
 
   if (loading) return <div>Loading...</div>;
   if (!metrics) return <div>No data available</div>;
 
   return (
     <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100">
-      <h3 className="text-lg font-bold text-gray-900 mb-5">Class 8A Summary</h3>
+      <h3 className="text-lg font-bold text-gray-900 mb-5">{classTitle} Summary</h3>
       <div className="space-y-4">
         <div className="flex items-center justify-between pb-4 border-b border-gray-100">
           <p className="text-sm font-medium text-gray-600">Average Score</p>

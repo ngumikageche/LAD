@@ -13,6 +13,7 @@ const navItems = [
   { name: 'Students', icon: Users, path: '/students', color: 'text-blue-600', permission: 'students.read' },
   { name: 'Trainers', icon: UserCog, path: '/trainers', color: 'text-sky-600', permission: 'trainers.read' },
   { name: 'Trainer Hub', icon: Compass, path: '/trainer-hub', color: 'text-emerald-600', permission: 'trainers.read' },
+  { name: 'Modules', icon: Book, path: '/modules', color: 'text-indigo-600' },
   { name: 'Subjects', icon: Book, path: '/subjects', color: 'text-amber-600' },
   { name: 'Progress', icon: BarChart, path: '/progress', color: 'text-emerald-600' },
   { name: 'Reports', icon: FileText, path: '/reports', color: 'text-purple-600' },

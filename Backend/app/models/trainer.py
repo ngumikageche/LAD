@@ -22,3 +22,5 @@ class Trainer(BaseModel):
 
     user = relationship("User", back_populates="trainer")
     department = relationship("Department", back_populates="trainers")
+    assessments = relationship("Assessment", back_populates="trainer")
+    trainer_subjects = relationship("TrainerSubject", back_populates="trainer")

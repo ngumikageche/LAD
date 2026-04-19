@@ -1,14 +1,41 @@
+import { useEffect, useState } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { apiRequest } from '../../api/client';
+import { useAuth } from '../../auth/AuthContext';
 
-const data = [
-  { name: 'Math', score: 85 },
-  { name: 'Science', score: 78 },
-  { name: 'History', score: 92 },
-  { name: 'English', score: 88 },
-  { name: 'Art', score: 75 },
-];
+type SubjectScore = { name: string; score: number };
 
 const SubjectBarChart = () => {
+  const { token, user } = useAuth();
+  const [data, setData] = useState<SubjectScore[]>([]);
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const role = (user?.role_name || '').toLowerCase();
+        const isStudent = role === 'student' || (user?.permissions && user.permissions['students_view_own_subjects']);
+        if (!isStudent) {
+          setData([]);
+          return;
+        }
+
+        const subjectsResp = await apiRequest<any>('/students/me/subjects', { token });
+        const subjects = subjectsResp.subjects || [];
+        const rows: SubjectScore[] = [];
+        for (const s of subjects) {
+          const m = await apiRequest<any>(`/subjects/${s.id}/marks`, { token });
+          const marks = (m.marks || []).map((mk: any) => Number(mk.value)).filter((v: number) => !isNaN(v));
+          const avg = marks.length ? Math.round((marks.reduce((a: number, b: number) => a + b, 0) / marks.length) * 10) / 10 : 0;
+          rows.push({ name: s.name, score: avg });
+        }
+        setData(rows);
+      } catch (e) {
+        setData([]);
+      }
+    };
+    load();
+  }, [token]);
+
   return (
     <ResponsiveContainer width="100%" height={300}>
       <BarChart data={data}>

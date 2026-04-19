@@ -11,6 +11,7 @@ class RolePermission(BaseModel):
     __tablename__ = "roles_permissions"
 
     role_name: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)
+    category: Mapped[str] = mapped_column(String(32), nullable=True)  # New field for role category
     permissions: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
 
     users = relationship("User", back_populates="role")

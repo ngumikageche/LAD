@@ -17,6 +17,9 @@ def create_app() -> Flask:
   
     from . import models # Ensure models are registered before migrations
 
+
+
+
     from .routes import (
         auth_bp,
         courses_bp,
@@ -25,8 +28,14 @@ def create_app() -> Flask:
         notifications_bp,
         roles_bp,
         students_bp,
+        modules_bp,
         trainers_bp,
         users_bp,
+        extra_bp,
+        subjects_bp,
+        trainer_subjects_bp,
+        student_subjects_bp,
+        scores_bp,
     )
 
     app.register_blueprint(auth_bp)
@@ -36,8 +45,14 @@ def create_app() -> Flask:
     app.register_blueprint(notifications_bp)
     app.register_blueprint(roles_bp)
     app.register_blueprint(students_bp)
+    app.register_blueprint(modules_bp)
     app.register_blueprint(trainers_bp)
     app.register_blueprint(users_bp)
+    app.register_blueprint(extra_bp)
+    app.register_blueprint(subjects_bp)
+    app.register_blueprint(trainer_subjects_bp)
+    app.register_blueprint(student_subjects_bp)
+    app.register_blueprint(scores_bp)
 
     @app.get("/")
     def health_check():

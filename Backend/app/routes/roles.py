@@ -22,6 +22,7 @@ def create_role():
 
     role_name = payload.get("role_name")
     permissions = payload.get("permissions", {})
+    category = payload.get("category")
 
     if not role_name or not isinstance(role_name, str):
         return {"error": "'role_name' is required"}, 400
@@ -35,7 +36,7 @@ def create_role():
     if not isinstance(permissions, dict):
         return {"error": "'permissions' must be an object"}, 400
 
-    role = RolePermission(role_name=role_name, permissions=permissions)
+    role = RolePermission(role_name=role_name, permissions=permissions, category=category)
 
     db.session.add(role)
     try:
@@ -47,6 +48,7 @@ def create_role():
     return {
         "id": str(role.id),
         "role_name": role.role_name,
+        "category": role.category,
         "permissions": role.permissions,
         "created_at": role.created_at.isoformat() if role.created_at else None,
     }, 201
