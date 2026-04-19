@@ -19,4 +19,3 @@ class Term(BaseModel):
     is_active: Mapped[bool] = mapped_column(nullable=False, default=False, index=True)
 
     assessments = relationship("Assessment", back_populates="term")
-    enrollments = relationship("Enrollment", back_populates="term")

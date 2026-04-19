@@ -12,7 +12,7 @@ from .base import BaseModel
 class Notification(BaseModel):
     __tablename__ = "notifications"
 
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     message: Mapped[str] = mapped_column(String(1000), nullable=False)
     is_read: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

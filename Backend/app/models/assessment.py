@@ -11,12 +11,13 @@ from .base import BaseModel
 
 class Assessment(BaseModel):
     __tablename__ = "assessments"
+    recorded_at: Mapped[str] = mapped_column(String(100), nullable=True)  # Timestamp or datetime string
 
     course_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("courses.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("courses.id"), nullable=True, index=True
     )
     term_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("terms.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("terms.id"), nullable=True, index=True
     )
     module_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("modules.id"), nullable=True, index=True

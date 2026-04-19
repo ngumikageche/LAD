@@ -13,24 +13,19 @@ class Student(BaseModel):
     __tablename__ = "students"
 
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id"), unique=True, nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("users.id"), unique=True, nullable=True, index=True
     )
     registration_number: Mapped[str] = mapped_column(String(64), unique=True, nullable=False, index=True)
     course_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("courses.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("courses.id"), nullable=True, index=True
     )
     enrollment_year: Mapped[int] = mapped_column(Integer, nullable=False)
 
     user = relationship("User", back_populates="student")
     course = relationship("Course", back_populates="students")
     enrollments = relationship("Enrollment", back_populates="student")
-    alerts = relationship("Alert", back_populates="student")
     competency_records = relationship("CompetencyRecord", back_populates="student")
     portfolio_evidence = relationship("PortfolioEvidence", back_populates="student")
     attendance = relationship("Attendance", back_populates="student")
-    assessments = relationship("Assessment", back_populates="student")
     student_subjects = relationship("StudentSubject", back_populates="student")
     alerts = relationship("Alert", back_populates="student")
-    attendance = relationship("Attendance", back_populates="student")
-    scores = relationship("Score", back_populates="student")
-    notifications = relationship("Notification", back_populates="student")

@@ -16,3 +16,4 @@ class Subject(BaseModel):
     module = relationship("Module", back_populates="subjects")
     trainer_subjects = relationship("TrainerSubject", back_populates="subject")
     student_subjects = relationship("StudentSubject", back_populates="subject")
+    course_subjects = relationship("CourseSubject", back_populates="subject")

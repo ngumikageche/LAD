@@ -52,6 +52,7 @@ const SubjectsPage = () => {
   const [marksModalOpen, setMarksModalOpen] = useState(false);
   const [marks, setMarks] = useState<Mark[]>([]);
   const [marksSubjectName, setMarksSubjectName] = useState('');
+  const [autoOpened, setAutoOpened] = useState(false);
 
   // Fetch marks for a subject
   const handleViewMarks = async (subject: Subject) => {
@@ -80,6 +81,19 @@ const SubjectsPage = () => {
         // Fetch trainer-assigned subjects only
         const t = await apiRequest<any>('/trainer-subjects/me', { token });
         const subs = t.subjects || [];
+        subjectData = subs.map((s: any) => ({ id: s.id, name: s.name, module_id: s.module?.id || '', description: s.description || '' }));
+        // derive module list from subjects
+        const moduleMap: Record<string, Module> = {};
+        for (const s of subs) {
+          if (s.module && s.module.id) {
+            moduleMap[s.module.id] = { id: s.module.id, name: s.module.name, course_id: s.module.course_id || '' } as Module;
+          }
+        }
+        moduleData = Object.values(moduleMap);
+      } else if (isStudent) {
+        // For students: fetch only enrolled subjects (student self-view)
+        const resp = await apiRequest<any>('/students/me/subjects', { token });
+        const subs = resp?.subjects || [];
         subjectData = subs.map((s: any) => ({ id: s.id, name: s.name, module_id: s.module?.id || '', description: s.description || '' }));
         // derive module list from subjects
         const moduleMap: Record<string, Module> = {};
@@ -132,6 +146,16 @@ const SubjectsPage = () => {
       loadData();
     }
   }, [token]);
+
+  // Auto-open first enrolled subject for students when subjects load
+  useEffect(() => {
+    const isStudent = user?.role_name?.toLowerCase() === 'student';
+    if (isStudent && !autoOpened && subjects.length > 0) {
+      setAutoOpened(true);
+      // open marks modal for first subject
+      handleViewMarks(subjects[0]);
+    }
+  }, [subjects, user, autoOpened]);
 
   const filtered = useMemo(() => {
     const search = searchTerm.toLowerCase();

@@ -240,11 +240,14 @@ def get_subject_marks(subject_id: str):
     if not subject:
         return {"error": "Subject not found"}, 404
 
-    # Get assessments for the subject's parent module
-    # If this request is from a student (student_view), only return that student's assessments
+    # Get scores for the subject's parent module by joining Score -> Assessment -> Enrollment
+    from ..models.score import Score
+    from ..models.enrollment import Enrollment
+    from ..models.student import Student
+    from ..models.student_subject import StudentSubject
+
+    query = db.session.query(Score).join(Assessment, Score.assessment_id == Assessment.id).join(Enrollment, Score.enrollment_id == Enrollment.id).filter(Assessment.module_id == subject.module_id)
     if student_view:
-        from ..models.student import Student
-        from ..models.student_subject import StudentSubject
         # find the student linked to this user
         student = db.session.query(Student).filter_by(user_id=user.id).first()
         if not student:
@@ -253,22 +256,23 @@ def get_subject_marks(subject_id: str):
         enrolled = db.session.query(StudentSubject).filter_by(student_id=student.id, subject_id=subject.id).first()
         if not enrolled:
             return {"error": "Forbidden"}, 403
-        assessments = db.session.query(Assessment).filter(Assessment.module_id == subject.module_id, Assessment.student_id == student.id).order_by(Assessment.recorded_at.desc()).all()
-    else:
-        assessments = db.session.query(Assessment).filter(Assessment.module_id == subject.module_id).order_by(Assessment.recorded_at.desc()).all()
+        query = query.filter(Enrollment.student_id == student.id)
+
+    scores = query.order_by(Assessment.recorded_at.desc()).all()
+
     marks = []
-    for a in assessments:
+    for s in scores:
         student_name = None
-        if a.student and a.student.user:
-            student_name = a.student.user.name
+        if s.enrollment and s.enrollment.student and s.enrollment.student.user:
+            student_name = s.enrollment.student.user.name
         marks.append({
-            "id": str(a.id),
+            "id": str(s.id),
             "subject_id": str(subject_uuid),
-            "student_id": str(a.student_id),
+            "student_id": str(s.enrollment.student_id) if s.enrollment else None,
             "student_name": student_name,
-            "value": a.score,
-            "recorded_at": a.recorded_at.isoformat() if getattr(a, 'recorded_at', None) else None,
-            "comment": (a.competency.name if getattr(a, 'competency', None) else None)
+            "value": s.marks_obtained,
+            "recorded_at": (s.assessment.recorded_at.isoformat() if getattr(s.assessment, 'recorded_at', None) else (s.created_at.isoformat() if s.created_at else None)),
+            "comment": (s.assessment.competency.name if getattr(s.assessment, 'competency', None) else None)
         })
 
     log_view(user, "subjects.marks", entity_id=subject_id, metadata={"count": len(marks)})

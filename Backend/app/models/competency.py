@@ -6,7 +6,7 @@ import uuid
 
 class Competency(BaseModel):
     __tablename__ = 'competencies'
-    module_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("modules.id"), nullable=False, index=True)
+    module_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("modules.id"), nullable=True, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str] = mapped_column(String(1000), nullable=True)
     expected_outcome: Mapped[str] = mapped_column(String(1000), nullable=True)

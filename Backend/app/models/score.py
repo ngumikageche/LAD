@@ -13,10 +13,10 @@ class Score(BaseModel):
     __tablename__ = "scores"
 
     enrollment_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("enrollments.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("enrollments.id"), nullable=True, index=True
     )
     assessment_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("assessments.id"), nullable=False, index=True
+        UUID(as_uuid=True), ForeignKey("assessments.id"), nullable=True, index=True
     )
     marks_obtained: Mapped[float] = mapped_column(Float, nullable=False)
     grade: Mapped[str | None] = mapped_column(

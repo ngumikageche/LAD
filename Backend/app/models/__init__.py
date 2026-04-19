@@ -14,8 +14,17 @@ from .score import Score
 from .announcement import Announcement, AnnouncementRead
 from .trainer_course import TrainerCourse
 from .subject import Subject
+
 from .trainer_subject import TrainerSubject
 from .student_subject import StudentSubject
+
+from .dashboard_metric import DashboardMetric
+from .alert import Alert
+from .attendance import Attendance
+
+from .portfolio_evidence import PortfolioEvidence
+from .competency_record import CompetencyRecord
+from .course_subject import CourseSubject
 
 __all__ = [
 	"Course",
@@ -37,4 +46,9 @@ __all__ = [
 	"Subject",
 	"TrainerSubject",
 	"StudentSubject",
+	"CourseSubject",
+	"CompetencyRecord",
+	"PortfolioEvidence",
+	"DashboardMetric",
+	"Attendance",
 ]
