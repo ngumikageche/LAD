@@ -31,7 +31,7 @@ def create_app() -> Flask:
         modules_bp,
         trainers_bp,
         users_bp,
-        extra_bp,
+        # extra_bp,
         subjects_bp,
         trainer_subjects_bp,
         student_subjects_bp,
@@ -52,7 +52,7 @@ def create_app() -> Flask:
     app.register_blueprint(modules_bp)
     app.register_blueprint(trainers_bp)
     app.register_blueprint(users_bp)
-    app.register_blueprint(extra_bp)
+    # app.register_blueprint(extra_bp)
     app.register_blueprint(subjects_bp)
     app.register_blueprint(trainer_subjects_bp)
     app.register_blueprint(student_subjects_bp)

@@ -24,3 +24,20 @@ class Course(BaseModel):
     assessments = relationship("Assessment", back_populates="course")
     announcements = relationship("Announcement", back_populates="course")
     trainers = relationship("TrainerCourse", back_populates="course")
+    subjects = relationship("CourseSubject", back_populates="course")
+    notifications = relationship("Notification", back_populates="course")
+    analytics = relationship("CourseAnalytics", back_populates="course")
+    competency_records = relationship("CompetencyRecord", back_populates="course")
+    portfolio_evidence = relationship("PortfolioEvidence", back_populates="course")
+    attendance = relationship("Attendance", back_populates="course")
+    scores = relationship("Score", back_populates="course")
+    alerts = relationship("Alert", back_populates="course")
+    student_subjects = relationship("StudentSubject", back_populates="course")
+    trainer_subjects = relationship("TrainerSubject", back_populates="course")
+    course_analytics = relationship("CourseAnalytics", back_populates="course")
+    course_announcements = relationship("Announcement", back_populates="course")
+    course_notifications = relationship("Notification", back_populates="course")
+    modules = relationship("Module", back_populates="course")
+
+
+

@@ -1,24 +1,40 @@
-from sqlalchemy import String, Float, ForeignKey
+from __future__ import annotations
+
+import uuid
+
+from sqlalchemy import ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+
 from .base import BaseModel
-import uuid
-from datetime import datetime
+
 
 class Assessment(BaseModel):
-    __tablename__ = 'assessments'
-    student_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("students.id"), nullable=False, index=True)
-    trainer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("trainers.id"), nullable=False, index=True)
-    module_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("modules.id"), nullable=False, index=True)
-    competency_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("competencies.id"), nullable=False, index=True)
-    score: Mapped[float] = mapped_column(Float, nullable=False)
-    status: Mapped[str] = mapped_column(String(32), nullable=False)
-    recorded_at: Mapped[datetime] = mapped_column(nullable=False, default=datetime.utcnow)
-    performance_level: Mapped[int | None] = mapped_column(nullable=True)
-    source: Mapped[str] = mapped_column(String(32), nullable=False)
-    term: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
-    
-    student = relationship("Student", back_populates="assessments")
-    trainer = relationship("Trainer", back_populates="assessments")
+    __tablename__ = "assessments"
+
+    course_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("courses.id"), nullable=False, index=True
+    )
+    term_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("terms.id"), nullable=False, index=True
+    )
+    module_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("modules.id"), nullable=True, index=True
+    )
+    competency_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("competencies.id"), nullable=True, index=True
+    )
+    name: Mapped[str] = mapped_column(String(255), nullable=False)  # e.g., "Midterm Exam", "Assignment 1"
+    description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    assessment_type: Mapped[str] = mapped_column(
+        String(50), nullable=False, default="exam"
+    )  # exam, assignment, quiz, project
+    total_marks: Mapped[int] = mapped_column(Integer, nullable=False)
+    pass_marks: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    weight: Mapped[int | None] = mapped_column(Integer, nullable=True)  # Percentage contribution to final grade
+
+    course = relationship("Course", back_populates="assessments")
+    term = relationship("Term", back_populates="assessments")
     module = relationship("Module", back_populates="assessments")
     competency = relationship("Competency", back_populates="assessments")
+    scores = relationship("Score", back_populates="assessment")
