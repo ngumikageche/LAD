@@ -18,6 +18,7 @@ from .analytics import bp as analytics_bp
 from .announcements import bp as announcements_bp
 from .admin_analytics import bp as admin_analytics_bp
 from .admin_management import bp as admin_management_bp
+from .admin_dashboard import bp as admin_dashboard_bp
 
 __all__ = [
 	"auth_bp",
@@ -39,4 +40,5 @@ __all__ = [
 	"announcements_bp",
 	"admin_analytics_bp",
 	"admin_management_bp",
+	"admin_dashboard_bp",
 ]

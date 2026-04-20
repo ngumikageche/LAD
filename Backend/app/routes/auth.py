@@ -9,6 +9,12 @@ from ..models.user import User
 
 
 def _user_payload(user: User) -> dict:
+    user_type = "admin"
+    if user.student:
+        user_type = "student"
+    elif user.trainer:
+        user_type = "trainer"
+    
     return {
         "id": str(user.id),
         "name": user.name,
@@ -18,6 +24,7 @@ def _user_payload(user: User) -> dict:
         "role_name": user.role.role_name if user.role else None,
         "permissions": user.role.permissions if user.role else {},
         "institution_id": str(user.institution_id) if user.institution_id else None,
+        "user_type": user_type,
     }
 
 

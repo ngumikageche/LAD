@@ -1,4 +1,4 @@
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import DashboardLayout from './components/layout/DashboardLayout';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
@@ -24,8 +24,20 @@ import AdminDashboard from './pages/AdminDashboard';
 import AdminSystemAnalyticsPage from './pages/AdminSystemAnalyticsPage';
 import AdminScoreManagementPage from './pages/AdminScoreManagementPage';
 import AdminNotificationsPage from './pages/AdminNotificationsPage';
-import { AuthProvider } from './auth/AuthContext';
-import ProtectedRoute from './auth/ProtectedRoute';
+import { AuthProvider, useAuth } from './auth/AuthContext';
+import ProtectedRoute, { UserTypeRoute } from './auth/ProtectedRoute';
+
+const DashboardRedirect = () => {
+  const { user } = useAuth();
+  if (!user) return null;
+  if (user.user_type === 'student') {
+    return <Navigate to="/student/dashboard" replace />;
+  } else if (user.user_type === 'trainer') {
+    return <Navigate to="/trainer-hub" replace />;
+  } else {
+    return <Navigate to="/admin/dashboard" replace />;
+  }
+};
 
 function App() {
   return (
@@ -36,28 +48,34 @@ function App() {
           <Route element={<ProtectedRoute />}>
             <Route path="/register" element={<RegisterPage />} />
             <Route element={<DashboardLayout />}>
-              <Route path="/" element={<DashboardPage />} />
-              <Route path="/student/dashboard" element={<StudentDashboardPage />} />
-              <Route path="/student/marks" element={<StudentMarksPage />} />
-              <Route path="/users" element={<UsersPage />} />
-              <Route path="/roles" element={<RolesPage />} />
-              <Route path="/institutions" element={<InstitutionsPage />} />
-              <Route path="/departments" element={<DepartmentsPage />} />
-              <Route path="/courses" element={<CoursesPage />} />
-              <Route path="/students" element={<StudentsPage />} />
-              <Route path="/trainers" element={<TrainersPage />} />
-              <Route path="/trainer-hub" element={<TrainerDashboardPage />} />
-              <Route path="/trainer/reports" element={<TrainerReportsPage />} />
-              <Route path="/trainer/feedback" element={<ProvideFeedbackPage />} />
-              <Route path="/trainer/student-profile" element={<TrainerStudentProfilePage />} />
-              <Route path="/admin/dashboard" element={<AdminDashboard />} />
-              <Route path="/admin/analytics" element={<AdminSystemAnalyticsPage />} />
-              <Route path="/admin/scores" element={<AdminScoreManagementPage />} />
-              <Route path="/admin/notifications" element={<AdminNotificationsPage />} />
-              <Route path="/modules" element={<ModulesPage />} />
-              <Route path="/subjects" element={<SubjectsPage />} />
-              <Route path="/progress" element={<ProgressPage />} />
-              <Route path="/reports" element={<ReportsPage />} />
+              <Route path="/" element={<DashboardRedirect />} />
+              <Route element={<UserTypeRoute allowedTypes={['student']} />}>
+                <Route path="/student/dashboard" element={<StudentDashboardPage />} />
+                <Route path="/student/marks" element={<StudentMarksPage />} />
+              </Route>
+              <Route element={<UserTypeRoute allowedTypes={['trainer']} />}>
+                <Route path="/trainer-hub" element={<TrainerDashboardPage />} />
+                <Route path="/trainer/reports" element={<TrainerReportsPage />} />
+                <Route path="/trainer/feedback" element={<ProvideFeedbackPage />} />
+                <Route path="/trainer/student-profile" element={<TrainerStudentProfilePage />} />
+              </Route>
+              <Route element={<UserTypeRoute allowedTypes={['admin']} />}>
+                <Route path="/admin/dashboard" element={<AdminDashboard />} />
+                <Route path="/admin/analytics" element={<AdminSystemAnalyticsPage />} />
+                <Route path="/admin/scores" element={<AdminScoreManagementPage />} />
+                <Route path="/admin/notifications" element={<AdminNotificationsPage />} />
+                <Route path="/users" element={<UsersPage />} />
+                <Route path="/roles" element={<RolesPage />} />
+                <Route path="/institutions" element={<InstitutionsPage />} />
+                <Route path="/departments" element={<DepartmentsPage />} />
+                <Route path="/courses" element={<CoursesPage />} />
+                <Route path="/students" element={<StudentsPage />} />
+                <Route path="/trainers" element={<TrainersPage />} />
+                <Route path="/modules" element={<ModulesPage />} />
+                <Route path="/subjects" element={<SubjectsPage />} />
+                <Route path="/progress" element={<ProgressPage />} />
+                <Route path="/reports" element={<ReportsPage />} />
+              </Route>
             </Route>
           </Route>
         </Routes>

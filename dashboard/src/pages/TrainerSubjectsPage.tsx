@@ -85,7 +85,7 @@ const TrainerSubjectsPage = () => {
         >
           <option value="">Select Trainer</option>
           {filteredTrainers.map(tr => (
-            <option key={tr.id} value={tr.id}>{tr.user_id}</option>
+            <option key={tr.id} value={tr.id}>{tr.user?.name || tr.user_id}</option>
           ))}
         </select>
       </div>

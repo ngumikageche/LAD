@@ -4,26 +4,27 @@ import { useMemo, useState } from 'react';
 import { useAuth } from '../../auth/AuthContext';
 
 const navItems = [
-  { name: 'Dashboard', icon: Home, path: '/', color: 'text-indigo-600' },
-  { name: 'Users', icon: Shield, path: '/users', color: 'text-rose-600', permission: 'users.read' },
-  { name: 'Roles', icon: KeyRound, path: '/roles', color: 'text-orange-600', permission: 'roles.read' },
-  { name: 'Institutions', icon: Building2, path: '/institutions', color: 'text-emerald-600', permission: 'institutions.read' },
-  { name: 'Departments', icon: School, path: '/departments', color: 'text-cyan-600', permission: 'departments.read' },
-  { name: 'Courses', icon: Book, path: '/courses', color: 'text-amber-600', permission: 'courses.read' },
-  { name: 'Students', icon: Users, path: '/students', color: 'text-blue-600', permission: 'students.read' },
-  { name: 'Trainers', icon: UserCog, path: '/trainers', color: 'text-sky-600', permission: 'trainers.read' },
-  { name: 'Trainer Hub', icon: Compass, path: '/trainer-hub', color: 'text-emerald-600', permission: 'trainers.read' },
-  { name: 'Trainer Reports', icon: FileText, path: '/trainer/reports', color: 'text-indigo-600', permission: 'trainers.read' },
-  { name: 'Provide Feedback', icon: MessageSquare, path: '/trainer/feedback', color: 'text-cyan-600', permission: 'trainers.read' },
-  { name: 'Student Profile', icon: TrendingUp, path: '/trainer/student-profile', color: 'text-purple-600', permission: 'trainers.read' },
-  { name: 'Admin Dashboard', icon: BarChart3, path: '/admin/dashboard', color: 'text-red-600', permission: 'admin.read' },
-  { name: 'Admin Analytics', icon: BarChart, path: '/admin/analytics', color: 'text-red-600', permission: 'admin.read' },
-  { name: 'Score Management', icon: FileText, path: '/admin/scores', color: 'text-red-600', permission: 'admin.read' },
-  { name: 'Admin Notifications', icon: Bell, path: '/admin/notifications', color: 'text-red-600', permission: 'admin.read' },
-  { name: 'Modules', icon: Book, path: '/modules', color: 'text-indigo-600' },
-  { name: 'Subjects', icon: Book, path: '/subjects', color: 'text-amber-600' },
-  { name: 'Progress', icon: BarChart, path: '/progress', color: 'text-emerald-600' },
-  { name: 'Reports', icon: FileText, path: '/reports', color: 'text-purple-600' },
+  { name: 'Dashboard', icon: Home, path: '/', color: 'text-indigo-600', userTypes: ['student', 'trainer'] },
+  { name: 'Dashboard', icon: Home, path: '/admin/dashboard', color: 'text-indigo-600', userTypes: ['admin'] },
+  { name: 'My Marks', icon: FileText, path: '/student/marks', color: 'text-blue-600', userTypes: ['student'] },
+  { name: 'Users', icon: Shield, path: '/users', color: 'text-rose-600', userTypes: ['admin'] },
+  { name: 'Roles', icon: KeyRound, path: '/roles', color: 'text-orange-600', userTypes: ['admin'] },
+  { name: 'Institutions', icon: Building2, path: '/institutions', color: 'text-emerald-600', userTypes: ['admin'] },
+  { name: 'Departments', icon: School, path: '/departments', color: 'text-cyan-600', userTypes: ['admin'] },
+  { name: 'Courses', icon: Book, path: '/courses', color: 'text-amber-600', userTypes: ['admin'] },
+  { name: 'Students', icon: Users, path: '/students', color: 'text-blue-600', userTypes: ['admin'] },
+  { name: 'Trainers', icon: UserCog, path: '/trainers', color: 'text-sky-600', userTypes: ['admin'] },
+  { name: 'Trainer Hub', icon: Compass, path: '/trainer-hub', color: 'text-emerald-600', userTypes: ['trainer'] },
+  { name: 'Trainer Reports', icon: FileText, path: '/trainer/reports', color: 'text-indigo-600', userTypes: ['trainer'] },
+  { name: 'Provide Feedback', icon: MessageSquare, path: '/trainer/feedback', color: 'text-cyan-600', userTypes: ['trainer'] },
+  { name: 'Student Profile', icon: TrendingUp, path: '/trainer/student-profile', color: 'text-purple-600', userTypes: ['trainer'] },
+  { name: 'Analytics', icon: BarChart, path: '/admin/analytics', color: 'text-red-600', userTypes: ['admin'] },
+  { name: 'Score Management', icon: FileText, path: '/admin/scores', color: 'text-red-600', userTypes: ['admin'] },
+  { name: 'Notifications', icon: Bell, path: '/admin/notifications', color: 'text-red-600', userTypes: ['admin'] },
+  { name: 'Modules', icon: Book, path: '/modules', color: 'text-indigo-600', userTypes: ['admin'] },
+  { name: 'Subjects', icon: Book, path: '/subjects', color: 'text-amber-600', userTypes: ['admin'] },
+  { name: 'Progress', icon: BarChart, path: '/progress', color: 'text-emerald-600', userTypes: ['admin'] },
+  { name: 'Reports', icon: FileText, path: '/reports', color: 'text-purple-600', userTypes: ['admin'] },
 ];
 
 const Sidebar = () => {
@@ -31,15 +32,9 @@ const Sidebar = () => {
   const location = useLocation();
   const { user } = useAuth();
   const items = useMemo(() => {
-    const permissions = user?.permissions ?? {};
+    const userType = user?.user_type;
     return navItems.filter((item) => {
-      if (!item.permission) {
-        return true;
-      }
-      if (permissions['*']) {
-        return true;
-      }
-      return permissions[item.permission];
+      return item.userTypes.includes(userType || '');
     });
   }, [user]);
 

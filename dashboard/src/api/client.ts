@@ -9,11 +9,18 @@ export type ApiError = {
   error: string;
 };
 
+const getStoredToken = (): string | null => {
+  return sessionStorage.getItem('lad.session.token');
+};
+
 export const apiRequest = async <T>(path: string, options: RequestOptions = {}): Promise<T> => {
   const { token, body, headers, ...rest } = options;
+  // Use provided token, or fallback to stored token from sessionStorage
+  const authToken = token ?? getStoredToken();
+  
   const requestHeaders: HeadersInit = {
     ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
     ...headers,
   };
 

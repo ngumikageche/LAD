@@ -40,6 +40,7 @@ def create_app() -> Flask:
         announcements_bp,
         admin_analytics_bp,
         admin_management_bp,
+        admin_dashboard_bp,
     )
 
     app.register_blueprint(auth_bp)
@@ -61,6 +62,7 @@ def create_app() -> Flask:
     app.register_blueprint(announcements_bp)
     app.register_blueprint(admin_analytics_bp)
     app.register_blueprint(admin_management_bp)
+    app.register_blueprint(admin_dashboard_bp)
 
     @app.get("/")
     def health_check():

@@ -4,17 +4,23 @@ import { useAuth } from '../auth/AuthContext';
 
 const LoginPage = () => {
   const navigate = useNavigate();
-  const { login, token } = useAuth();
+  const { login, token, user } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
-    if (token) {
-      navigate('/', { replace: true });
+    if (user) {
+      if (user.user_type === 'student') {
+        navigate('/student/dashboard', { replace: true });
+      } else if (user.user_type === 'trainer') {
+        navigate('/trainer-hub', { replace: true });
+      } else {
+        navigate('/admin/dashboard', { replace: true });
+      }
     }
-  }, [navigate, token]);
+  }, [navigate, user]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();

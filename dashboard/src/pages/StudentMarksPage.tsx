@@ -58,7 +58,7 @@ const StudentMarksPage = () => {
     const loadSubjects = async () => {
       if (!user?.id) return;
       try {
-        const res = await apiRequest<{ subjects: Subject[] }>(`/students/${user.id}/subjects`, { token });
+        const res = await apiRequest<{ subjects: Subject[] }>(`/students/me/subjects`, { token });
         setSubjects(res.subjects);
         if (res.subjects.length > 0) {
           setSelectedSubjectId(res.subjects[0].id);
@@ -77,7 +77,7 @@ const StudentMarksPage = () => {
       setLoading(true);
       setError('');
       const res = await apiRequest<SubjectScore>(
-        `/scores/student/${user.id}/subjects/${selectedSubjectId}/scores`,
+        `/scores/me/subjects/${selectedSubjectId}/scores`,
         { token }
       );
       setSubjectScores(res);
@@ -96,7 +96,7 @@ const StudentMarksPage = () => {
       setLoading(true);
       setError('');
       const res = await apiRequest<TermScores>(
-        `/scores/student/${user.id}/term/${selectedTerm}`,
+        `/scores/me/term/${selectedTerm}`,
         { token }
       );
       setTermScores(res);

@@ -32,6 +32,15 @@ export const adminAnalyticsAPI = {
     }
   },
 
+  async getDepartmentsAnalytics() {
+    try {
+      const response = await apiClient.get('/admin/analytics/departments');
+      return response.data;
+    } catch (error) {
+      throw error;
+    }
+  },
+
   async getCourseAnalytics(courseId: string) {
     try {
       const response = await apiClient.get(`/admin/analytics/course/${courseId}`);

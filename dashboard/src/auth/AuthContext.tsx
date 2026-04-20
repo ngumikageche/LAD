@@ -10,6 +10,7 @@ type User = {
   role_name: string | null;
   permissions: Record<string, boolean>;
   institution_id: string | null;
+  user_type: string;
 };
 
 type AuthContextValue = {

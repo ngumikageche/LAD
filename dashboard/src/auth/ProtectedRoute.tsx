@@ -19,4 +19,14 @@ const ProtectedRoute = () => {
   return <Outlet />;
 };
 
+export const UserTypeRoute = ({ allowedTypes }: { allowedTypes: string[] }) => {
+  const { user } = useAuth();
+
+  if (!user || !allowedTypes.includes(user.user_type)) {
+    return <Navigate to="/" replace />;
+  }
+
+  return <Outlet />;
+};
+
 export default ProtectedRoute;

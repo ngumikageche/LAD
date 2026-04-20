@@ -60,7 +60,7 @@ const StudentDashboardPage = () => {
           student_id: string;
           subjects: Subject[];
           total: number;
-        }>(`/students/${user.id}/subjects`, { token });
+        }>(`/students/me/subjects`, { token });
         
         setEnrolledSubjects(subjectsRes.subjects);
 
@@ -70,7 +70,7 @@ const StudentDashboardPage = () => {
           scores: Assessment[];
           total: number;
           average: number;
-        }>(`/scores/student/${user.id}/scores`, { token });
+        }>(`/scores/me/scores`, { token });
         
         setRecentScores(scoresRes.scores.slice(0, 5)); // Show last 5
         setAverageScore(scoresRes.average);

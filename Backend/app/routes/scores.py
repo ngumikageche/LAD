@@ -13,7 +13,8 @@ from ..models.student import Student
 from ..models.trainer import Trainer
 from ..models.course import Course
 from ..models.notification import Notification
-from .permissions import log_view, require_permission
+from ..models.subject import Subject
+from .permissions import log_view, require_permission, get_current_user
 
 bp = Blueprint('scores', __name__, url_prefix='/scores')
 
@@ -293,6 +294,172 @@ def add_feedback(score_id: str):
 
     log_view(user, "scores", entity_id=score_id, metadata={"action": "added_feedback"})
     return _score_payload(score), 200
+
+
+# ==================== CURRENT USER SCORE ENDPOINTS (students viewing own scores) ====================
+
+@bp.get("/me/scores")
+def get_my_scores():
+    """Get all scores for the current authenticated student"""
+    user, error, status = get_current_user()
+    if error:
+        return error, status
+    
+    # Find student record for this user
+    student = db.session.query(Student).filter(Student.user_id == user.id).first()
+    if not student:
+        return {"error": "Student record not found"}, 404
+    
+    # Get all scores for this student's enrollments
+    scores = db.session.query(Score).join(
+        Enrollment, Enrollment.id == Score.enrollment_id
+    ).filter(
+        Enrollment.student_id == student.id
+    ).order_by(Score.created_at.desc()).all()
+    
+    log_view(user, "scores.me", metadata={"count": len(scores)})
+    return {
+        "student_id": str(student.id),
+        "scores": [_score_payload(score) for score in scores],
+        "total": len(scores),
+        "average": round(sum(s.marks_obtained for s in scores if s.marks_obtained) / len([s for s in scores if s.marks_obtained]), 2) if any(s.marks_obtained for s in scores) else 0
+    }, 200
+
+
+@bp.get("/me/subjects/<subject_id>/scores")
+def get_my_subject_scores(subject_id: str):
+    """Get scores for the current student in a specific subject"""
+    user, error, status = get_current_user()
+    if error:
+        return error, status
+    
+    try:
+        subject_uuid = _parse_uuid(subject_id, "subject_id")
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+    
+    # Find student record
+    student = db.session.query(Student).filter(Student.user_id == user.id).first()
+    if not student:
+        return {"error": "Student record not found"}, 404
+    
+    # Verify student is enrolled in this subject
+    from ..models.student_subject import StudentSubject
+    enrollment = db.session.query(StudentSubject).filter(
+        and_(
+            StudentSubject.student_id == student.id,
+            StudentSubject.subject_id == subject_uuid
+        )
+    ).first()
+    if not enrollment:
+        return {"error": "You are not enrolled in this subject"}, 403
+    
+    # Get subject details
+    subject = db.session.get(Subject, subject_uuid)
+    if not subject:
+        return {"error": "Subject not found"}, 404
+    
+    # Get scores related to this subject - only for this student's enrollments
+    # Assessments are in the same module as the subject
+    scores = db.session.query(Score).join(
+        Enrollment, Enrollment.id == Score.enrollment_id
+    ).join(
+        Assessment, Assessment.id == Score.assessment_id
+    ).filter(
+        and_(
+            Enrollment.student_id == student.id,
+            Assessment.module_id == subject.module_id
+        )
+    ).order_by(Score.created_at.desc()).all()
+    
+    # Group scores by term (from enrollment.term)
+    scores_by_term = {}
+    total_marks = 0
+    count = 0
+    
+    for score in scores:
+        term_key = score.enrollment.term or "unspecified"
+        if term_key not in scores_by_term:
+            scores_by_term[term_key] = []
+        
+        score_payload = {
+            "id": str(score.id),
+            "score": score.marks_obtained,
+            "recorded_at": score.created_at.isoformat() if score.created_at else None,
+            "competency": {
+                "id": str(score.assessment.id),
+                "name": score.assessment.name
+            }
+        }
+        scores_by_term[term_key].append(score_payload)
+        total_marks += score.marks_obtained
+        count += 1
+    
+    average = round(total_marks / count, 2) if count > 0 else 0
+    
+    log_view(user, "scores.me.subject", entity_id=subject_id, metadata={"count": len(scores)})
+    return {
+        "student_id": str(student.id),
+        "subject_id": str(subject_uuid),
+        "subject_name": subject.name,
+        "scores_by_term": scores_by_term,
+        "total_scores": len(scores),
+        "average": average
+    }, 200
+
+
+@bp.get("/me/term/<term>")
+def get_my_scores_by_term(term: str):
+    """Get all scores for the current student in a specific term"""
+    user, error, status = get_current_user()
+    if error:
+        return error, status
+    
+    # Find student record
+    student = db.session.query(Student).filter(Student.user_id == user.id).first()
+    if not student:
+        return {"error": "Student record not found"}, 404
+    
+    # Get scores from enrollments in this term
+    scores = db.session.query(Score).join(
+        Enrollment, Enrollment.id == Score.enrollment_id
+    ).filter(
+        and_(
+            Enrollment.student_id == student.id,
+            Enrollment.term == term
+        )
+    ).order_by(Score.created_at.desc()).all()
+    
+    # Format scores with module information
+    formatted_scores = []
+    total_marks = 0
+    for score in scores:
+        score_payload = {
+            "id": str(score.id),
+            "score": score.marks_obtained,
+            "recorded_at": score.created_at.isoformat() if score.created_at else None,
+            "competency": {
+                "id": str(score.assessment.id),
+                "name": score.assessment.name
+            },
+            "module": {
+                "id": str(score.assessment.module_id) if score.assessment.module_id else "",
+                "name": score.assessment.module.name if score.assessment.module else "Unknown"
+            }
+        }
+        formatted_scores.append(score_payload)
+        total_marks += score.marks_obtained
+    
+    average = round(total_marks / len(scores), 2) if scores else 0
+    
+    log_view(user, "scores.me.term", entity_id=term, metadata={"count": len(scores)})
+    return {
+        "student_id": str(student.id),
+        "term": term,
+        "scores": formatted_scores,
+        "total": len(scores),
+        "average": average
+    }, 200
 
 
 # ==================== STUDENT-SPECIFIC SCORE ENDPOINTS ====================

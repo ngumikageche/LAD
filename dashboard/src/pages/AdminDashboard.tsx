@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Users, BookOpen, Building2, TrendingUp, AlertCircle, BarChart3, PieChart, LineChart as LineChartIcon } from 'lucide-react';
 import { LineChart, Line, BarChart, Bar, PieChart as PieChartComponent, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { adminDashboardAPI } from '../api/admin';
+import { adminDashboardAPI, adminAnalyticsAPI } from '../api/admin';
 
 interface DashboardMetric {
   label: string;
@@ -13,11 +13,14 @@ interface DashboardMetric {
 }
 
 interface DepartmentPerformance {
+  department_id: string;
   name: string;
   avg_score: number;
-  students: number;
+  students_count: number;
   pass_rate: number;
 }
+
+const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#f87171'];
 
 const performanceTrendData = [
   { month: 'Jan', avg_score: 72, pass_rate: 78 },
@@ -28,16 +31,10 @@ const performanceTrendData = [
   { month: 'Jun', avg_score: 80, pass_rate: 86 },
 ];
 
-const departmentPerformanceData = [
-  { name: 'Engineering', value: 75, fill: '#3b82f6' },
-  { name: 'Science', value: 78, fill: '#8b5cf6' },
-  { name: 'Arts', value: 72, fill: '#ec4899' },
-  { name: 'Commerce', value: 76, fill: '#f59e0b' },
-];
-
 export default function AdminDashboard() {
   const [metrics, setMetrics] = useState<DashboardMetric[]>([]);
   const [departments, setDepartments] = useState<DepartmentPerformance[]>([]);
+  const [departmentChartData, setDepartmentChartData] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -47,13 +44,17 @@ export default function AdminDashboard() {
         setLoading(true);
         setError(null);
 
-        // Mock data for now - replace with actual API calls
-        const dashboardData = await adminDashboardAPI.getDashboardStats();
-        
+        // Fetch real data from API
+        const [dashboardData, departmentsData] = await Promise.all([
+          adminDashboardAPI.getDashboardStats(),
+          adminAnalyticsAPI.getDepartmentsAnalytics(),
+        ]);
+
+        // Build metrics from real data
         setMetrics([
           {
             label: 'Total Students',
-            value: dashboardData.total_students || 1250,
+            value: dashboardData.system_overview?.total_students || 0,
             icon: Users,
             color: 'text-blue-600',
             bgColor: 'bg-blue-100',
@@ -61,15 +62,15 @@ export default function AdminDashboard() {
           },
           {
             label: 'Active Trainers',
-            value: dashboardData.total_trainers || 85,
+            value: dashboardData.system_overview?.total_trainers || 0,
             icon: Users,
             color: 'text-purple-600',
             bgColor: 'bg-purple-100',
             trend: 5,
           },
           {
-            label: 'Total Subjects',
-            value: dashboardData.total_subjects || 156,
+            label: 'Total Courses',
+            value: dashboardData.system_overview?.total_courses || 0,
             icon: BookOpen,
             color: 'text-amber-600',
             bgColor: 'bg-amber-100',
@@ -77,7 +78,7 @@ export default function AdminDashboard() {
           },
           {
             label: 'Departments',
-            value: dashboardData.total_departments || 12,
+            value: dashboardData.system_overview?.total_institutions || 0,
             icon: Building2,
             color: 'text-emerald-600',
             bgColor: 'bg-emerald-100',
@@ -85,14 +86,30 @@ export default function AdminDashboard() {
           },
         ]);
 
-        setDepartments([
-          { name: 'Engineering', avg_score: 75, students: 450, pass_rate: 88 },
-          { name: 'Science', avg_score: 78, students: 380, pass_rate: 91 },
-          { name: 'Arts', avg_score: 72, students: 250, pass_rate: 85 },
-          { name: 'Commerce', avg_score: 76, students: 170, pass_rate: 89 },
-        ]);
+        // Transform department data
+        const formattedDepts = (departmentsData || []).map((dept: any, idx: number) => ({
+          department_id: dept.department_id,
+          name: dept.name,
+          avg_score: Math.round(dept.avg_score || 0),
+          students_count: dept.students_count || 0,
+          pass_rate: Math.round(dept.pass_rate || 0),
+        }));
+
+        setDepartments(formattedDepts);
+
+        // Create pie chart data from departments
+        const chartData = formattedDepts.map((dept: any, idx: number) => ({
+          name: dept.name,
+          value: dept.avg_score,
+          fill: COLORS[idx % COLORS.length],
+        }));
+        setDepartmentChartData(chartData);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load dashboard');
+        // Use empty data on error
+        setMetrics([]);
+        setDepartments([]);
+        setDepartmentChartData([]);
       } finally {
         setLoading(false);
       }
@@ -176,25 +193,31 @@ export default function AdminDashboard() {
               <PieChart size={24} className="text-purple-500" />
               Department Distribution
             </h2>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChartComponent>
-                <Pie
-                  data={departmentPerformanceData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, value }) => `${name}: ${value}%`}
-                  outerRadius={100}
-                  fill="#8884d8"
-                  dataKey="value"
-                >
-                  {departmentPerformanceData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.fill} />
-                  ))}
-                </Pie>
-                <Tooltip />
-              </PieChartComponent>
-            </ResponsiveContainer>
+            {departmentChartData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChartComponent>
+                  <Pie
+                    data={departmentChartData}
+                    cx="50%"
+                    cy="50%"
+                    labelLine={false}
+                    label={({ name, value }) => `${name}: ${value}%`}
+                    outerRadius={100}
+                    fill="#8884d8"
+                    dataKey="value"
+                  >
+                    {departmentChartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.fill} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChartComponent>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-[300px] flex items-center justify-center text-gray-500">
+                No data available
+              </div>
+            )}
           </div>
         </div>
 
@@ -228,31 +251,39 @@ export default function AdminDashboard() {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {departments.map((dept, idx) => (
-                  <tr key={idx} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 font-medium text-gray-900">{dept.name}</td>
-                    <td className="px-6 py-4 text-gray-600">{dept.students}</td>
-                    <td className="px-6 py-4">
-                      <span className={`px-3 py-1 rounded-full text-sm font-bold ${
-                        dept.avg_score >= 75
-                          ? 'bg-green-100 text-green-800'
-                          : dept.avg_score >= 70
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-red-100 text-red-800'
-                      }`}>
-                        {dept.avg_score}%
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="text-green-600 font-semibold">{dept.pass_rate}%</span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-bold">
-                        Active
-                      </span>
+                {departments.length > 0 ? (
+                  departments.map((dept, idx) => (
+                    <tr key={idx} className="hover:bg-gray-50">
+                      <td className="px-6 py-4 font-medium text-gray-900">{dept.name}</td>
+                      <td className="px-6 py-4 text-gray-600">{dept.students_count.toLocaleString()}</td>
+                      <td className="px-6 py-4">
+                        <span className={`px-3 py-1 rounded-full text-sm font-bold ${
+                          dept.avg_score >= 75
+                            ? 'bg-green-100 text-green-800'
+                            : dept.avg_score >= 70
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-red-100 text-red-800'
+                        }`}>
+                          {dept.avg_score}%
+                        </span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="text-green-600 font-semibold">{dept.pass_rate}%</span>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-xs font-bold">
+                          Active
+                        </span>
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-4 text-center text-gray-500">
+                      No department data available
                     </td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>
