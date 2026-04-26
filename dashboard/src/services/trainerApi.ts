@@ -1,0 +1,156 @@
+import axios from 'axios';
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:5000';
+const STORAGE_KEY = 'lad.session.token';
+
+export type TrainerSubject = {
+  id: string;
+  name: string;
+  description: string | null;
+  module_id: string;
+  module_name: string | null;
+  course_id: string | null;
+  course_name: string | null;
+  department_id: string | null;
+  department_name: string | null;
+  students_count: number;
+  average_score: number;
+  recent_scores_count: number;
+  created_at: string | null;
+};
+
+export type TrainerScore = {
+  id: string;
+  student_id: string | null;
+  subject_id: string | null;
+  trainer_id: string | null;
+  term: string | null;
+  score: number;
+  feedback: string | null;
+  is_passed: boolean | null;
+  grade: string | null;
+  created_at: string | null;
+  student: {
+    id: string;
+    registration_number: string;
+    name: string | null;
+    email: string | null;
+  } | null;
+  subject: {
+    id: string;
+    name: string;
+    module_id: string;
+  } | null;
+};
+
+export type TrainerDashboardResponse = {
+  subjects_assigned: number;
+  subjects: TrainerSubject[];
+  total_students: number;
+  recent_scores: TrainerScore[];
+};
+
+export type TrainerStudentOption = {
+  id: string;
+  registration_number: string;
+  course_id: string | null;
+  enrollment_year: number;
+  name: string | null;
+  email: string | null;
+  subjects: string[];
+};
+
+export type AtRiskStudent = {
+  student_id: string;
+  student_name: string;
+  student_email: string;
+  average_score: number;
+  scores_count: number;
+  weak_subjects: string[];
+};
+
+export type PaginatedScores = {
+  items: TrainerScore[];
+  pagination: {
+    page: number;
+    per_page: number;
+    total: number;
+    total_pages: number;
+  };
+};
+
+const trainerClient = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+trainerClient.interceptors.request.use((config) => {
+  const token = sessionStorage.getItem(STORAGE_KEY);
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+export const trainerApi = {
+  async getDashboard() {
+    const response = await trainerClient.get<TrainerDashboardResponse>('/api/v1/trainer/dashboard');
+    return response.data;
+  },
+
+  async getSubjects() {
+    const response = await trainerClient.get<TrainerSubject[]>('/api/v1/trainer/subjects');
+    return response.data;
+  },
+
+  async getAtRiskStudents(subjectId?: string, term?: string) {
+    const response = await trainerClient.get<AtRiskStudent[]>('/api/v1/trainer/at-risk-students', {
+      params: {
+        ...(subjectId ? { subject_id: subjectId } : {}),
+        ...(term ? { term } : {}),
+      },
+    });
+    return response.data;
+  },
+
+  async getStudents(subjectId?: string) {
+    const response = await trainerClient.get<{
+      items: TrainerStudentOption[];
+      pagination: {
+        page: number;
+        per_page: number;
+        total: number;
+        total_pages: number;
+      };
+    }>('/api/v1/trainer/students', {
+      params: {
+        ...(subjectId ? { subject_id: subjectId } : {}),
+        per_page: 100,
+      },
+    });
+    return response.data;
+  },
+
+  async getScores(params?: { subject_id?: string; term?: string; student_id?: string; page?: number; per_page?: number }) {
+    const response = await trainerClient.get<PaginatedScores>('/api/v1/scores', { params });
+    return response.data;
+  },
+
+  async createScore(payload: {
+    student_id: string;
+    subject_id: string;
+    score: number;
+    term: string;
+    feedback?: string;
+  }) {
+    const response = await trainerClient.post<TrainerScore>('/api/v1/scores', payload);
+    return response.data;
+  },
+
+  async updateFeedback(scoreId: string, feedback: string) {
+    const response = await trainerClient.put<TrainerScore>(`/api/v1/scores/${scoreId}/feedback`, { feedback });
+    return response.data;
+  },
+};

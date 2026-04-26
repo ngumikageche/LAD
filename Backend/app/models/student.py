@@ -24,6 +24,7 @@ class Student(BaseModel):
     user = relationship("User", back_populates="student")
     course = relationship("Course", back_populates="students")
     enrollments = relationship("Enrollment", back_populates="student")
+    scores = relationship("Score", back_populates="student")
     competency_records = relationship("CompetencyRecord", back_populates="student")
     portfolio_evidence = relationship("PortfolioEvidence", back_populates="student")
     attendance = relationship("Attendance", back_populates="student")

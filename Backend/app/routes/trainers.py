@@ -8,10 +8,26 @@ from sqlalchemy.exc import IntegrityError
 from ..extensions import db
 from ..models.course import Course
 from ..models.department import Department
+from ..models.score import Score
 from ..models.student import Student
+from ..models.student_subject import StudentSubject
+from ..models.subject import Subject
 from ..models.trainer import Trainer
+from ..models.trainer_subject import TrainerSubject
 from ..models.user import User
-from .permissions import get_current_user, log_view, require_permission
+from ..services.trainer_portal import (
+    at_risk_students,
+    ensure_subject_access,
+    get_trainer_subject_ids,
+    pagination_meta,
+    parse_uuid,
+    score_payload,
+    student_payload,
+    subject_payload,
+    trainer_dashboard,
+    trainer_subject_report,
+)
+from .permissions import get_current_user, log_view, require_permission, trainer_required
 
 
 bp = Blueprint("trainers", __name__, url_prefix="/trainers")
@@ -75,6 +91,197 @@ def _student_payload(student: Student) -> dict:
 
 def _trainer_for_user(user_id: uuid.UUID) -> Trainer | None:
     return db.session.query(Trainer).filter(Trainer.user_id == user_id).first()
+
+
+@bp.get("/subjects")
+@trainer_required()
+def list_trainer_subjects():
+    trainer = _trainer_for_user(get_current_user()[0].id)
+    if not trainer:
+        return {"error": "Trainer profile not found"}, 404
+
+    subjects = (
+        db.session.query(Subject)
+        .join(TrainerSubject, TrainerSubject.subject_id == Subject.id)
+        .filter(TrainerSubject.trainer_id == trainer.id)
+        .order_by(Subject.name.asc())
+        .all()
+    )
+    return [
+        {
+            "id": item["id"],
+            "subject_name": item["name"],
+            "subject_code": item["module_name"] or item["name"][:8].upper(),
+            "course_id": item["course_id"],
+            "course_name": item["course_name"],
+            "department_id": item["department_id"],
+            "department_name": item["department_name"],
+            "term_id": None,
+            "term_name": "Current",
+            "students_count": item["students_count"],
+            "total_assessments": item["recent_scores_count"],
+            "avg_score": item["average_score"],
+        }
+        for item in (subject_payload(subject) for subject in subjects)
+    ], 200
+
+
+@bp.get("/subjects/<subject_id>")
+@trainer_required()
+def trainer_subject_detail(subject_id: str):
+    trainer = _trainer_for_user(get_current_user()[0].id)
+    if not trainer:
+        return {"error": "Trainer profile not found"}, 404
+    subject = ensure_subject_access(trainer, parse_uuid(subject_id, "subject_id"))
+    item = subject_payload(subject)
+    return {
+        "id": item["id"],
+        "subject_name": item["name"],
+        "subject_code": item["module_name"] or item["name"][:8].upper(),
+        "course_id": item["course_id"],
+        "course_name": item["course_name"],
+        "department_id": item["department_id"],
+        "department_name": item["department_name"],
+        "term_id": None,
+        "term_name": "Current",
+        "students_count": item["students_count"],
+        "total_assessments": item["recent_scores_count"],
+        "avg_score": item["average_score"],
+        "description": item["description"],
+    }, 200
+
+
+@bp.get("/students")
+@trainer_required()
+def list_trainer_students():
+    trainer = _trainer_for_user(get_current_user()[0].id)
+    if not trainer:
+        return {"error": "Trainer profile not found"}, 404
+
+    subject_ids = get_trainer_subject_ids(trainer)
+    if not subject_ids:
+        return [], 200
+
+    subject_id = request.args.get("subject_id")
+    if subject_id:
+        subject_uuid = parse_uuid(subject_id, "subject_id")
+        ensure_subject_access(trainer, subject_uuid)
+        subject_ids = [subject_uuid]
+
+    students = (
+        db.session.query(Student)
+        .join(StudentSubject, StudentSubject.student_id == Student.id)
+        .filter(StudentSubject.subject_id.in_(subject_ids))
+        .distinct()
+        .order_by(Student.created_at.desc(), Student.id.asc())
+        .all()
+    )
+
+    rows = (
+        db.session.query(StudentSubject.student_id, Subject.name)
+        .join(Subject, Subject.id == StudentSubject.subject_id)
+        .filter(
+            StudentSubject.student_id.in_([student.id for student in students]),
+            StudentSubject.subject_id.in_(subject_ids),
+        )
+        .all()
+    ) if students else []
+    subject_names_by_student: dict[uuid.UUID, list[str]] = {}
+    for student_uuid, subject_name in rows:
+        subject_names_by_student.setdefault(student_uuid, []).append(subject_name)
+
+    response = []
+    for student in students:
+        related_scores = (
+            db.session.query(Score)
+            .filter(Score.student_id == student.id, Score.subject_id.in_(subject_ids))
+            .all()
+        )
+        overall_avg = round(sum(item.marks_obtained for item in related_scores) / len(related_scores), 2) if related_scores else 0.0
+        response.append(
+            {
+                "id": str(student.id),
+                "name": student.user.name if student.user else None,
+                "email": student.user.email if student.user else None,
+                "student_id": student.registration_number,
+                "enrollment_status": "active",
+                "subjects": subject_names_by_student.get(student.id, []),
+                "overall_avg": overall_avg,
+                "assessments_taken": len(related_scores),
+                "subject_averages": {},
+            }
+        )
+    return response, 200
+
+
+@bp.get("/students/<student_id>")
+@trainer_required()
+def trainer_student_profile(student_id: str):
+    trainer = _trainer_for_user(get_current_user()[0].id)
+    if not trainer:
+        return {"error": "Trainer profile not found"}, 404
+
+    subject_ids = get_trainer_subject_ids(trainer)
+    try:
+        student_uuid = parse_uuid(student_id, "student_id")
+        student = (
+            db.session.query(Student)
+            .join(StudentSubject, StudentSubject.student_id == Student.id)
+            .filter(Student.id == student_uuid, StudentSubject.subject_id.in_(subject_ids))
+            .first()
+        )
+    except ValueError:
+        student = (
+            db.session.query(Student)
+            .join(StudentSubject, StudentSubject.student_id == Student.id)
+            .filter(
+                Student.registration_number == student_id,
+                StudentSubject.subject_id.in_(subject_ids),
+            )
+            .first()
+        )
+    if not student:
+        return {"error": "Student not found in your assigned subjects"}, 404
+
+    related_scores = (
+        db.session.query(Score)
+        .filter(Score.student_id == student.id, Score.subject_id.in_(subject_ids))
+        .order_by(Score.created_at.desc())
+        .all()
+    )
+    return {
+        "id": str(student.id),
+        "name": student.user.name if student.user else None,
+        "email": student.user.email if student.user else None,
+        "student_id": student.registration_number,
+        "enrollment_status": "active",
+        "subjects": [],
+        "overall_avg": round(sum(item.marks_obtained for item in related_scores) / len(related_scores), 2) if related_scores else 0.0,
+        "assessments_taken": len(related_scores),
+        "subject_averages": {},
+    }, 200
+
+
+@bp.get("/reports/history")
+@trainer_required()
+def trainer_report_history():
+    trainer = _trainer_for_user(get_current_user()[0].id)
+    if not trainer:
+        return {"error": "Trainer profile not found"}, 404
+    reports = []
+    for subject_id in get_trainer_subject_ids(trainer):
+        report = trainer_subject_report(trainer, subject_id)
+        reports.append(
+            {
+                "id": report["subject"]["id"],
+                "subject_name": report["subject"]["name"],
+                "total_students": report["total_students"],
+                "avg_score": report["average_score"],
+                "pass_rate": report["pass_rate"],
+                "generated_date": report["subject"]["created_at"],
+            }
+        )
+    return reports, 200
 
 
 @bp.post("")

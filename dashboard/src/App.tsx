@@ -20,6 +20,9 @@ import ProvideFeedbackPage from './pages/ProvideFeedbackPage';
 import TrainerStudentProfilePage from './pages/TrainerStudentProfilePage';
 import StudentDashboardPage from './pages/StudentDashboardPage';
 import StudentMarksPage from './pages/StudentMarksPage';
+import StudentSubjectsPage from './pages/StudentSubjectsPage';
+import StudentProfilePage from './pages/StudentProfilePage';
+import StudentNotificationsPage from './pages/StudentNotificationsPage';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminSystemAnalyticsPage from './pages/AdminSystemAnalyticsPage';
 import AdminScoreManagementPage from './pages/AdminScoreManagementPage';
@@ -52,6 +55,10 @@ function App() {
               <Route element={<UserTypeRoute allowedTypes={['student']} />}>
                 <Route path="/student/dashboard" element={<StudentDashboardPage />} />
                 <Route path="/student/marks" element={<StudentMarksPage />} />
+                <Route path="/student/scores" element={<StudentMarksPage />} />
+                <Route path="/student/subjects" element={<StudentSubjectsPage />} />
+                <Route path="/student/profile" element={<StudentProfilePage />} />
+                <Route path="/student/notifications" element={<StudentNotificationsPage />} />
               </Route>
               <Route element={<UserTypeRoute allowedTypes={['trainer']} />}>
                 <Route path="/trainer-hub" element={<TrainerDashboardPage />} />
@@ -85,4 +92,3 @@ function App() {
 }
 
 export default App;
-

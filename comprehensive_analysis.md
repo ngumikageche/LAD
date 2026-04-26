@@ -538,6 +538,8 @@ Implementation:
 
 ## <a name="trainer-analysis"></a>👨‍🏫 TRAINER USER STORIES ANALYSIS
 
+> Note: This trainer section is older and no longer reflects the latest repo state exactly. Use `TRAINER_USER_STORIES_DETAILED.md` as the current trainer source of truth.
+
 ### **Category 1: Authentication & Access** - 3 Stories
 
 #### Story T1.1: Log in securely

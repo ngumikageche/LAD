@@ -41,6 +41,10 @@ def create_app() -> Flask:
         admin_analytics_bp,
         admin_management_bp,
         admin_dashboard_bp,
+        trainer_portal_bp,
+        scores_v1_bp,
+        student_portal_bp,
+        announcements_v1_bp,
     )
 
     app.register_blueprint(auth_bp)
@@ -63,6 +67,10 @@ def create_app() -> Flask:
     app.register_blueprint(admin_analytics_bp)
     app.register_blueprint(admin_management_bp)
     app.register_blueprint(admin_dashboard_bp)
+    app.register_blueprint(trainer_portal_bp)
+    app.register_blueprint(scores_v1_bp)
+    app.register_blueprint(student_portal_bp)
+    app.register_blueprint(announcements_v1_bp)
 
     @app.get("/")
     def health_check():

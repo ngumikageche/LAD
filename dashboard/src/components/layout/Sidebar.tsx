@@ -1,12 +1,16 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Book, Home, Users, BarChart, FileText, ChevronsLeft, ChevronsRight, Shield, Building2, School, KeyRound, UserCog, Compass, MessageSquare, TrendingUp, BarChart3, Bell } from 'lucide-react';
+import { Book, Home, Users, BarChart, FileText, ChevronsLeft, ChevronsRight, Shield, Building2, School, KeyRound, UserCog, MessageSquare, TrendingUp, BarChart3, Bell } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useAuth } from '../../auth/AuthContext';
 
 const navItems = [
-  { name: 'Dashboard', icon: Home, path: '/', color: 'text-indigo-600', userTypes: ['student', 'trainer'] },
+  { name: 'Dashboard', icon: Home, path: '/student/dashboard', color: 'text-indigo-600', userTypes: ['student'] },
+  { name: 'Dashboard', icon: Home, path: '/trainer-hub', color: 'text-indigo-600', userTypes: ['trainer'] },
   { name: 'Dashboard', icon: Home, path: '/admin/dashboard', color: 'text-indigo-600', userTypes: ['admin'] },
-  { name: 'My Marks', icon: FileText, path: '/student/marks', color: 'text-blue-600', userTypes: ['student'] },
+  { name: 'My Scores', icon: FileText, path: '/student/scores', color: 'text-blue-600', userTypes: ['student'] },
+  { name: 'My Subjects', icon: Book, path: '/student/subjects', color: 'text-emerald-600', userTypes: ['student'] },
+  { name: 'Notifications', icon: Bell, path: '/student/notifications', color: 'text-amber-600', userTypes: ['student'] },
+  { name: 'My Profile', icon: UserCog, path: '/student/profile', color: 'text-violet-600', userTypes: ['student'] },
   { name: 'Users', icon: Shield, path: '/users', color: 'text-rose-600', userTypes: ['admin'] },
   { name: 'Roles', icon: KeyRound, path: '/roles', color: 'text-orange-600', userTypes: ['admin'] },
   { name: 'Institutions', icon: Building2, path: '/institutions', color: 'text-emerald-600', userTypes: ['admin'] },
@@ -14,7 +18,6 @@ const navItems = [
   { name: 'Courses', icon: Book, path: '/courses', color: 'text-amber-600', userTypes: ['admin'] },
   { name: 'Students', icon: Users, path: '/students', color: 'text-blue-600', userTypes: ['admin'] },
   { name: 'Trainers', icon: UserCog, path: '/trainers', color: 'text-sky-600', userTypes: ['admin'] },
-  { name: 'Trainer Hub', icon: Compass, path: '/trainer-hub', color: 'text-emerald-600', userTypes: ['trainer'] },
   { name: 'Trainer Reports', icon: FileText, path: '/trainer/reports', color: 'text-indigo-600', userTypes: ['trainer'] },
   { name: 'Provide Feedback', icon: MessageSquare, path: '/trainer/feedback', color: 'text-cyan-600', userTypes: ['trainer'] },
   { name: 'Student Profile', icon: TrendingUp, path: '/trainer/student-profile', color: 'text-purple-600', userTypes: ['trainer'] },

@@ -19,6 +19,10 @@ from .announcements import bp as announcements_bp
 from .admin_analytics import bp as admin_analytics_bp
 from .admin_management import bp as admin_management_bp
 from .admin_dashboard import bp as admin_dashboard_bp
+from .trainer_portal import bp as trainer_portal_bp
+from .scores_v1 import bp as scores_v1_bp
+from .student_portal import bp as student_portal_bp
+from .announcements_v1 import bp as announcements_v1_bp
 
 __all__ = [
 	"auth_bp",
@@ -41,4 +45,8 @@ __all__ = [
 	"admin_analytics_bp",
 	"admin_management_bp",
 	"admin_dashboard_bp",
+	"trainer_portal_bp",
+	"scores_v1_bp",
+	"student_portal_bp",
+	"announcements_v1_bp",
 ]
