@@ -60,7 +60,9 @@ def get_dashboard_stats():
     failed_count = sum(1 for s in scores if s.is_passed is False)
     
     overall_pass_rate = (passed_count / total_assessments * 100) if total_assessments > 0 else 0
-    overall_avg = (sum(s.marks_obtained for s in scores) / sum(s.assessment.total_marks for s in scores if s.assessment) * 100) if scores else 0
+    total_obtained = sum((s.marks_obtained or 0) for s in scores)
+    total_possible = sum((s.assessment.total_marks or 0) for s in scores if s.assessment)
+    overall_avg = (total_obtained / total_possible * 100) if total_possible > 0 else 0
 
     # Recent scores (last 7 days)
     seven_days_ago = datetime.utcnow() - timedelta(days=7)

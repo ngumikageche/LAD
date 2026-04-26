@@ -19,7 +19,16 @@ from .announcements import bp as announcements_bp
 from .admin_analytics import bp as admin_analytics_bp
 from .admin_management import bp as admin_management_bp
 from .admin_dashboard import bp as admin_dashboard_bp
+from .admin_users import bp as admin_users_bp
+from .admin_institutions import bp as admin_institutions_bp
+from .admin_departments import bp as admin_departments_bp
+from .admin_courses import bp as admin_courses_bp
+from .admin_subjects import bp as admin_subjects_bp
+from .admin_trainers import bp as admin_trainers_bp
+from .admin_students import bp as admin_students_bp
 from .trainer_portal import bp as trainer_portal_bp
+from .admin_reports import bp as admin_reports_bp
+from .admin_scores import bp as admin_scores_bp
 from .scores_v1 import bp as scores_v1_bp
 from .student_portal import bp as student_portal_bp
 from .announcements_v1 import bp as announcements_v1_bp
@@ -45,6 +54,15 @@ __all__ = [
 	"admin_analytics_bp",
 	"admin_management_bp",
 	"admin_dashboard_bp",
+	"admin_users_bp",
+	"admin_institutions_bp",
+	"admin_departments_bp",
+	"admin_courses_bp",
+	"admin_subjects_bp",
+	"admin_trainers_bp",
+	"admin_students_bp",
+	"admin_reports_bp",
+	"admin_scores_bp",
 	"trainer_portal_bp",
 	"scores_v1_bp",
 	"student_portal_bp",

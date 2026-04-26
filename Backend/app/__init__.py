@@ -41,12 +41,22 @@ def create_app() -> Flask:
         admin_analytics_bp,
         admin_management_bp,
         admin_dashboard_bp,
+        admin_users_bp,
+        admin_institutions_bp,
+        admin_departments_bp,
+        admin_courses_bp,
+        admin_subjects_bp,
+        admin_trainers_bp,
+        admin_students_bp,
+        admin_reports_bp,
+        admin_scores_bp,
         trainer_portal_bp,
         scores_v1_bp,
         student_portal_bp,
         announcements_v1_bp,
     )
 
+    # Register blueprints
     app.register_blueprint(auth_bp)
     app.register_blueprint(courses_bp)
     app.register_blueprint(departments_bp)
@@ -64,9 +74,22 @@ def create_app() -> Flask:
     app.register_blueprint(scores_bp)
     app.register_blueprint(analytics_bp)
     app.register_blueprint(announcements_bp)
+
+    # Admin blueprints
     app.register_blueprint(admin_analytics_bp)
     app.register_blueprint(admin_management_bp)
     app.register_blueprint(admin_dashboard_bp)
+    app.register_blueprint(admin_users_bp)
+    app.register_blueprint(admin_institutions_bp)
+    app.register_blueprint(admin_departments_bp)
+    app.register_blueprint(admin_courses_bp)
+    app.register_blueprint(admin_subjects_bp)
+    app.register_blueprint(admin_trainers_bp)
+    app.register_blueprint(admin_students_bp)
+    app.register_blueprint(admin_reports_bp)
+    app.register_blueprint(admin_scores_bp)
+
+    # Other portals
     app.register_blueprint(trainer_portal_bp)
     app.register_blueprint(scores_v1_bp)
     app.register_blueprint(student_portal_bp)

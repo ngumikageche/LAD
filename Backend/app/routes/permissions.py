@@ -75,6 +75,31 @@ def trainer_required(permission_key: str | None = None):
     return decorator
 
 
+def _is_admin(user: User) -> bool:
+    role_name = (user.role.role_name if user.role else "") or ""
+    return role_name.lower() == "admin" or (user.role and user.role.permissions.get("*") is True)
+
+
+def admin_required(permission_key: str | None = None):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            user, error, status = get_current_user()
+            if error:
+                return error, status
+            if not _is_admin(user):
+                return {"error": "Admin access required"}, 403
+            if permission_key and not _has_permission(user, permission_key):
+                return {"error": "Permission denied"}, 403
+
+            g.current_user = user
+            return func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
 def _is_student(user: User) -> bool:
     role_name = (user.role.role_name if user.role else "") or ""
     return role_name.lower() == "student" or user.student is not None
