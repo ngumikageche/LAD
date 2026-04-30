@@ -21,6 +21,8 @@ from .student_subject import StudentSubject
 from .dashboard_metric import DashboardMetric
 from .alert import Alert
 from .attendance import Attendance
+from .lesson_plan import LessonPlan
+from .staff_attendance import StaffAttendance
 
 from .portfolio_evidence import PortfolioEvidence
 from .competency_record import CompetencyRecord
@@ -51,4 +53,6 @@ __all__ = [
 	"PortfolioEvidence",
 	"DashboardMetric",
 	"Attendance",
+	"LessonPlan",
+	"StaffAttendance",
 ]

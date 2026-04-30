@@ -27,6 +27,15 @@ import AdminDashboard from './pages/AdminDashboard';
 import AdminSystemAnalyticsPage from './pages/AdminSystemAnalyticsPage';
 import AdminScoreManagementPage from './pages/AdminScoreManagementPage';
 import AdminNotificationsPage from './pages/AdminNotificationsPage';
+import ReportCardPage from './pages/ReportCardPage';
+import AttendanceReportPage from './pages/AttendanceReportPage';
+import FeeStatementPage from './pages/FeeStatementPage';
+import ClassPerformancePage from './pages/ClassPerformancePage';
+import SyllabusCoveragePage from './pages/SyllabusCoveragePage';
+import TrainerAttendancePage from './pages/TrainerAttendancePage';
+import AdminExamResultsPage from './pages/AdminExamResultsPage';
+import AdminFeeCollectionPage from './pages/AdminFeeCollectionPage';
+import AdminEnrolmentPage from './pages/AdminEnrolmentPage';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import ProtectedRoute, { UserTypeRoute } from './auth/ProtectedRoute';
 
@@ -59,18 +68,27 @@ function App() {
                 <Route path="/student/subjects" element={<StudentSubjectsPage />} />
                 <Route path="/student/profile" element={<StudentProfilePage />} />
                 <Route path="/student/notifications" element={<StudentNotificationsPage />} />
+                <Route path="/student/report-card" element={<ReportCardPage />} />
+                <Route path="/student/attendance-report" element={<AttendanceReportPage />} />
+                <Route path="/student/fee-statement" element={<FeeStatementPage />} />
               </Route>
               <Route element={<UserTypeRoute allowedTypes={['trainer']} />}>
                 <Route path="/trainer-hub" element={<TrainerDashboardPage />} />
                 <Route path="/trainer/reports" element={<TrainerReportsPage />} />
                 <Route path="/trainer/feedback" element={<ProvideFeedbackPage />} />
                 <Route path="/trainer/student-profile" element={<TrainerStudentProfilePage />} />
+                <Route path="/trainer/class-performance" element={<ClassPerformancePage />} />
+                <Route path="/trainer/syllabus" element={<SyllabusCoveragePage />} />
+                <Route path="/trainer/attendance" element={<TrainerAttendancePage />} />
               </Route>
               <Route element={<UserTypeRoute allowedTypes={['admin']} />}>
                 <Route path="/admin/dashboard" element={<AdminDashboard />} />
                 <Route path="/admin/analytics" element={<AdminSystemAnalyticsPage />} />
                 <Route path="/admin/scores" element={<AdminScoreManagementPage />} />
                 <Route path="/admin/notifications" element={<AdminNotificationsPage />} />
+                <Route path="/admin/reports/exam-results" element={<AdminExamResultsPage />} />
+                <Route path="/admin/reports/fees" element={<AdminFeeCollectionPage />} />
+                <Route path="/admin/reports/enrolment" element={<AdminEnrolmentPage />} />
                 <Route path="/users" element={<UsersPage />} />
                 <Route path="/roles" element={<RolesPage />} />
                 <Route path="/institutions" element={<InstitutionsPage />} />

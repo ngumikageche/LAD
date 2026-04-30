@@ -19,3 +19,5 @@ class Term(BaseModel):
     is_active: Mapped[bool] = mapped_column(nullable=False, default=False, index=True)
 
     assessments = relationship("Assessment", back_populates="term")
+    lesson_plans = relationship("LessonPlan", back_populates="term")
+    staff_attendance = relationship("StaffAttendance", back_populates="term")

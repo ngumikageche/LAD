@@ -11,6 +11,8 @@ type User = {
   permissions: Record<string, boolean>;
   institution_id: string | null;
   user_type: string;
+  student_id: string | null;
+  trainer_id: string | null;
 };
 
 type AuthContextValue = {

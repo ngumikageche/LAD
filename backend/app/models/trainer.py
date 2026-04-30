@@ -25,3 +25,5 @@ class Trainer(BaseModel):
     trainer_subjects = relationship("TrainerSubject", back_populates="trainer")
     courses_taught = relationship("TrainerCourse", back_populates="trainer")
     scores = relationship("Score", back_populates="trainer")
+    lesson_plans = relationship("LessonPlan", back_populates="trainer")
+    staff_attendance = relationship("StaffAttendance", back_populates="trainer")

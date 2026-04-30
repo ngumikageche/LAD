@@ -32,6 +32,9 @@ from .admin_scores import bp as admin_scores_bp
 from .scores_v1 import bp as scores_v1_bp
 from .student_portal import bp as student_portal_bp
 from .announcements_v1 import bp as announcements_v1_bp
+from .reports import bp as reports_bp
+from .trainer_reports import bp as trainer_reports_bp
+from .admin_reports_v2 import bp as admin_reports_v2_bp
 
 __all__ = [
 	"auth_bp",
@@ -67,4 +70,7 @@ __all__ = [
 	"scores_v1_bp",
 	"student_portal_bp",
 	"announcements_v1_bp",
+	"reports_bp",
+	"trainer_reports_bp",
+	"admin_reports_v2_bp",
 ]

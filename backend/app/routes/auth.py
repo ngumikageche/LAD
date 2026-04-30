@@ -10,10 +10,14 @@ from ..models.user import User
 
 def _user_payload(user: User) -> dict:
     user_type = "admin"
+    student_id = None
+    trainer_id = None
     if user.student:
         user_type = "student"
+        student_id = str(user.student.id)
     elif user.trainer:
         user_type = "trainer"
+        trainer_id = str(user.trainer.id)
     
     return {
         "id": str(user.id),
@@ -25,6 +29,8 @@ def _user_payload(user: User) -> dict:
         "permissions": user.role.permissions if user.role else {},
         "institution_id": str(user.institution_id) if user.institution_id else None,
         "user_type": user_type,
+        "student_id": student_id,
+        "trainer_id": trainer_id,
     }
 
 

@@ -18,3 +18,4 @@ class Subject(BaseModel):
     student_subjects = relationship("StudentSubject", back_populates="subject")
     course_subjects = relationship("CourseSubject", back_populates="subject")
     scores = relationship("Score", back_populates="subject")
+    lesson_plans = relationship("LessonPlan", back_populates="subject")

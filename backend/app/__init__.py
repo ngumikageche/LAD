@@ -13,6 +13,10 @@ def create_app() -> Flask:
 
     db.init_app(app)
     migrate.init_app(app, db)
+    app.config.setdefault('CACHE_TYPE', 'SimpleCache')
+    app.config.setdefault('CACHE_DEFAULT_TIMEOUT', 600)
+    from .extensions import cache
+    cache.init_app(app)
 
   
     from . import models # Ensure models are registered before migrations
@@ -54,6 +58,9 @@ def create_app() -> Flask:
         scores_v1_bp,
         student_portal_bp,
         announcements_v1_bp,
+        reports_bp,
+        trainer_reports_bp,
+        admin_reports_v2_bp,
     )
 
     # Register blueprints
@@ -94,6 +101,9 @@ def create_app() -> Flask:
     app.register_blueprint(scores_v1_bp)
     app.register_blueprint(student_portal_bp)
     app.register_blueprint(announcements_v1_bp)
+    app.register_blueprint(reports_bp)
+    app.register_blueprint(trainer_reports_bp)
+    app.register_blueprint(admin_reports_v2_bp)
 
     @app.get("/")
     def health_check():

@@ -44,6 +44,27 @@ export const studentAnalytics = {
  * Calls: /scores
  */
 
+export const reportsAPI = {
+  async getReportCard(studentId: string, termId?: string) {
+    const params = termId ? `?term_id=${termId}` : '';
+    const response = await apiClient.get(`/reports/student/${studentId}/report-card${params}`);
+    return response.data;
+  },
+  async getAttendanceReport(studentId: string, termId?: string, month?: string) {
+    const params = new URLSearchParams();
+    if (termId) params.append('term_id', termId);
+    if (month) params.append('month', month);
+    const qs = params.toString() ? '?' + params.toString() : '';
+    const response = await apiClient.get(`/reports/student/${studentId}/attendance${qs}`);
+    return response.data;
+  },
+  async getFeeStatement(studentId: string, termId?: string) {
+    const params = termId ? `?term_id=${termId}` : '';
+    const response = await apiClient.get(`/reports/student/${studentId}/fees${params}`);
+    return response.data;
+  },
+};
+
 export const scoresAPI = {
   // Get scores for the currently authenticated student
   async listScores(filters?: { subject_id?: string; term?: string; page?: number; per_page?: number }) {

@@ -285,6 +285,39 @@ export const trainerReportsAPI = {
   },
 };
 
+export const trainerReportCardsAPI = {
+  async getClassPerformance(subjectId: string, termId?: string) {
+    const params = termId ? `?term_id=${termId}` : '';
+    const response = await apiClient.get(`/reports/trainer/subject/${subjectId}/performance${params}`);
+    return response.data;
+  },
+  async getSyllabus(trainerId: string, subjectId?: string, termId?: string) {
+    const params = new URLSearchParams();
+    if (subjectId) params.append('subject_id', subjectId);
+    if (termId) params.append('term_id', termId);
+    const qs = params.toString() ? '?' + params.toString() : '';
+    const response = await apiClient.get(`/reports/trainer/${trainerId}/syllabus${qs}`);
+    return response.data;
+  },
+  async addSyllabusTopic(trainerId: string, data: { topic: string; subject_id: string; term_id?: string; planned_date?: string; description?: string }) {
+    const response = await apiClient.post(`/reports/trainer/${trainerId}/syllabus`, data);
+    return response.data;
+  },
+  async updateSyllabusTopic(trainerId: string, planId: string, data: { topic?: string; planned_date?: string; covered_date?: string; mark_covered?: boolean }) {
+    const response = await apiClient.put(`/reports/trainer/${trainerId}/syllabus/${planId}`, data);
+    return response.data;
+  },
+  async getTrainerAttendance(trainerId: string, termId?: string) {
+    const params = termId ? `?term_id=${termId}` : '';
+    const response = await apiClient.get(`/reports/trainer/${trainerId}/attendance${params}`);
+    return response.data;
+  },
+  async logTrainerAttendance(trainerId: string, data: { date: string; status: string; term_id?: string; notes?: string }) {
+    const response = await apiClient.post(`/reports/trainer/${trainerId}/attendance`, data);
+    return response.data;
+  },
+};
+
 export const trainerDashboardAPI = {
   async getDashboardStats(): Promise<TrainerStats> {
     const response = await apiClient.get('/trainers/dashboard/stats');

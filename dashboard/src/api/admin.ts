@@ -1,5 +1,24 @@
 import { apiClient } from './client';
 
+// Admin Phase-3 Reports API
+export const adminReportsV2API = {
+  async getExamResults(termId?: string) {
+    const params = termId ? `?term_id=${termId}` : '';
+    const response = await apiClient.get(`/reports/admin/exam-results${params}`);
+    return response.data;
+  },
+  async getFeeCollection(termId?: string) {
+    const params = termId ? `?term_id=${termId}` : '';
+    const response = await apiClient.get(`/reports/admin/fees${params}`);
+    return response.data;
+  },
+  async getEnrolmentOverview(termId?: string) {
+    const params = termId ? `?term_id=${termId}` : '';
+    const response = await apiClient.get(`/reports/admin/enrolment${params}`);
+    return response.data;
+  },
+};
+
 // Admin Dashboard API
 export const adminDashboardAPI = {
   async getDashboardStats() {
