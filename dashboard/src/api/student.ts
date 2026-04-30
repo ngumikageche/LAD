@@ -45,32 +45,17 @@ export const studentAnalytics = {
  */
 
 export const scoresAPI = {
-  // Get all scores (optionally filtered)
-  async listScores(filters?: {
-    course_id?: string;
-    assessment_id?: string;
-    term_id?: string;
-  }) {
+  // Get scores for the currently authenticated student
+  async listScores(filters?: { subject_id?: string; term?: string; page?: number; per_page?: number }) {
     const params = new URLSearchParams();
-    if (filters?.course_id) params.append('course_id', filters.course_id);
-    if (filters?.assessment_id) params.append('assessment_id', filters.assessment_id);
-    if (filters?.term_id) params.append('term_id', filters.term_id);
+    if (filters?.subject_id) params.append('subject_id', filters.subject_id);
+    if (filters?.term) params.append('term', filters.term);
+    if (filters?.page) params.append('page', String(filters.page));
+    if (filters?.per_page) params.append('per_page', String(filters.per_page));
 
     const response = await apiClient.get(
-      `/scores${params.toString() ? '?' + params.toString() : ''}`
+      `/api/v1/student/scores${params.toString() ? '?' + params.toString() : ''}`
     );
-    return response.data;
-  },
-
-  // Get specific score
-  async getScore(scoreId: string) {
-    const response = await apiClient.get(`/scores/${scoreId}`);
-    return response.data;
-  },
-
-  // Get feedback for score
-  async getScoreFeedback(scoreId: string) {
-    const response = await apiClient.get(`/scores/${scoreId}/feedback`);
     return response.data;
   },
 };

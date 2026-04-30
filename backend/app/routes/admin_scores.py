@@ -25,11 +25,18 @@ def _parse_uuid(value: str | None, field: str) -> uuid.UUID:
 
 
 def _payload(score: Score) -> dict:
+    student = score.student
+    subject = score.subject
+    assessment = score.assessment
     return {
         "id": str(score.id),
         "student_id": str(score.student_id) if score.student_id else None,
+        "student_name": student.user.name if student and student.user else None,
+        "registration_number": student.registration_number if student else None,
         "subject_id": str(score.subject_id) if score.subject_id else None,
+        "subject_name": subject.name if subject else None,
         "assessment_id": str(score.assessment_id) if score.assessment_id else None,
+        "assessment_name": assessment.name if assessment else None,
         "marks_obtained": score.marks_obtained,
         "grade": score.grade,
         "is_passed": score.is_passed,

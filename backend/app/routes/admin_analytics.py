@@ -69,7 +69,8 @@ def admin_dashboard():
     failed_count = sum(1 for s in scores if s.is_passed is False)
     
     overall_pass_rate = (passed_count / total_assessments * 100) if total_assessments > 0 else 0
-    overall_avg = (sum(s.marks_obtained for s in scores) / sum(s.assessment.total_marks for s in scores if s.assessment) * 100) if scores else 0
+    total_possible = sum(s.assessment.total_marks for s in scores if s.assessment and s.assessment.total_marks)
+    overall_avg = (sum(s.marks_obtained for s in scores) / total_possible * 100) if total_possible > 0 else 0
 
     # Recent scores (last 7 days)
     seven_days_ago = datetime.utcnow() - timedelta(days=7)
@@ -153,7 +154,7 @@ def list_institution_analytics():
             passed = sum(1 for s in scores if s.is_passed is True)
             total = len(scores)
             pass_rate = (passed / total * 100) if total > 0 else 0
-            avg_score = (sum(s.marks_obtained for s in scores) / sum(s.assessment.total_marks for s in scores if s.assessment) * 100) if scores else 0
+            _tp = sum(s.assessment.total_marks for s in scores if s.assessment and s.assessment.total_marks); avg_score = (sum(s.marks_obtained for s in scores) / _tp * 100) if _tp > 0 else 0
         else:
             pass_rate = 0
             avg_score = 0
@@ -224,7 +225,7 @@ def list_department_analytics():
             passed = sum(1 for s in scores if s.is_passed is True)
             total = len(scores)
             pass_rate = (passed / total * 100) if total > 0 else 0
-            avg_score = (sum(s.marks_obtained for s in scores) / sum(s.assessment.total_marks for s in scores if s.assessment) * 100) if scores else 0
+            _tp = sum(s.assessment.total_marks for s in scores if s.assessment and s.assessment.total_marks); avg_score = (sum(s.marks_obtained for s in scores) / _tp * 100) if _tp > 0 else 0
         else:
             pass_rate = 0
             avg_score = 0
@@ -282,7 +283,7 @@ def list_course_analytics():
             passed = sum(1 for s in scores if s.is_passed is True)
             total = len(scores)
             pass_rate = (passed / total * 100) if total > 0 else 0
-            avg_score = (sum(s.marks_obtained for s in scores) / sum(s.assessment.total_marks for s in scores if s.assessment) * 100) if scores else 0
+            _tp = sum(s.assessment.total_marks for s in scores if s.assessment and s.assessment.total_marks); avg_score = (sum(s.marks_obtained for s in scores) / _tp * 100) if _tp > 0 else 0
         else:
             pass_rate = 0
             avg_score = 0
@@ -330,7 +331,7 @@ def analytics_comparisons():
         ).all()
 
         if scores:
-            avg_score = (sum(s.marks_obtained for s in scores) / sum(s.assessment.total_marks for s in scores if s.assessment) * 100) if scores else 0
+            _tp = sum(s.assessment.total_marks for s in scores if s.assessment and s.assessment.total_marks); avg_score = (sum(s.marks_obtained for s in scores) / _tp * 100) if _tp > 0 else 0
             inst_performance.append({
                 "institution_id": str(inst.id),
                 "name": inst.name,
@@ -360,7 +361,7 @@ def analytics_comparisons():
         ).all()
 
         if scores:
-            avg_score = (sum(s.marks_obtained for s in scores) / sum(s.assessment.total_marks for s in scores if s.assessment) * 100) if scores else 0
+            _tp = sum(s.assessment.total_marks for s in scores if s.assessment and s.assessment.total_marks); avg_score = (sum(s.marks_obtained for s in scores) / _tp * 100) if _tp > 0 else 0
             dept_performance.append({
                 "department_id": str(dept.id),
                 "name": dept.name,
@@ -427,7 +428,8 @@ def system_wide_report():
     
     if total_scores > 0:
         pass_rate = (passed / total_scores * 100)
-        avg_score = (sum(s.marks_obtained for s in scores) / sum(s.assessment.total_marks for s in scores if s.assessment) * 100)
+        _tp = sum(s.assessment.total_marks for s in scores if s.assessment and s.assessment.total_marks)
+        avg_score = (sum(s.marks_obtained for s in scores) / _tp * 100) if _tp > 0 else 0
     else:
         pass_rate = 0
         avg_score = 0
@@ -447,7 +449,8 @@ def system_wide_report():
 
         if term_scores:
             term_passed = sum(1 for s in term_scores if s.is_passed is True)
-            term_avg = (sum(s.marks_obtained for s in term_scores) / sum(s.assessment.total_marks for s in term_scores if s.assessment) * 100)
+            _ttp = sum(s.assessment.total_marks for s in term_scores if s.assessment and s.assessment.total_marks)
+            term_avg = (sum(s.marks_obtained for s in term_scores) / _ttp * 100) if _ttp > 0 else 0
         else:
             term_passed = 0
             term_avg = 0

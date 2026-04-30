@@ -1,47 +1,54 @@
 import { useState, useEffect } from 'react';
 import { BarChart3, TrendingUp, Users, AlertCircle, Filter, Download } from 'lucide-react';
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, ScatterChart, Scatter } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { adminAnalyticsAPI } from '../api/admin';
 
-interface AnalyticsData {
-  course: string;
+interface DashboardStats {
+  system_overview: {
+    total_students: number;
+    total_trainers: number;
+    total_institutions: number;
+    total_departments: number;
+    total_courses: number;
+    active_terms: number;
+  };
+  academic_metrics: {
+    total_assessments: number;
+    passed_count: number;
+    failed_count: number;
+    overall_pass_rate: number;
+    overall_avg: number;
+  };
+  recent_activity: {
+    scores_in_last_7_days: number;
+  };
+}
+
+interface CourseAnalytics {
+  course_id: string;
+  name: string;
+  department_id: string;
+  enrolled_count: number;
+  scores_count: number;
   pass_rate: number;
   avg_score: number;
-  students: number;
-  trend: number;
 }
 
-interface StudentPerformance {
-  student_id: string;
+interface DepartmentAnalytics {
+  department_id: string;
   name: string;
-  avg_score: number;
+  students_count: number;
   courses_count: number;
-  status: 'excellent' | 'good' | 'average' | 'at_risk';
+  pass_rate: number;
+  avg_score: number;
 }
-
-const mockCourseAnalytics: AnalyticsData[] = [
-  { course: 'Mathematics', pass_rate: 82, avg_score: 76, students: 120, trend: 5 },
-  { course: 'Physics', pass_rate: 78, avg_score: 72, students: 95, trend: -2 },
-  { course: 'Chemistry', pass_rate: 85, avg_score: 79, students: 110, trend: 8 },
-  { course: 'Biology', pass_rate: 80, avg_score: 75, students: 105, trend: 3 },
-  { course: 'English', pass_rate: 88, avg_score: 82, students: 115, trend: 6 },
-  { course: 'History', pass_rate: 75, avg_score: 70, students: 90, trend: -3 },
-];
-
-const mockStudentPerformance: StudentPerformance[] = [
-  { student_id: 'STU001', name: 'Alice Johnson', avg_score: 92, courses_count: 5, status: 'excellent' },
-  { student_id: 'STU002', name: 'Bob Smith', avg_score: 78, courses_count: 5, status: 'good' },
-  { student_id: 'STU003', name: 'Charlie Brown', avg_score: 65, courses_count: 4, status: 'average' },
-  { student_id: 'STU004', name: 'Diana Prince', avg_score: 55, courses_count: 5, status: 'at_risk' },
-  { student_id: 'STU005', name: 'Evan Davis', avg_score: 88, courses_count: 5, status: 'excellent' },
-];
 
 export default function AdminSystemAnalyticsPage() {
-  const [analytics, setAnalytics] = useState<AnalyticsData[]>([]);
-  const [studentPerformance, setStudentPerformance] = useState<StudentPerformance[]>([]);
+  const [courseAnalytics, setCourseAnalytics] = useState<CourseAnalytics[]>([]);
+  const [deptAnalytics, setDeptAnalytics] = useState<DepartmentAnalytics[]>([]);
+  const [dashboardStats, setDashboardStats] = useState<DashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedCourse, setSelectedCourse] = useState<string | null>(null);
   const [dateRange, setDateRange] = useState<'week' | 'month' | 'semester'>('month');
 
   useEffect(() => {
@@ -49,20 +56,22 @@ export default function AdminSystemAnalyticsPage() {
       try {
         setLoading(true);
         setError(null);
-        
-        // Mock data for now
-        const data = await adminAnalyticsAPI.getSystemAnalytics();
-        setAnalytics(mockCourseAnalytics);
-        setStudentPerformance(mockStudentPerformance);
+        const [courses, depts, dashboard] = await Promise.all([
+          adminAnalyticsAPI.getCoursesAnalytics() as Promise<CourseAnalytics[]>,
+          adminAnalyticsAPI.getDepartmentsAnalytics() as Promise<DepartmentAnalytics[]>,
+          adminAnalyticsAPI.getDashboard() as Promise<DashboardStats>,
+        ]);
+        setCourseAnalytics(Array.isArray(courses) ? courses : []);
+        setDeptAnalytics(Array.isArray(depts) ? depts : []);
+        setDashboardStats(dashboard);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load analytics');
       } finally {
         setLoading(false);
       }
     };
-
     loadAnalytics();
-  }, [dateRange]);
+  }, []);
 
   if (loading) {
     return (
@@ -123,23 +132,31 @@ export default function AdminSystemAnalyticsPage() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           <div className="bg-white rounded-lg shadow p-6">
             <p className="text-gray-600 text-sm">System Average</p>
-            <p className="text-3xl font-bold text-indigo-600 mt-2">76.2%</p>
-            <p className="text-xs text-green-600 mt-2">↑ 2.3% vs last month</p>
+            <p className="text-3xl font-bold text-indigo-600 mt-2">
+              {dashboardStats ? `${dashboardStats.academic_metrics.overall_avg}%` : '—'}
+            </p>
+            <p className="text-xs text-gray-500 mt-2">{dashboardStats?.academic_metrics.total_assessments ?? 0} total assessments</p>
           </div>
           <div className="bg-white rounded-lg shadow p-6">
             <p className="text-gray-600 text-sm">Overall Pass Rate</p>
-            <p className="text-3xl font-bold text-green-600 mt-2">81.5%</p>
-            <p className="text-xs text-green-600 mt-2">↑ 1.8% vs last month</p>
+            <p className="text-3xl font-bold text-green-600 mt-2">
+              {dashboardStats ? `${dashboardStats.academic_metrics.overall_pass_rate}%` : '—'}
+            </p>
+            <p className="text-xs text-gray-500 mt-2">{dashboardStats?.academic_metrics.passed_count ?? 0} passed / {dashboardStats?.academic_metrics.failed_count ?? 0} failed</p>
           </div>
           <div className="bg-white rounded-lg shadow p-6">
-            <p className="text-gray-600 text-sm">At-Risk Students</p>
-            <p className="text-3xl font-bold text-orange-600 mt-2">145</p>
-            <p className="text-xs text-red-600 mt-2">↑ 5 new alerts</p>
+            <p className="text-gray-600 text-sm">Total Students</p>
+            <p className="text-3xl font-bold text-orange-600 mt-2">
+              {dashboardStats?.system_overview.total_students ?? '—'}
+            </p>
+            <p className="text-xs text-gray-500 mt-2">{dashboardStats?.system_overview.total_trainers ?? 0} trainers</p>
           </div>
           <div className="bg-white rounded-lg shadow p-6">
             <p className="text-gray-600 text-sm">Active Courses</p>
-            <p className="text-3xl font-bold text-purple-600 mt-2">156</p>
-            <p className="text-xs text-gray-600 mt-2">Across all departments</p>
+            <p className="text-3xl font-bold text-purple-600 mt-2">
+              {dashboardStats?.system_overview.total_courses ?? '—'}
+            </p>
+            <p className="text-xs text-gray-500 mt-2">{dashboardStats?.system_overview.total_departments ?? 0} departments · {dashboardStats?.system_overview.active_terms ?? 0} active terms</p>
           </div>
         </div>
 
@@ -148,9 +165,9 @@ export default function AdminSystemAnalyticsPage() {
           <div className="bg-white rounded-lg shadow p-6">
             <h2 className="text-lg font-bold text-gray-900 mb-4">Course Performance</h2>
             <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={analytics}>
+              <BarChart data={courseAnalytics}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="course" angle={-45} textAnchor="end" height={80} />
+                <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} />
                 <YAxis />
                 <Tooltip />
                 <Legend />
@@ -161,19 +178,17 @@ export default function AdminSystemAnalyticsPage() {
           </div>
 
           <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">Student Performance Distribution</h2>
+            <h2 className="text-lg font-bold text-gray-900 mb-4">Department Performance</h2>
             <ResponsiveContainer width="100%" height={300}>
-              <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
+              <BarChart data={deptAnalytics}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="avg_score" name="Average Score" />
-                <YAxis dataKey="courses_count" name="Courses Enrolled" />
-                <Tooltip cursor={{ strokeDasharray: '3 3' }} />
-                <Scatter
-                  name="Students"
-                  data={studentPerformance}
-                  fill="#8884d8"
-                />
-              </ScatterChart>
+                <XAxis dataKey="name" angle={-45} textAnchor="end" height={80} />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="avg_score" fill="#8b5cf6" name="Avg Score" />
+                <Bar dataKey="pass_rate" fill="#f59e0b" name="Pass Rate" />
+              </BarChart>
             </ResponsiveContainer>
           </div>
         </div>
@@ -188,42 +203,36 @@ export default function AdminSystemAnalyticsPage() {
               <thead className="bg-gray-50 border-b">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Course</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Students</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Enrolled</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Scores</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Avg Score</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Pass Rate</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Trend</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {analytics.map((item, idx) => (
-                  <tr key={idx} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 font-medium text-gray-900">{item.course}</td>
-                    <td className="px-6 py-4 text-gray-600">{item.students}</td>
+                {courseAnalytics.length === 0 ? (
+                  <tr><td colSpan={6} className="px-6 py-4 text-center text-gray-500">No data available</td></tr>
+                ) : courseAnalytics.map((item) => (
+                  <tr key={item.course_id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 font-medium text-gray-900">{item.name}</td>
+                    <td className="px-6 py-4 text-gray-600">{item.enrolled_count}</td>
+                    <td className="px-6 py-4 text-gray-600">{item.scores_count}</td>
                     <td className="px-6 py-4">
                       <span className={`px-3 py-1 rounded-full text-sm font-bold ${
-                        item.avg_score >= 75
-                          ? 'bg-green-100 text-green-800'
-                          : item.avg_score >= 70
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-red-100 text-red-800'
+                        item.avg_score >= 75 ? 'bg-green-100 text-green-800'
+                          : item.avg_score >= 70 ? 'bg-yellow-100 text-yellow-800'
+                          : 'bg-red-100 text-red-800'
                       }`}>
                         {item.avg_score}%
                       </span>
                     </td>
                     <td className="px-6 py-4 text-green-600 font-semibold">{item.pass_rate}%</td>
                     <td className="px-6 py-4">
-                      <span className={`font-semibold ${item.trend > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                        {item.trend > 0 ? '↑' : '↓'} {Math.abs(item.trend)}%
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
                       <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                        item.pass_rate >= 80
-                          ? 'bg-green-100 text-green-800'
-                          : item.pass_rate >= 70
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-red-100 text-red-800'
+                        item.pass_rate >= 80 ? 'bg-green-100 text-green-800'
+                          : item.pass_rate >= 70 ? 'bg-yellow-100 text-yellow-800'
+                          : 'bg-red-100 text-red-800'
                       }`}>
                         {item.pass_rate >= 80 ? 'Excellent' : item.pass_rate >= 70 ? 'Good' : 'Needs Attention'}
                       </span>
@@ -235,53 +244,45 @@ export default function AdminSystemAnalyticsPage() {
           </div>
         </div>
 
-        {/* At-Risk Students Table */}
+        {/* Department Analytics Table */}
         <div className="bg-white rounded-lg shadow overflow-hidden">
           <div className="p-6 border-b">
             <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-              <AlertCircle size={24} className="text-orange-500" />
-              At-Risk Students Analysis
+              <Users size={24} className="text-purple-500" />
+              Department Analytics
             </h2>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead className="bg-gray-50 border-b">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Student</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Average</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Department</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Students</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Courses</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Action</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Avg Score</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Pass Rate</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {studentPerformance
-                  .filter(s => s.status === 'at_risk' || s.status === 'average')
-                  .map((student, idx) => (
-                    <tr key={idx} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 font-medium text-gray-900">{student.name}</td>
-                      <td className="px-6 py-4">
-                        <span className="px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm font-bold">
-                          {student.avg_score}%
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-gray-600">{student.courses_count}</td>
-                      <td className="px-6 py-4">
-                        <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                          student.status === 'at_risk'
-                            ? 'bg-red-100 text-red-800'
-                            : 'bg-yellow-100 text-yellow-800'
-                        }`}>
-                          {student.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4">
-                        <button className="text-blue-600 hover:text-blue-900 font-medium">
-                          Contact Trainer
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                {deptAnalytics.length === 0 ? (
+                  <tr><td colSpan={5} className="px-6 py-4 text-center text-gray-500">No data available</td></tr>
+                ) : deptAnalytics.map((dept) => (
+                  <tr key={dept.department_id} className="hover:bg-gray-50">
+                    <td className="px-6 py-4 font-medium text-gray-900">{dept.name}</td>
+                    <td className="px-6 py-4 text-gray-600">{dept.students_count}</td>
+                    <td className="px-6 py-4 text-gray-600">{dept.courses_count}</td>
+                    <td className="px-6 py-4">
+                      <span className={`px-3 py-1 rounded-full text-sm font-bold ${
+                        dept.avg_score >= 75 ? 'bg-green-100 text-green-800'
+                          : dept.avg_score >= 70 ? 'bg-yellow-100 text-yellow-800'
+                          : 'bg-red-100 text-red-800'
+                      }`}>
+                        {dept.avg_score}%
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-green-600 font-semibold">{dept.pass_rate}%</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>

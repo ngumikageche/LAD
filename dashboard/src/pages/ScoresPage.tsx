@@ -5,17 +5,16 @@ import { useAuth } from '../auth/AuthContext';
 
 interface Score {
   id: string;
-  enrollment_id: string;
-  assessment_id: string;
-  marks_obtained: number;
-  grade: string;
-  is_passed: boolean;
-  feedback?: string;
-  created_at: string;
-}
-
-interface GroupedScores {
-  [key: string]: Score[];
+  student_id: string | null;
+  subject_id: string | null;
+  subject: { id: string; name: string } | null;
+  score: number;
+  grade: string | null;
+  term: string | null;
+  feedback: string | null;
+  is_passed: boolean | null;
+  assessment: { id: string; name: string; type: string } | null;
+  recorded_at: string | null;
 }
 
 export default function ScoresPage() {
@@ -31,8 +30,8 @@ export default function ScoresPage() {
       try {
         setLoading(true);
         setError(null);
-        const data = await scoresAPI.listScores();
-        setScores(Array.isArray(data) ? data : []);
+        const data = await scoresAPI.listScores() as { items: Score[] };
+        setScores(Array.isArray(data?.items) ? data.items : []);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load scores');
       } finally {
@@ -52,11 +51,11 @@ export default function ScoresPage() {
     .sort((a, b) => {
       switch (sortBy) {
         case 'marks':
-          return b.marks_obtained - a.marks_obtained;
+          return b.score - a.score;
         case 'date':
           return (
-            new Date(b.created_at).getTime() -
-            new Date(a.created_at).getTime()
+            new Date(b.recorded_at ?? 0).getTime() -
+            new Date(a.recorded_at ?? 0).getTime()
           );
         default:
           return 0;
@@ -70,7 +69,7 @@ export default function ScoresPage() {
     average:
       scores.length > 0
         ? (
-            scores.reduce((sum, s) => sum + s.marks_obtained, 0) /
+            scores.reduce((sum, s) => sum + s.score, 0) /
             scores.length
           ).toFixed(1)
         : 0,
@@ -196,21 +195,28 @@ export default function ScoresPage() {
                   {filteredScores.map((score) => (
                     <tr key={score.id} className="hover:bg-gray-50 transition">
                       <td className="px-6 py-4 text-sm font-medium text-gray-900">
-                        Assessment
+                        {score.assessment?.name ?? 'N/A'}
+                        {score.subject && (
+                          <span className="block text-xs text-gray-500">{score.subject.name}</span>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-900 font-bold">
-                        {score.marks_obtained.toFixed(1)}%
+                        {score.score.toFixed(1)}
                       </td>
                       <td className="px-6 py-4 text-sm">
-                        <span
-                          className={`px-3 py-1 rounded-full text-sm font-medium ${
-                            score.grade >= 'C'
-                              ? 'bg-green-100 text-green-800'
-                              : 'bg-yellow-100 text-yellow-800'
-                          }`}
-                        >
-                          Grade {score.grade}
-                        </span>
+                        {score.grade ? (
+                          <span
+                            className={`px-3 py-1 rounded-full text-sm font-medium ${
+                              score.grade >= 'C'
+                                ? 'bg-green-100 text-green-800'
+                                : 'bg-yellow-100 text-yellow-800'
+                            }`}
+                          >
+                            Grade {score.grade}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">—</span>
+                        )}
                       </td>
                       <td className="px-6 py-4 text-sm">
                         <div className="flex items-center gap-2">
@@ -234,7 +240,7 @@ export default function ScoresPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-sm text-gray-600">
-                        {new Date(score.created_at).toLocaleDateString()}
+                        {score.recorded_at ? new Date(score.recorded_at).toLocaleDateString() : '—'}
                       </td>
                       <td className="px-6 py-4 text-sm">
                         <button className="text-blue-600 hover:text-blue-800 font-medium">
@@ -263,10 +269,10 @@ export default function ScoresPage() {
                 key={score.id}
                 className="p-4 mb-3 bg-blue-50 border-l-4 border-blue-500 rounded"
               >
-                <p className="text-gray-900 font-medium">Assessment Feedback</p>
+                <p className="text-gray-900 font-medium">{score.assessment?.name ?? 'Assessment'}</p>
                 <p className="text-gray-700 text-sm mt-2">{score.feedback}</p>
                 <p className="text-xs text-gray-500 mt-2">
-                  {new Date(score.created_at).toLocaleDateString()}
+                  {score.recorded_at ? new Date(score.recorded_at).toLocaleDateString() : '—'}
                 </p>
               </div>
             ))}

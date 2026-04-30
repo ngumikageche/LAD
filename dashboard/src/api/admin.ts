@@ -23,125 +23,58 @@ export const adminDashboardAPI = {
 
 // Admin Analytics API
 export const adminAnalyticsAPI = {
-  async getSystemAnalytics() {
-    try {
-      const response = await apiClient.get('/admin/analytics');
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
+  async getDashboard() {
+    const response = await apiClient.get('/admin/analytics/dashboard');
+    return response.data;
+  },
+
+  async getCoursesAnalytics() {
+    const response = await apiClient.get('/admin/analytics/courses');
+    return response.data;
   },
 
   async getDepartmentsAnalytics() {
-    try {
-      const response = await apiClient.get('/admin/analytics/departments');
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
+    const response = await apiClient.get('/admin/analytics/departments');
+    return response.data;
   },
 
-  async getCourseAnalytics(courseId: string) {
-    try {
-      const response = await apiClient.get(`/admin/analytics/course/${courseId}`);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
+  async getInstitutionsAnalytics() {
+    const response = await apiClient.get('/admin/analytics/institutions');
+    return response.data;
   },
 
-  async getDepartmentAnalytics(departmentId: string) {
-    try {
-      const response = await apiClient.get(`/admin/analytics/department/${departmentId}`);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
+  async getComparisons() {
+    const response = await apiClient.get('/admin/analytics/comparisons');
+    return response.data;
   },
 
-  async getStudentPerformanceAnalytics() {
-    try {
-      const response = await apiClient.get('/admin/analytics/student-performance');
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
-  },
-
-  async generateReport(type: string, filters?: any) {
-    try {
-      const response = await apiClient.post('/admin/analytics/report', { type, filters });
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
+  async getSystemWideReport() {
+    const response = await apiClient.get('/admin/analytics/system-wide-report');
+    return response.data;
   },
 };
 
 // Admin Scores API
 export const adminScoresAPI = {
-  async getScores(filters?: any) {
-    try {
-      const url = new URL(apiClient.defaults.baseURL + '/admin/scores');
-      if (filters) {
-        Object.entries(filters).forEach(([key, value]) => {
-          url.searchParams.append(key, String(value));
-        });
-      }
-      const response = await apiClient.get('/admin/scores');
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
+  async getScores(filters?: { student_id?: string; subject_id?: string; term?: string; page?: number; per_page?: number }) {
+    const params = new URLSearchParams();
+    if (filters?.student_id) params.append('student_id', filters.student_id);
+    if (filters?.subject_id) params.append('subject_id', filters.subject_id);
+    if (filters?.term) params.append('term', filters.term);
+    if (filters?.page) params.append('page', String(filters.page));
+    if (filters?.per_page) params.append('per_page', String(filters.per_page));
+    const response = await apiClient.get(`/api/v1/admin/scores${params.toString() ? '?' + params.toString() : ''}`);
+    return response.data;
   },
 
-  async addScore(scoreData: any) {
-    try {
-      const response = await apiClient.post('/admin/scores', scoreData);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
-  },
-
-  async updateScore(scoreId: string, updateData: any) {
-    try {
-      const response = await apiClient.put(`/admin/scores/${scoreId}`, updateData);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
+  async updateScore(scoreId: string, updateData: { marks_obtained?: number; grade?: string; feedback?: string }) {
+    const response = await apiClient.put(`/api/v1/admin/scores/${scoreId}`, updateData);
+    return response.data;
   },
 
   async deleteScore(scoreId: string) {
-    try {
-      const response = await apiClient.delete(`/admin/scores/${scoreId}`);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
-  },
-
-  async validateScores(scores: any[]) {
-    try {
-      const response = await apiClient.post('/admin/scores/validate', { scores });
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
-  },
-
-  async uploadScoresCSV(file: File) {
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const response = await apiClient.post('/admin/scores/bulk-upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
+    const response = await apiClient.delete(`/api/v1/admin/scores/${scoreId}`);
+    return response.data;
   },
 };
 
@@ -196,57 +129,28 @@ export const adminAPI = {
 // Admin Notifications API
 export const adminNotificationsAPI = {
   async getNotifications() {
-    try {
-      const response = await apiClient.get('/admin/notifications');
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
+    const response = await apiClient.get('/notifications');
+    return response.data;
   },
 
-  async createNotification(data: any) {
-    try {
-      const response = await apiClient.post('/admin/notifications', data);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
+  async createNotification(data: { title: string; message: string; user_id: string }) {
+    const response = await apiClient.post('/notifications', data);
+    return response.data;
   },
 
-  async updateNotification(id: string, data: any) {
-    try {
-      const response = await apiClient.put(`/admin/notifications/${id}`, data);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
+  async updateNotification(id: string, data: { title?: string; message?: string; is_read?: boolean }) {
+    const response = await apiClient.put(`/notifications/${id}`, data);
+    return response.data;
   },
 
   async deleteNotification(id: string) {
-    try {
-      const response = await apiClient.delete(`/admin/notifications/${id}`);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
+    const response = await apiClient.delete(`/notifications/${id}`);
+    return response.data;
   },
 
   async sendNotification(id: string) {
-    try {
-      const response = await apiClient.post(`/admin/notifications/${id}/send`);
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
-  },
-
-  async scheduleNotification(id: string, sendAt: string) {
-    try {
-      const response = await apiClient.post(`/admin/notifications/${id}/schedule`, { send_at: sendAt });
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
+    const response = await apiClient.put(`/notifications/${id}`, { is_read: false });
+    return response.data;
   },
 };
 

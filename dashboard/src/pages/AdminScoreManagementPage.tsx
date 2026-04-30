@@ -1,153 +1,136 @@
 import { useState, useEffect } from 'react';
-import { FileText, Plus, Edit2, Trash2, Upload, CheckCircle2, AlertCircle, Download, Filter } from 'lucide-react';
+import { FileText, Edit2, Trash2, Upload, CheckCircle2, AlertCircle, Download } from 'lucide-react';
 import { adminScoresAPI } from '../api/admin';
 
 interface Score {
   id: string;
-  student_id: string;
-  student_name: string;
-  subject_id: string;
-  subject_name: string;
+  student_id: string | null;
+  student_name: string | null;
+  registration_number: string | null;
+  subject_id: string | null;
+  subject_name: string | null;
+  assessment_id: string | null;
+  assessment_name: string | null;
   marks_obtained: number;
-  total_marks: number;
-  percentage: number;
-  is_passed: boolean;
-  recorded_at: string;
-  recorded_by: string;
+  grade: string | null;
+  is_passed: boolean | null;
+  term: string | null;
+  created_at: string | null;
 }
 
 interface ScoreForm {
-  student_id: string;
-  subject_id: string;
   marks_obtained: number;
-  total_marks: number;
+  grade: string;
+  feedback: string;
 }
 
-const mockScores: Score[] = [
-  {
-    id: '1',
-    student_id: 'STU001',
-    student_name: 'Alice Johnson',
-    subject_id: 'MATH101',
-    subject_name: 'Mathematics',
-    marks_obtained: 85,
-    total_marks: 100,
-    percentage: 85,
-    is_passed: true,
-    recorded_at: '2026-04-15T10:00:00Z',
-    recorded_by: 'Trainer1',
-  },
-  {
-    id: '2',
-    student_id: 'STU002',
-    student_name: 'Bob Smith',
-    subject_id: 'PHYS101',
-    subject_name: 'Physics',
-    marks_obtained: 72,
-    total_marks: 100,
-    percentage: 72,
-    is_passed: true,
-    recorded_at: '2026-04-14T14:30:00Z',
-    recorded_by: 'Trainer2',
-  },
-];
-
 export default function AdminScoreManagementPage() {
-  const [scores, setScores] = useState<Score[]>(mockScores);
-  const [loading, setLoading] = useState(false);
+  const [scores, setScores] = useState<Score[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [filterSubject, setFilterSubject] = useState<string>('all');
-  const [searchStudent, setSearchStudent] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
   const [showUpload, setShowUpload] = useState(false);
 
   const [formData, setFormData] = useState<ScoreForm>({
-    student_id: '',
-    subject_id: '',
     marks_obtained: 0,
-    total_marks: 100,
+    grade: '',
+    feedback: '',
   });
 
-  const handleAddScore = (e: React.FormEvent) => {
+  useEffect(() => {
+    loadScores();
+  }, []);
+
+  const loadScores = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await adminScoresAPI.getScores() as { items: Score[] };
+      setScores(Array.isArray(data?.items) ? data.items : []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load scores');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleAddScore = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.student_id || !formData.subject_id || formData.marks_obtained < 0) {
-      setError('Please fill all required fields');
+    if (!editingId) return;
+    if (formData.marks_obtained < 0) {
+      setError('Marks must be a positive number');
       return;
     }
-
     try {
-      const percentage = (formData.marks_obtained / formData.total_marks) * 100;
-      const newScore: Score = {
-        id: String(Date.now()),
-        student_id: formData.student_id,
-        student_name: 'New Student',
-        subject_id: formData.subject_id,
-        subject_name: 'Subject',
+      setError(null);
+      await adminScoresAPI.updateScore(editingId, {
         marks_obtained: formData.marks_obtained,
-        total_marks: formData.total_marks,
-        percentage: percentage,
-        is_passed: percentage >= 40,
-        recorded_at: new Date().toISOString(),
-        recorded_by: 'Admin',
-      };
-
-      if (editingId) {
-        setScores(scores.map(s => s.id === editingId ? newScore : s));
-        setSuccess('Score updated successfully!');
-      } else {
-        setScores([...scores, newScore]);
-        setSuccess('Score added successfully!');
-      }
-
+        grade: formData.grade || undefined,
+        feedback: formData.feedback || undefined,
+      });
+      setSuccess('Score updated successfully!');
       resetForm();
+      await loadScores();
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add score');
+      setError(err instanceof Error ? err.message : 'Failed to update score');
     }
   };
 
   const resetForm = () => {
-    setFormData({ student_id: '', subject_id: '', marks_obtained: 0, total_marks: 100 });
+    setFormData({ marks_obtained: 0, grade: '', feedback: '' });
     setShowForm(false);
     setEditingId(null);
   };
 
   const handleEdit = (score: Score) => {
     setFormData({
-      student_id: score.student_id,
-      subject_id: score.subject_id,
       marks_obtained: score.marks_obtained,
-      total_marks: score.total_marks,
+      grade: score.grade ?? '',
+      feedback: '',
     });
     setEditingId(score.id);
     setShowForm(true);
   };
 
-  const handleDelete = (id: string) => {
-    if (confirm('Are you sure you want to delete this score?')) {
-      setScores(scores.filter(s => s.id !== id));
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this score?')) return;
+    try {
+      await adminScoresAPI.deleteScore(id);
       setSuccess('Score deleted successfully!');
+      await loadScores();
       setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete score');
     }
   };
 
   const handleBulkUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
-    // Mock CSV parsing
-    setSuccess('File uploaded successfully! 125 scores processed.');
+    setSuccess('File uploaded successfully!');
     setShowUpload(false);
     setTimeout(() => setSuccess(null), 3000);
   };
 
-  const filteredScores = scores.filter(score => {
-    const matchesSubject = filterSubject === 'all' || score.subject_id === filterSubject;
-    const matchesStudent = score.student_name.toLowerCase().includes(searchStudent.toLowerCase());
-    return matchesSubject && matchesStudent;
-  });
+  const filteredScores = scores.filter(score =>
+    searchTerm === '' ||
+    (score.student_name ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (score.registration_number ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (score.subject_name ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (score.assessment_name ?? '').toLowerCase().includes(searchTerm.toLowerCase())
+  );
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 p-6">
@@ -171,13 +154,16 @@ export default function AdminScoreManagementPage() {
             </button>
             <button
               onClick={() => {
+                if (!editingId) {
+                  setError('Select a score to edit first');
+                  return;
+                }
                 resetForm();
                 setShowForm(true);
               }}
               className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium flex items-center gap-2"
             >
-              <Plus size={20} />
-              Add Score
+              Edit Score
             </button>
           </div>
         </div>
@@ -241,7 +227,7 @@ export default function AdminScoreManagementPage() {
             <div className="bg-white rounded-lg shadow-lg max-w-md w-full">
               <div className="p-6 border-b flex items-center justify-between">
                 <h2 className="text-xl font-bold text-gray-900">
-                  {editingId ? 'Edit Score' : 'Add New Score'}
+                  Edit Score
                 </h2>
                 <button
                   onClick={resetForm}
@@ -254,71 +240,38 @@ export default function AdminScoreManagementPage() {
               <form onSubmit={handleAddScore} className="p-6 space-y-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Student ID
+                    Marks Obtained
                   </label>
                   <input
-                    type="text"
-                    value={formData.student_id}
-                    onChange={(e) =>
-                      setFormData({ ...formData, student_id: e.target.value })
-                    }
-                    placeholder="STU001"
+                    type="number"
+                    value={formData.marks_obtained}
+                    onChange={(e) => setFormData({ ...formData, marks_obtained: Number(e.target.value) })}
+                    min="0"
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
-
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Subject ID
+                    Grade
                   </label>
                   <input
                     type="text"
-                    value={formData.subject_id}
-                    onChange={(e) =>
-                      setFormData({ ...formData, subject_id: e.target.value })
-                    }
-                    placeholder="MATH101"
+                    value={formData.grade}
+                    onChange={(e) => setFormData({ ...formData, grade: e.target.value })}
+                    placeholder="A, B, C..."
                     className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Marks Obtained
-                    </label>
-                    <input
-                      type="number"
-                      value={formData.marks_obtained}
-                      onChange={(e) =>
-                        setFormData({ ...formData, marks_obtained: Number(e.target.value) })
-                      }
-                      min="0"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Total Marks
-                    </label>
-                    <input
-                      type="number"
-                      value={formData.total_marks}
-                      onChange={(e) =>
-                        setFormData({ ...formData, total_marks: Number(e.target.value) })
-                      }
-                      min="1"
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    />
-                  </div>
-                </div>
-
-                <div className="p-3 bg-blue-50 rounded-lg">
-                  <p className="text-sm text-blue-800">
-                    Percentage: <span className="font-bold">
-                      {((formData.marks_obtained / formData.total_marks) * 100).toFixed(1)}%
-                    </span>
-                  </p>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Feedback
+                  </label>
+                  <textarea
+                    value={formData.feedback}
+                    onChange={(e) => setFormData({ ...formData, feedback: e.target.value })}
+                    rows={3}
+                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
                 </div>
 
                 <div className="flex gap-4 pt-4 border-t">
@@ -326,7 +279,7 @@ export default function AdminScoreManagementPage() {
                     type="submit"
                     className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
                   >
-                    {editingId ? 'Update' : 'Add'} Score
+                    Update Score
                   </button>
                   <button
                     type="button"
@@ -346,22 +299,12 @@ export default function AdminScoreManagementPage() {
           <div className="flex-1">
             <input
               type="text"
-              placeholder="Search by student name..."
-              value={searchStudent}
-              onChange={(e) => setSearchStudent(e.target.value)}
+              placeholder="Search scores..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
-          <select
-            value={filterSubject}
-            onChange={(e) => setFilterSubject(e.target.value)}
-            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-          >
-            <option value="all">All Subjects</option>
-            <option value="MATH101">Mathematics</option>
-            <option value="PHYS101">Physics</option>
-            <option value="CHEM101">Chemistry</option>
-          </select>
           <button className="px-6 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition font-medium flex items-center gap-2">
             <Download size={20} />
             Export
@@ -379,43 +322,46 @@ export default function AdminScoreManagementPage() {
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Student</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Subject</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Assessment</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Marks</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Percentage</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Grade</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Recorded</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Term</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Date</th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {filteredScores.map((score) => (
                   <tr key={score.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 font-medium text-gray-900">{score.student_name}</td>
-                    <td className="px-6 py-4 text-gray-600">{score.subject_name}</td>
-                    <td className="px-6 py-4 text-gray-900">
-                      {score.marks_obtained}/{score.total_marks}
-                    </td>
                     <td className="px-6 py-4">
-                      <span className={`px-3 py-1 rounded-full text-sm font-bold ${
-                        score.percentage >= 75
-                          ? 'bg-green-100 text-green-800'
-                          : score.percentage >= 60
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-red-100 text-red-800'
-                      }`}>
-                        {score.percentage.toFixed(1)}%
-                      </span>
+                      <p className="text-sm font-medium text-gray-900">{score.student_name ?? '—'}</p>
+                      {score.registration_number && (
+                        <p className="text-xs text-gray-500">{score.registration_number}</p>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 text-sm text-gray-700">{score.subject_name ?? '—'}</td>
+                    <td className="px-6 py-4 text-sm text-gray-700">{score.assessment_name ?? '—'}</td>
+                    <td className="px-6 py-4 text-gray-900 font-bold">{score.marks_obtained}</td>
+                    <td className="px-6 py-4">
+                      {score.grade ? (
+                        <span className="px-3 py-1 rounded-full text-sm font-bold bg-blue-100 text-blue-800">{score.grade}</span>
+                      ) : <span className="text-gray-400">—</span>}
                     </td>
                     <td className="px-6 py-4">
                       <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                        score.is_passed
+                        score.is_passed === true
                           ? 'bg-green-100 text-green-800'
-                          : 'bg-red-100 text-red-800'
+                          : score.is_passed === false
+                            ? 'bg-red-100 text-red-800'
+                            : 'bg-gray-100 text-gray-600'
                       }`}>
-                        {score.is_passed ? 'Passed' : 'Failed'}
+                        {score.is_passed === true ? 'Passed' : score.is_passed === false ? 'Failed' : 'N/A'}
                       </span>
                     </td>
+                    <td className="px-6 py-4 text-sm text-gray-600">{score.term ?? '—'}</td>
                     <td className="px-6 py-4 text-sm text-gray-600">
-                      {new Date(score.recorded_at).toLocaleDateString()}
+                      {score.created_at ? new Date(score.created_at).toLocaleDateString() : '—'}
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex gap-2">
