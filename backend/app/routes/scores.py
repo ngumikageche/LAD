@@ -30,9 +30,19 @@ def _parse_uuid(value: str | None, field: str) -> uuid.UUID:
 
 
 def _score_payload(score: Score) -> dict:
+    # Get student either directly or through enrollment
+    student = score.student or (score.enrollment.student if score.enrollment else None)
+    student_name = None
+    registration_number = None
+    if student and student.user:
+        student_name = student.user.name
+        registration_number = student.registration_number
+    
     return {
         "id": str(score.id),
         "student_id": str(score.student_id) if score.student_id else (str(score.enrollment.student_id) if score.enrollment else None),
+        "student_name": student_name,
+        "registration_number": registration_number,
         "enrollment_id": str(score.enrollment_id),
         "assessment_id": str(score.assessment_id),
         "marks_obtained": score.marks_obtained,
@@ -204,9 +214,11 @@ def list_scores():
     if error:
         return error, status
 
+    from sqlalchemy.orm import selectinload
     query = db.session.query(Score).order_by(Score.created_at.desc())
     query = query.options(
-        joinedload(Score.enrollment),
+        joinedload(Score.enrollment).selectinload(Enrollment.student).selectinload(Student.user),
+        joinedload(Score.student).selectinload(Student.user),
         joinedload(Score.assessment),
     )
 
