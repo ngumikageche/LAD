@@ -16,6 +16,7 @@ from ..models.subject import Subject
 from ..models.trainer import Trainer
 from ..models.trainer_subject import TrainerSubject
 from ..models.user import User
+from .learning_analytics import build_role_dashboard
 
 PASS_MARK = 50.0
 
@@ -285,6 +286,10 @@ def trainer_dashboard(trainer: Trainer) -> dict:
     )
 
     recent_scores = []
+    avg_score = 0.0
+    pass_rate = 0.0
+    pass_count = 0
+    fail_count = 0
     if subject_ids:
         recent_scores = (
             db.session.query(Score)
@@ -296,13 +301,70 @@ def trainer_dashboard(trainer: Trainer) -> dict:
             .limit(10)
             .all()
         )
+        all_scores = (
+            db.session.query(Score)
+            .filter(
+                Score.subject_id.in_(subject_ids),
+                Score.trainer_id == trainer.id,
+                Score.deleted_at.is_(None),
+            )
+            .all()
+        )
+        if all_scores:
+            marks = [s.marks_obtained for s in all_scores]
+            avg_score = round(sum(marks) / len(marks), 2)
+            pass_count = sum(1 for s in all_scores if s.is_passed is True or s.marks_obtained >= PASS_MARK)
+            fail_count = len(all_scores) - pass_count
+            pass_rate = round(pass_count / len(all_scores) * 100, 2)
+
+    advanced = build_role_dashboard("trainer", trainer_id=str(trainer.id))
 
     return {
         "subjects_assigned": subject_count,
         "subjects": [subject_payload(subject) for subject in subjects],
         "total_students": total_students,
+        "average_score": avg_score,
+        "pass_rate": pass_rate,
+        "pass_count": pass_count,
+        "fail_count": fail_count,
         "recent_scores": [score_payload(score) for score in recent_scores],
+        "summary_panel": advanced["summary_panel"],
+        "analytics": advanced,
+        "last_updated": advanced["last_updated"],
     }
+
+
+def calculate_student_trend(student_id: uuid.UUID, subject_id: uuid.UUID, min_scores: int = 3) -> str | None:
+    """
+    Calculate trend for a student in a subject.
+    Returns: 'improving', 'declining', 'stable', or None if insufficient data
+    """
+    scores = (
+        db.session.query(Score)
+        .filter(Score.student_id == student_id, Score.subject_id == subject_id)
+        .order_by(Score.created_at.asc())
+        .all()
+    )
+    
+    if len(scores) < min_scores:
+        return None
+    
+    mid = len(scores) // 2
+    first_half = scores[:mid]
+    second_half = scores[mid:]
+    
+    avg_first = sum(s.marks_obtained for s in first_half) / len(first_half) if first_half else 0
+    avg_second = sum(s.marks_obtained for s in second_half) / len(second_half) if second_half else 0
+    
+    diff = avg_second - avg_first
+    change_percent = abs(diff / avg_first * 100) if avg_first > 0 else 0
+    
+    if change_percent < 5:
+        return "stable"
+    elif diff > 0:
+        return "improving"
+    else:
+        return "declining"
 
 
 def trainer_subject_report(trainer: Trainer, subject_id: uuid.UUID, term: str | None = None) -> dict:

@@ -4,6 +4,7 @@ import uuid
 from flask import Blueprint, request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import and_, func
+from sqlalchemy.orm import joinedload
 from datetime import datetime
 from ..extensions import db
 from ..models.score import Score
@@ -31,6 +32,7 @@ def _parse_uuid(value: str | None, field: str) -> uuid.UUID:
 def _score_payload(score: Score) -> dict:
     return {
         "id": str(score.id),
+        "student_id": str(score.student_id) if score.student_id else (str(score.enrollment.student_id) if score.enrollment else None),
         "enrollment_id": str(score.enrollment_id),
         "assessment_id": str(score.assessment_id),
         "marks_obtained": score.marks_obtained,
@@ -203,6 +205,10 @@ def list_scores():
         return error, status
 
     query = db.session.query(Score).order_by(Score.created_at.desc())
+    query = query.options(
+        joinedload(Score.enrollment),
+        joinedload(Score.assessment),
+    )
 
     # Filter by assessment
     assessment_id = request.args.get("assessment_id")

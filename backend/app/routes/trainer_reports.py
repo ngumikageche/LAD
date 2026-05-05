@@ -393,9 +393,13 @@ def trainer_attendance(trainer_id: str):
     term_id_str = request.args.get("term_id")
     term = _resolve_term(term_id_str)
 
+    from sqlalchemy.orm import joinedload
     q = db.session.query(StaffAttendance).filter(
         StaffAttendance.trainer_id == t_uuid,
         StaffAttendance.deleted_at.is_(None),
+    ).options(
+        joinedload(StaffAttendance.trainer),
+        joinedload(StaffAttendance.term)
     )
     if term:
         q = q.filter(StaffAttendance.term_id == term.id)
@@ -429,10 +433,7 @@ def trainer_attendance(trainer_id: str):
         for day, count in weekday_absences.items() if count >= 3
     ]
 
-    # Trainer name — don't expose student data
-    target_trainer = db.session.get(
-        __import__("app.models.trainer", fromlist=["Trainer"]).Trainer, t_uuid
-    ) if False else None
+    # Trainer name — fetch the trainer record
     from ..models.trainer import Trainer as TrainerModel
     target_trainer = db.session.get(TrainerModel, t_uuid)
     trainer_name = target_trainer.user.name if target_trainer and target_trainer.user else "Unknown"

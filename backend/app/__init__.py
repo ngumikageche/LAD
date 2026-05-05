@@ -9,7 +9,10 @@ def create_app() -> Flask:
     app = Flask(__name__)
     app.config.from_object(Config)
 
-    CORS(app, resources={r"/*": {"origins": app.config.get("CORS_ORIGINS")}})
+    CORS(app, resources={r"/*": {"origins": app.config.get("CORS_ORIGINS")}}, 
+         supports_credentials=True,
+         allow_headers=["Content-Type", "Authorization"],
+         methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
 
     db.init_app(app)
     migrate.init_app(app, db)
@@ -61,6 +64,8 @@ def create_app() -> Flask:
         reports_bp,
         trainer_reports_bp,
         admin_reports_v2_bp,
+        advanced_analytics_bp,
+        advanced_reports_bp,
     )
 
     # Register blueprints
@@ -104,6 +109,8 @@ def create_app() -> Flask:
     app.register_blueprint(reports_bp)
     app.register_blueprint(trainer_reports_bp)
     app.register_blueprint(admin_reports_v2_bp)
+    app.register_blueprint(advanced_analytics_bp)
+    app.register_blueprint(advanced_reports_bp)
 
     @app.get("/")
     def health_check():

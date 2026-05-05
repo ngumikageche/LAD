@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from flask import Blueprint, request
+from flask import Blueprint, request, send_file
 from sqlalchemy.exc import IntegrityError
 
 from ..extensions import db
@@ -249,16 +249,40 @@ def trainer_student_profile(student_id: str):
         .order_by(Score.created_at.desc())
         .all()
     )
+
+    # Group scores by subject and calculate averages
+    subject_averages = {}
+    subjects_data = []
+    by_subject = {}
+    
+    for score in related_scores:
+        if score.subject_id not in by_subject:
+            by_subject[score.subject_id] = []
+        by_subject[score.subject_id].append(score)
+    
+    # Get subject details and build response
+    for subject_id, scores in by_subject.items():
+        subject = db.session.get(Subject, subject_id)
+        if subject:
+            avg = round(sum(s.marks_obtained for s in scores) / len(scores), 2) if scores else 0.0
+            subject_averages[str(subject_id)] = avg
+            subjects_data.append({
+                "id": str(subject.id),
+                "name": subject.name,
+                "average": avg,
+                "assessments_count": len(scores),
+            })
+
     return {
         "id": str(student.id),
         "name": student.user.name if student.user else None,
         "email": student.user.email if student.user else None,
         "student_id": student.registration_number,
         "enrollment_status": "active",
-        "subjects": [],
+        "subjects": subjects_data,
         "overall_avg": round(sum(item.marks_obtained for item in related_scores) / len(related_scores), 2) if related_scores else 0.0,
         "assessments_taken": len(related_scores),
-        "subject_averages": {},
+        "subject_averages": subject_averages,
     }, 200
 
 
@@ -282,6 +306,173 @@ def trainer_report_history():
             }
         )
     return reports, 200
+
+
+@bp.get("/reports/subject/<subject_id>")
+@trainer_required()
+def trainer_report_subject(subject_id: str):
+    trainer = _trainer_for_user(get_current_user()[0].id)
+    if not trainer:
+        return {"error": "Trainer profile not found"}, 404
+    
+    try:
+        sub_uuid = _parse_uuid(subject_id, "subject_id")
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+    
+    # Verify trainer owns this subject
+    ensure_subject_access(trainer, sub_uuid)
+    
+    # Get optional template parameter
+    template = request.args.get('template', 'standard')  # standard, class-summary, performance-trends, at-risk
+    
+    report = trainer_subject_report(trainer, sub_uuid)
+    
+    # Format response based on template
+    base_response = {
+        "id": report["subject"]["id"],
+        "subject_name": report["subject"]["name"],
+        "total_students": report["total_students"],
+        "avg_score": report["average_score"],
+        "pass_rate": report["pass_rate"],
+        "generated_date": report["subject"]["created_at"],
+    }
+    
+    if template == 'class-summary':
+        # Include distribution and pass/fail breakdown
+        pass_count = report.get("pass_count", 0)
+        fail_count = report.get("fail_count", 0)
+        return {
+            **base_response,
+            "template": "class-summary",
+            "summary": {
+                "total_assessments": report["scores_count"],
+                "pass_count": pass_count,
+                "fail_count": fail_count,
+                "average_score": report["average_score"],
+            }
+        }, 200
+    elif template == 'performance-trends':
+        # Include trend analysis
+        return {
+            **base_response,
+            "template": "performance-trends",
+            "scores_count": report["scores_count"],
+            "data_points": report["scores_count"],
+        }, 200
+    elif template == 'at-risk':
+        # Include at-risk students
+        at_risk = at_risk_students(trainer, sub_uuid)
+        return {
+            **base_response,
+            "template": "at-risk",
+            "at_risk_count": len(at_risk),
+            "at_risk_students": at_risk[:10],  # Top 10 at-risk students
+        }, 200
+    else:
+        # Standard report
+        return base_response, 200
+
+
+@bp.get("/reports/export")
+@trainer_required()
+def trainer_report_export():
+    import csv
+    from io import StringIO, BytesIO
+    
+    trainer = _trainer_for_user(get_current_user()[0].id)
+    if not trainer:
+        return {"error": "Trainer profile not found"}, 404
+    
+    subject_id = request.args.get("subject_id")
+    format_type = request.args.get("format", "csv").lower()
+    
+    if not subject_id:
+        return {"error": "subject_id is required"}, 400
+    
+    if format_type not in ["csv", "pdf"]:
+        return {"error": "format must be 'csv' or 'pdf'"}, 400
+    
+    try:
+        sub_uuid = _parse_uuid(subject_id, "subject_id")
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+    
+    # Verify trainer owns this subject
+    ensure_subject_access(trainer, sub_uuid)
+    
+    report = trainer_subject_report(trainer, sub_uuid)
+    
+    if format_type == "csv":
+        # Create CSV export
+        output = StringIO()
+        writer = csv.writer(output)
+        
+        # Headers
+        writer.writerow(["Subject Report Export"])
+        writer.writerow([f"Subject: {report['subject']['name']}"])
+        writer.writerow([f"Total Students: {report['total_students']}"])
+        writer.writerow([f"Average Score: {report['average_score']:.1f}%"])
+        writer.writerow([f"Pass Rate: {report['pass_rate']:.1f}%"])
+        writer.writerow([])
+        
+        # Student data header
+        writer.writerow(["Student Name", "Reg Number", "Average Score", "Pass Rate", "Grade"])
+        
+        # Student data
+        for student in report.get("students", []):
+            writer.writerow([
+                student.get("name", ""),
+                student.get("registration_number", ""),
+                student.get("average_score", ""),
+                student.get("pass_rate", ""),
+                student.get("grade", ""),
+            ])
+        
+        # Convert to bytes
+        output.seek(0)
+        bytes_output = BytesIO(output.getvalue().encode("utf-8"))
+        bytes_output.seek(0)
+        
+        return send_file(
+            bytes_output,
+            mimetype="text/csv",
+            as_attachment=True,
+            download_name=f"report_{report['subject']['name'].replace(' ', '_')}.csv"
+        )
+    
+    elif format_type == "pdf":
+        # For PDF, we'll return CSV for now (PDF generation requires additional dependencies)
+        # In production, you'd use a library like reportlab or weasyprint
+        output = StringIO()
+        writer = csv.writer(output)
+        
+        writer.writerow(["Subject Report Export"])
+        writer.writerow([f"Subject: {report['subject']['name']}"])
+        writer.writerow([f"Total Students: {report['total_students']}"])
+        writer.writerow([f"Average Score: {report['average_score']:.1f}%"])
+        writer.writerow([f"Pass Rate: {report['pass_rate']:.1f}%"])
+        writer.writerow([])
+        writer.writerow(["Student Name", "Reg Number", "Average Score", "Pass Rate", "Grade"])
+        
+        for student in report.get("students", []):
+            writer.writerow([
+                student.get("name", ""),
+                student.get("registration_number", ""),
+                student.get("average_score", ""),
+                student.get("pass_rate", ""),
+                student.get("grade", ""),
+            ])
+        
+        bytes_output = BytesIO(output.getvalue().encode("utf-8"))
+        bytes_output.seek(0)
+        
+        return send_file(
+            bytes_output,
+            mimetype="application/pdf",
+            as_attachment=True,
+            download_name=f"report_{report['subject']['name'].replace(' ', '_')}.pdf"
+        )
 
 
 @bp.post("")

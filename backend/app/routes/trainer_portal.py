@@ -220,6 +220,15 @@ def get_at_risk_students():
     return at_risk_students(g.current_trainer, subject_uuid, term), 200
 
 
+@bp.post("/scores")
+@trainer_required("scores.create")
+def create_score():
+    payload = request.get_json(silent=True) or {}
+    from ..services.trainer_portal import create_score as svc_create_score
+    score = svc_create_score(g.current_trainer, payload)
+    return score_payload(score), 201
+
+
 @bp.get("/reports/<subject_id>")
 @trainer_required("scores.read")
 def get_subject_report(subject_id: str):

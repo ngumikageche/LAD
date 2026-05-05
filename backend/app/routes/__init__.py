@@ -35,6 +35,8 @@ from .announcements_v1 import bp as announcements_v1_bp
 from .reports import bp as reports_bp
 from .trainer_reports import bp as trainer_reports_bp
 from .admin_reports_v2 import bp as admin_reports_v2_bp
+from .advanced_analytics import bp as advanced_analytics_bp
+from .advanced_reports import bp as advanced_reports_bp
 
 __all__ = [
 	"auth_bp",
@@ -73,4 +75,6 @@ __all__ = [
 	"reports_bp",
 	"trainer_reports_bp",
 	"admin_reports_v2_bp",
+	"advanced_analytics_bp",
+	"advanced_reports_bp",
 ]

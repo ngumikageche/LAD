@@ -21,3 +21,4 @@ class Term(BaseModel):
     assessments = relationship("Assessment", back_populates="term")
     lesson_plans = relationship("LessonPlan", back_populates="term")
     staff_attendance = relationship("StaffAttendance", back_populates="term")
+    enrollments = relationship("Enrollment", back_populates="term")

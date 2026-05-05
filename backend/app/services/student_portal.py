@@ -16,6 +16,7 @@ from ..models.student_subject import StudentSubject
 from ..models.subject import Subject
 from ..models.trainer_subject import TrainerSubject
 from ..models.user import User
+from .learning_analytics import build_role_dashboard
 
 
 def pagination_meta(page: int, per_page: int, total: int) -> dict:
@@ -234,13 +235,21 @@ def notification_payload(notification: Notification) -> dict:
 
 
 def student_notifications(student: Student, page: int = 1, per_page: int = 20) -> dict:
-    query = db.session.query(Notification).filter(Notification.user_id == student.user_id).order_by(Notification.created_at.desc())
+    query = db.session.query(Notification).filter(
+        Notification.user_id == student.user_id,
+        Notification.deleted_at.is_(None),
+    ).order_by(Notification.created_at.desc())
     total = query.count()
     items = query.offset((page - 1) * per_page).limit(per_page).all()
+    unread_count = db.session.query(func.count(Notification.id)).filter(
+        Notification.user_id == student.user_id,
+        Notification.is_read == False,
+        Notification.deleted_at.is_(None),
+    ).scalar() or 0
     return {
         "items": [notification_payload(item) for item in items],
         "pagination": pagination_meta(page, per_page, total),
-        "unread_count": query.filter(Notification.is_read == False).count(),
+        "unread_count": unread_count,
     }
 
 
@@ -287,14 +296,20 @@ def student_dashboard(student: Student) -> dict:
     scores = student_scores(student, page=1, per_page=5)
     notifications = student_notifications(student, page=1, per_page=5)
     performance = performance_payload(student)
+    advanced = build_role_dashboard("student", student_id=str(student.id))
     return {
         "average_score": performance["average_score"],
         "enrolled_subjects_count": len(subjects),
         "recent_scores": scores["items"],
+        "subject_performance": performance["subject_performance"],
+        "trend": performance["trend"],
         "notifications_summary": {
             "unread_count": notifications["unread_count"],
             "recent": notifications["items"][:5],
         },
+        "summary_panel": advanced["summary_panel"],
+        "analytics": advanced,
+        "last_updated": advanced["last_updated"],
     }
 
 

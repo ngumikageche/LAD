@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from flask import Blueprint, request
 from sqlalchemy import and_, func
+from sqlalchemy.orm import joinedload
 from ..extensions import db
 from ..models.score import Score
 from ..models.enrollment import Enrollment
@@ -28,6 +29,11 @@ def _payload(score: Score) -> dict:
     student = score.student
     subject = score.subject
     assessment = score.assessment
+    
+    # Get course and module info from subject
+    course_name = subject.module.course.name if subject and subject.module and subject.module.course else None
+    module_name = subject.module.name if subject and subject.module else None
+    
     return {
         "id": str(score.id),
         "student_id": str(score.student_id) if score.student_id else None,
@@ -35,6 +41,8 @@ def _payload(score: Score) -> dict:
         "registration_number": student.registration_number if student else None,
         "subject_id": str(score.subject_id) if score.subject_id else None,
         "subject_name": subject.name if subject else None,
+        "module_name": module_name,
+        "course_name": course_name,
         "assessment_id": str(score.assessment_id) if score.assessment_id else None,
         "assessment_name": assessment.name if assessment else None,
         "marks_obtained": score.marks_obtained,
@@ -75,6 +83,14 @@ def list_scores():
 
     if term:
         q = q.filter(Score.term == term)
+
+    # Ensure scores have student_id by joining enrollment if needed
+    q = q.options(
+        joinedload(Score.student),
+        joinedload(Score.subject),
+        joinedload(Score.enrollment),
+        joinedload(Score.assessment),
+    )
 
     total = q.count()
     items = q.order_by(Score.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
