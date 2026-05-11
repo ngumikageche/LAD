@@ -83,28 +83,28 @@ export default function TrainerDashboard() {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">
+          <h1 className="text-3xl font-bold text-slate-100">
             👨‍🏫 Teaching Dashboard
           </h1>
-          <p className="text-gray-600 mt-2">
+          <p className="text-slate-400 mt-2">
             Welcome back! Here's an overview of your teaching workload.
           </p>
         </div>
 
         {/* Error */}
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-lg text-red-300">
             {error}
           </div>
         )}
 
         {/* Key Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
-          <div className="bg-white rounded-lg shadow p-6">
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-600 text-sm">Assigned Subjects</p>
-                <p className="text-3xl font-bold text-gray-900 mt-2">
+                <p className="text-slate-400 text-sm">Assigned Subjects</p>
+                <p className="text-3xl font-bold text-slate-100 mt-2">
                   {stats?.assigned_subjects || 0}
                 </p>
               </div>
@@ -112,11 +112,11 @@ export default function TrainerDashboard() {
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow p-6">
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-600 text-sm">Total Students</p>
-                <p className="text-3xl font-bold text-gray-900 mt-2">
+                <p className="text-slate-400 text-sm">Total Students</p>
+                <p className="text-3xl font-bold text-slate-100 mt-2">
                   {stats?.total_students || 0}
                 </p>
               </div>
@@ -124,11 +124,11 @@ export default function TrainerDashboard() {
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow p-6">
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-600 text-sm">Recent Scores</p>
-                <p className="text-3xl font-bold text-gray-900 mt-2">
+                <p className="text-slate-400 text-sm">Recent Scores</p>
+                <p className="text-3xl font-bold text-slate-100 mt-2">
                   {stats?.recent_scores_count || 0}
                 </p>
               </div>
@@ -136,11 +136,11 @@ export default function TrainerDashboard() {
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow p-6">
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-600 text-sm">At-Risk Students</p>
-                <p className="text-3xl font-bold text-red-600 mt-2">
+                <p className="text-slate-400 text-sm">At-Risk Students</p>
+                <p className="text-3xl font-bold text-red-400 mt-2">
                   {stats?.at_risk_count || 0}
                 </p>
               </div>
@@ -148,11 +148,11 @@ export default function TrainerDashboard() {
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow p-6">
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-gray-600 text-sm">Class Avg Performance</p>
-                <p className="text-3xl font-bold text-indigo-600 mt-2">
+                <p className="text-slate-400 text-sm">Class Avg Performance</p>
+                <p className="text-3xl font-bold text-indigo-400 mt-2">
                   {stats?.avg_class_performance.toFixed(1)}%
                 </p>
               </div>
@@ -164,8 +164,8 @@ export default function TrainerDashboard() {
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Recent Subjects */}
-          <div className="lg:col-span-2 bg-white rounded-lg shadow p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+          <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
+            <h2 className="text-xl font-bold text-slate-100 mb-4 flex items-center gap-2">
               <BookOpen size={24} className="text-blue-500" />
               Your Subjects
             </h2>
@@ -173,21 +173,21 @@ export default function TrainerDashboard() {
               {recentSubjects.map((subject) => (
                 <div
                   key={subject.id}
-                  className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition"
+                  className="flex items-center justify-between p-4 bg-slate-800 rounded-lg hover:bg-slate-800 transition"
                 >
                   <div className="flex-1">
-                    <h3 className="font-semibold text-gray-900">
+                    <h3 className="font-semibold text-slate-100">
                       {subject.name}
                     </h3>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-slate-400">
                       {subject.students_count} students
                     </p>
                   </div>
                   <div className="text-right">
-                    <p className="font-bold text-gray-900">
+                    <p className="font-bold text-slate-100">
                       {subject.avg_score.toFixed(1)}%
                     </p>
-                    <p className="text-xs text-gray-600">Class Average</p>
+                    <p className="text-xs text-slate-400">Class Average</p>
                   </div>
                 </div>
               ))}
@@ -198,8 +198,8 @@ export default function TrainerDashboard() {
           </div>
 
           {/* Quick Actions */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">Quick Actions</h2>
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
+            <h2 className="text-xl font-bold text-slate-100 mb-4">Quick Actions</h2>
             <div className="space-y-3">
               <button className="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium text-sm">
                 ⬆️ Upload Scores
@@ -222,7 +222,7 @@ export default function TrainerDashboard() {
 
         {/* At-Risk Alerts */}
         {atRiskAlerts.length > 0 && (
-          <div className="mt-6 bg-red-50 border-l-4 border-red-500 rounded-lg p-6">
+          <div className="mt-6 bg-red-500/10 border-l-4 border-red-500 rounded-lg p-6">
             <h2 className="text-lg font-bold text-red-900 mb-4 flex items-center gap-2">
               <AlertCircle size={24} />
               ⚠️ Students Needing Attention
@@ -231,21 +231,21 @@ export default function TrainerDashboard() {
               {atRiskAlerts.map((alert, idx) => (
                 <div
                   key={idx}
-                  className="flex items-center justify-between p-3 bg-white rounded border border-red-200"
+                  className="flex items-center justify-between p-3 bg-slate-900 rounded border border-red-500/30"
                 >
                   <div>
-                    <p className="font-semibold text-gray-900">
+                    <p className="font-semibold text-slate-100">
                       {alert.student_name}
                     </p>
-                    <p className="text-sm text-gray-600">{alert.subject}</p>
+                    <p className="text-sm text-slate-400">{alert.subject}</p>
                   </div>
                   <span
                     className={`px-3 py-1 rounded-full text-xs font-bold uppercase ${
                       alert.severity === 'critical'
-                        ? 'bg-red-200 text-red-800'
+                        ? 'bg-red-500/20 text-red-300'
                         : alert.severity === 'high'
                           ? 'bg-orange-200 text-orange-800'
-                          : 'bg-yellow-200 text-yellow-800'
+                          : 'bg-amber-500/20 text-amber-300'
                     }`}
                   >
                     {alert.severity}
@@ -257,8 +257,8 @@ export default function TrainerDashboard() {
         )}
 
         {/* Recent Activity */}
-        <div className="mt-6 bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+        <div className="mt-6 bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
+          <h2 className="text-lg font-bold text-slate-100 mb-4 flex items-center gap-2">
             <Activity size={24} className="text-blue-500" />
             Recent Activity
           </h2>
@@ -266,24 +266,24 @@ export default function TrainerDashboard() {
             <div className="flex gap-4 pb-3 border-b">
               <div className="w-2 h-2 rounded-full bg-green-500 mt-2 flex-shrink-0"></div>
               <div>
-                <p className="font-medium text-gray-900">Scores uploaded for Math 301</p>
-                <p className="text-sm text-gray-600">2 hours ago</p>
+                <p className="font-medium text-slate-100">Scores uploaded for Math 301</p>
+                <p className="text-sm text-slate-400">2 hours ago</p>
               </div>
             </div>
             <div className="flex gap-4 pb-3 border-b">
               <div className="w-2 h-2 rounded-full bg-blue-500 mt-2 flex-shrink-0"></div>
               <div>
-                <p className="font-medium text-gray-900">Report generated for Physics II</p>
-                <p className="text-sm text-gray-600">5 hours ago</p>
+                <p className="font-medium text-slate-100">Report generated for Physics II</p>
+                <p className="text-sm text-slate-400">5 hours ago</p>
               </div>
             </div>
             <div className="flex gap-4">
               <div className="w-2 h-2 rounded-full bg-purple-500 mt-2 flex-shrink-0"></div>
               <div>
-                <p className="font-medium text-gray-900">
+                <p className="font-medium text-slate-100">
                   Feedback provided to 3 students
                 </p>
-                <p className="text-sm text-gray-600">Yesterday</p>
+                <p className="text-sm text-slate-400">Yesterday</p>
               </div>
             </div>
           </div>

@@ -1,101 +1,418 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { TrendingUp, TrendingDown, Minus, Search, RefreshCw, AlertCircle } from 'lucide-react';
+import { apiRequest } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
-import { Plus, X } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useTableControls } from '../../hooks/useTableControls';
+import { TableFooter, SortableTh } from '../ui/TableControls';
 
-import type { Assessment } from '../../types/backend';
+// ── Types ──────────────────────────────────────────────────────────────────────
 
-// Placeholder for real data
-const scoresData: Assessment[] = [];
-const AddScoreModal = ({ isOpen, onClose, onScoreAdded }) => {
-  const { user, token } = useAuth();
-  const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [students, setStudents] = useState<Student[]>([]);
-  const [form, setForm] = useState({ student_id: '', subject_id: '', score: '', term: '' });
-  const [loading, setLoading] = useState(false);
+interface ProgressRow {
+  student_id: string;
+  student_name: string;
+  registration_number: string;
+  course_name: string;
+  module_name: string;
+  subject_name: string;
+  avg_score: number;
+  total_assessments: number;
+  passed: number;
+  failed: number;
+  pass_rate: number;
+  term: string | null;
+  trend: 'improving' | 'stable' | 'declining' | null;
+  status: 'excellent' | 'good' | 'average' | 'at_risk' | 'critical';
+}
 
-  useEffect(() => {
-    if (!isOpen) return;
-    // Fetch subjects assigned to this trainer
-    apiRequest<string[]>(`/trainer-subjects/${user.id}`, { token })
-      .then(ids => Promise.all(ids.data.map(id => apiRequest<Subject>(`/subjects/${id}`, { token }))))
-      .then(subjects => setSubjects(subjects))
-      .catch(() => setSubjects([]));
-  }, [isOpen, user, token]);
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    if (!form.subject_id) return setStudents([]);
-    // Fetch students enrolled in this subject
-    apiRequest<Student[]>(`/student-subjects?subject_id=${form.subject_id}`, { token })
-      .then(res => setStudents(res.data))
-      .catch(() => setStudents([]));
-  }, [form.subject_id, token]);
+function deriveStatus(avg: number): ProgressRow['status'] {
+  if (avg >= 80) return 'excellent';
+  if (avg >= 70) return 'good';
+  if (avg >= 60) return 'average';
+  if (avg >= 50) return 'at_risk';
+  return 'critical';
+}
 
-  const handleChange = e => setForm(f => ({ ...f, [e.target.name]: e.target.value }));
-  const handleSubmit = async e => {
-    e.preventDefault();
-    setLoading(true);
-    await apiRequest('/scores', {
-      method: 'POST',
-      token,
-      body: { ...form, trainer_id: user.id }
+function scoreToProgress(score: number) {
+  return Math.min(100, Math.max(0, score));
+}
+
+const STATUS_STYLES: Record<ProgressRow['status'], string> = {
+  excellent: 'bg-teal-500/15 text-teal-300 border border-teal-500/30',
+  good:      'bg-green-500/15 text-green-300 border border-green-500/30',
+  average:   'bg-amber-500/15 text-amber-300 border border-amber-500/30',
+  at_risk:   'bg-orange-500/15 text-orange-300 border border-orange-500/30',
+  critical:  'bg-red-500/15 text-red-300 border border-red-500/30',
+};
+
+const STATUS_LABELS: Record<ProgressRow['status'], string> = {
+  excellent: 'Excellent',
+  good:      'Good',
+  average:   'Average',
+  at_risk:   'At Risk',
+  critical:  'Critical',
+};
+
+const BAR_COLORS: Record<ProgressRow['status'], string> = {
+  excellent: 'bg-teal-400',
+  good:      'bg-green-400',
+  average:   'bg-amber-400',
+  at_risk:   'bg-orange-400',
+  critical:  'bg-red-400',
+};
+
+function TrendIcon({ trend }: { trend: ProgressRow['trend'] }) {
+  if (trend === 'improving') return <TrendingUp size={14} className="text-green-400" />;
+  if (trend === 'declining') return <TrendingDown size={14} className="text-red-400" />;
+  return <Minus size={14} className="text-slate-500" />;
+}
+
+// ── Trend calculation ──────────────────────────────────────────────────────────
+
+function calculateTrend(scores: any[]): ProgressRow['trend'] {
+  if (scores.length < 3) return null; // Need at least 3 scores to determine trend
+  
+  // Sort by creation date ascending (oldest first)
+  const sorted = [...scores].sort((a, b) => {
+    const dateA = new Date(a.created_at || a.date || 0).getTime();
+    const dateB = new Date(b.created_at || b.date || 0).getTime();
+    return dateA - dateB;
+  });
+
+  // Split into first half and second half
+  const mid = Math.floor(sorted.length / 2);
+  const firstHalf = sorted.slice(0, mid);
+  const secondHalf = sorted.slice(mid);
+
+  const avgFirst = firstHalf.reduce((sum, s) => sum + (s.score ?? s.marks_obtained ?? 0), 0) / firstHalf.length;
+  const avgSecond = secondHalf.reduce((sum, s) => sum + (s.score ?? s.marks_obtained ?? 0), 0) / secondHalf.length;
+
+  const diff = avgSecond - avgFirst;
+  const changePercent = avgFirst > 0 ? Math.abs(diff / avgFirst) * 100 : 0;
+
+  if (changePercent < 5) return 'stable';
+  if (diff > 0) return 'improving';
+  return 'declining';
+}
+
+// ── Data fetching ──────────────────────────────────────────────────────────────
+
+async function fetchProgress(token: string | null, userId: string, userType: string): Promise<ProgressRow[]> {
+  const isAdmin = userType === 'admin' || userType === 'manager';
+
+  if (isAdmin) {
+    // Admin: fetch all scores (returns simple array)
+    const scores = await apiRequest<any[]>('/scores', { token }).catch(() => []);
+    const scoreArray: any[] = Array.isArray(scores) ? scores : [];
+
+    // Group scores by student_id
+    const byStudent: Record<string, any[]> = {};
+    
+    for (const s of scoreArray) {
+      // Get student_id from enrollment if not directly set
+      let sid = s.student_id;
+      if (!sid && s.enrollment_id) {
+        // Would need to fetch enrollment data, skip for now
+        continue;
+      }
+      if (!sid) continue;
+      
+      if (!byStudent[sid]) byStudent[sid] = [];
+      byStudent[sid].push(s);
+    }
+
+    return Object.entries(byStudent).map(([studentId, stScores]) => {
+      const avg = stScores.reduce((sum: number, s: any) => sum + (s.marks_obtained ?? 0), 0) / stScores.length;
+      const passed = stScores.filter((s: any) => s.is_passed === true || (s.marks_obtained ?? 0) >= 50).length;
+      const failed = stScores.length - passed;
+      const passRate = stScores.length ? Math.round((passed / stScores.length) * 100) : 0;
+      const avgRounded = Math.round(avg * 10) / 10;
+      const trend = calculateTrend(stScores);
+
+      return {
+        student_id: studentId,
+        student_name: stScores[0]?.student_name ?? '—',
+        registration_number: stScores[0]?.registration_number ?? '—',
+        course_name: stScores[0]?.course_name ?? '—',
+        module_name: '—',
+        subject_name: '—',
+        avg_score: avgRounded,
+        total_assessments: stScores.length,
+        passed,
+        failed,
+        pass_rate: passRate,
+        term: stScores[0]?.term ?? null,
+        trend,
+        status: deriveStatus(avgRounded),
+      } satisfies ProgressRow;
     });
-    setLoading(false);
-    onScoreAdded();
-    onClose();
-  };
+  }
+
+  // Student: fetch own scores
+  const data = await apiRequest<any>('/api/v1/student/scores', { token });
+  const items: any[] = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
+
+  // Group by subject
+  const bySubject: Record<string, any[]> = {};
+  for (const s of items) {
+    const key = s.subject?.id ?? s.subject_id ?? 'unknown';
+    if (!bySubject[key]) bySubject[key] = [];
+    bySubject[key].push(s);
+  }
+
+  return Object.entries(bySubject).map(([, subjectScores]) => {
+    const first = subjectScores[0];
+    const avg = subjectScores.reduce((sum, s) => sum + (s.score ?? 0), 0) / subjectScores.length;
+    const passed = subjectScores.filter((s) => s.is_passed === true || s.score >= 50).length;
+    const failed = subjectScores.length - passed;
+    const passRate = Math.round((passed / subjectScores.length) * 100);
+    const avgRounded = Math.round(avg * 10) / 10;
+    const trend = calculateTrend(subjectScores);
+
+    return {
+      student_id: userId,
+      student_name: 'Me',
+      registration_number: '—',
+      course_name: first?.subject?.module?.course?.name ?? '—',
+      module_name: first?.subject?.module?.name ?? '—',
+      subject_name: first?.subject?.name ?? '—',
+      avg_score: avgRounded,
+      total_assessments: subjectScores.length,
+      passed,
+      failed,
+      pass_rate: passRate,
+      term: first?.term ?? null,
+      trend,
+      status: deriveStatus(avgRounded),
+    } satisfies ProgressRow;
+  });
+}
+
+// ── Summary cards ──────────────────────────────────────────────────────────────
+
+function SummaryCards({ rows }: { rows: ProgressRow[] }) {
+  if (rows.length === 0) return null;
+  const avg = rows.length ? rows.reduce((s, r) => s + r.avg_score, 0) / rows.length : 0;
+  const passRate = rows.length ? rows.reduce((s, r) => s + r.pass_rate, 0) / rows.length : 0;
+  const atRisk = rows.filter((r) => r.status === 'at_risk' || r.status === 'critical').length;
+  const excellent = rows.filter((r) => r.status === 'excellent').length;
+
+  const cards = [
+    { label: 'Avg Score', value: `${Math.min(100, Math.max(0, avg)).toFixed(1)}%`, color: 'text-blue-400' },
+    { label: 'Avg Pass Rate', value: `${Math.min(100, Math.max(0, passRate)).toFixed(1)}%`, color: 'text-green-400' },
+    { label: 'At Risk', value: atRisk, color: 'text-orange-400' },
+    { label: 'Excellent', value: excellent, color: 'text-teal-400' },
+  ];
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <motion.div initial={{ y: -50, opacity: 0 }} animate={{ y: 0, opacity: 1 }} exit={{ y: -50, opacity: 0 }} className="bg-white rounded-2xl shadow-xl p-8 w-full max-w-md">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-gray-800">Add New Score</h2>
-              <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">
-                <X className="text-gray-600" />
-              </button>
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+      {cards.map((c) => (
+        <div key={c.label} className="bg-slate-900 border border-slate-800 rounded-lg p-4">
+          <p className="text-slate-400 text-sm">{c.label}</p>
+          <p className={`text-2xl font-bold mt-1 ${c.color}`}>{c.value}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
+
+const ProgressTable = () => {
+  const { user, token } = useAuth();
+  const [rows, setRows] = useState<ProgressRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+
+  const isAdmin = user?.user_type === 'admin' || user?.user_type === 'manager'
+    || user?.role_name?.toLowerCase() === 'admin'
+    || user?.role_name?.toLowerCase() === 'manager'
+    || Boolean(user?.permissions?.['*']);
+
+  const load = async () => {
+    if (!user || !token) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const data = await fetchProgress(token, user.id, user.user_type ?? user.role_name ?? '');
+      setRows(data);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load progress data');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); }, [user?.id, token]);
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
+    return rows.filter((r) => {
+      const matchSearch =
+        !q ||
+        r.student_name.toLowerCase().includes(q) ||
+        r.registration_number.toLowerCase().includes(q) ||
+        r.course_name.toLowerCase().includes(q) ||
+        r.subject_name.toLowerCase().includes(q);
+      const matchStatus = statusFilter === 'all' || r.status === statusFilter;
+      return matchSearch && matchStatus;
+    });
+  }, [rows, search, statusFilter]);
+
+  const tc = useTableControls(filtered, 15);
+
+  return (
+    <div className="space-y-6">
+      <SummaryCards rows={rows} />
+
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+        {/* Toolbar */}
+        <div className="p-5 border-b border-slate-800 flex flex-wrap gap-3 items-center justify-between">
+          <div className="flex flex-wrap gap-3 flex-1">
+            <div className="relative">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input
+                type="text"
+                placeholder={isAdmin ? 'Search student, course…' : 'Search subject…'}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-9 pr-4 py-2 text-sm bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
+              />
             </div>
-            <form className="space-y-4" onSubmit={handleSubmit}>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Subject</label>
-                <select name="subject_id" value={form.subject_id} onChange={handleChange} required className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm">
-                  <option value="">Select subject</option>
-                  {subjects.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Student</label>
-                <select name="student_id" value={form.student_id} onChange={handleChange} required className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm">
-                  <option value="">Select student</option>
-                  {students.map(st => <option key={st.id} value={st.id}>{st.registration_number}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Score</label>
-                <input name="score" type="number" value={form.score} onChange={handleChange} required className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm" />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700">Term</label>
-                <input name="term" value={form.term} onChange={handleChange} required className="mt-1 block w-full px-3 py-2 bg-white border border-gray-300 rounded-md shadow-sm" />
-              </div>
-              <div className="flex justify-end pt-4">
-                <button type="button" onClick={onClose} className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 mr-2">Cancel</button>
-                <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700" disabled={loading}>{loading ? 'Saving...' : 'Add Score'}</button>
-              </div>
-            </form>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="px-3 py-2 text-sm bg-slate-800 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All statuses</option>
+              <option value="excellent">Excellent</option>
+              <option value="good">Good</option>
+              <option value="average">Average</option>
+              <option value="at_risk">At Risk</option>
+              <option value="critical">Critical</option>
+            </select>
+          </div>
+          <button
+            onClick={load}
+            disabled={loading}
+            className="flex items-center gap-2 px-3 py-2 text-sm bg-slate-800 border border-slate-700 rounded-lg text-slate-300 hover:bg-slate-700 transition disabled:opacity-50"
+          >
+            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
+            Refresh
+          </button>
+        </div>
+
+        {/* Error */}
+        {error && (
+          <div className="mx-5 mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2 text-red-300 text-sm">
+            <AlertCircle size={16} />
+            {error}
+          </div>
+        )}
+
+        {/* Table */}
+        {loading ? (
+          <div className="p-12 text-center text-slate-500 text-sm">Loading progress data…</div>
+        ) : filtered.length === 0 ? (
+          <div className="p-12 text-center text-slate-500 text-sm">No progress records found.</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left">
+              <thead className="bg-slate-800 border-b border-slate-700">
+                <tr>
+                  {isAdmin && <SortableTh label="Student" sortKey="student_name" sort={tc.sort} onSort={tc.setSort} />}
+                  {isAdmin && <SortableTh label="Reg No" sortKey="registration_number" sort={tc.sort} onSort={tc.setSort} />}
+                  <SortableTh label={isAdmin ? 'Course' : 'Subject'} sortKey={isAdmin ? 'course_name' : 'subject_name'} sort={tc.sort} onSort={tc.setSort} />
+                  {!isAdmin && <SortableTh label="Module" sortKey="module_name" sort={tc.sort} onSort={tc.setSort} />}
+                  <SortableTh label="Avg Score" sortKey="avg_score" sort={tc.sort} onSort={tc.setSort} />
+                  <SortableTh label="Pass Rate" sortKey="pass_rate" sort={tc.sort} onSort={tc.setSort} />
+                  <SortableTh label="Assessments" sortKey="total_assessments" sort={tc.sort} onSort={tc.setSort} />
+                  <SortableTh label="Trend" sortKey="trend" sort={tc.sort} onSort={tc.setSort} />
+                  <SortableTh label="Status" sortKey="status" sort={tc.sort} onSort={tc.setSort} />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800">
+                {tc.paged.map((row, i) => (
+                  <tr key={`${row.student_id}-${row.subject_name}-${i}`} className="hover:bg-slate-800/60 transition-colors">
+                    {isAdmin && (
+                      <td className="px-6 py-4">
+                        <p className="text-sm font-medium text-slate-100">{row.student_name}</p>
+                      </td>
+                    )}
+                    {isAdmin && (
+                      <td className="px-6 py-4 text-sm text-slate-400">{row.registration_number}</td>
+                    )}
+                    <td className="px-6 py-4 text-sm text-slate-300">
+                      {isAdmin ? row.course_name : row.subject_name}
+                    </td>
+                    {!isAdmin && (
+                      <td className="px-6 py-4 text-sm text-slate-400">{row.module_name}</td>
+                    )}
+                    {/* Avg Score with progress bar */}
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-3 min-w-[120px]">
+                        <div className="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                          <div
+                            className={`h-full rounded-full transition-all ${BAR_COLORS[row.status]}`}
+                            style={{ width: `${Math.min(100, Math.max(0, row.avg_score))}%` }}
+                          />
+                        </div>
+                        <span className="text-sm font-semibold text-slate-200 w-12 text-right">
+                          {Math.min(100, Math.max(0, row.avg_score)).toFixed(1)}%
+                        </span>
+                      </div>
+                    </td>
+                    {/* Pass rate */}
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-2 min-w-[100px]">
+                        <div className="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-blue-400 transition-all"
+                            style={{ width: `${Math.min(100, Math.max(0, row.pass_rate))}%` }}
+                          />
+                        </div>
+                        <span className="text-sm text-slate-300 w-10 text-right">{Math.min(100, Math.max(0, row.pass_rate)).toFixed(0)}%</span>
+                      </div>
+                    </td>
+                    {/* Assessments */}
+                    <td className="px-6 py-4">
+                      <div className="text-sm text-slate-300">
+                        {row.total_assessments}
+                        <span className="text-xs text-slate-500 ml-1">
+                          ({row.passed}✓ {row.failed}✗)
+                        </span>
+                      </div>
+                    </td>
+                    {/* Trend */}
+                    <td className="px-6 py-4">
+                      <TrendIcon trend={row.trend} />
+                    </td>
+                    {/* Status badge */}
+                    <td className="px-6 py-4">
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${STATUS_STYLES[row.status]}`}>
+                        {STATUS_LABELS[row.status]}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        <TableFooter
+          page={tc.page}
+          totalPages={tc.totalPages}
+          total={tc.total}
+          pageSize={tc.pageSize}
+          onPage={tc.setPage}
+        />
+      </div>
+    </div>
   );
 };
-// (Removed duplicate/old modal and table code)
 
-// Main ProgressTable component (placeholder)
-const ProgressTable = () => {
-  return <div>Progress Table Placeholder</div>;
-};
-
-export { AddScoreModal };
 export default ProgressTable;

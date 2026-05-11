@@ -101,8 +101,8 @@ export default function StudentDashboardPage() {
 
   if (error) {
     return (
-      <div className="p-6 bg-red-50 border border-red-200 rounded-lg">
-        <div className="flex items-center gap-2 text-red-700">
+      <div className="p-6 bg-red-500/10 border border-red-500/30 rounded-lg">
+        <div className="flex items-center gap-2 text-red-300">
           <AlertCircle size={20} />
           <span>{error}</span>
         </div>
@@ -136,10 +136,10 @@ export default function StudentDashboardPage() {
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900">
+          <h1 className="text-3xl font-bold text-slate-100">
             Welcome, {user?.name}! 👋
           </h1>
-          <p className="text-gray-600 mt-2">
+          <p className="text-slate-400 mt-2">
             Here's your academic performance overview
           </p>
         </div>
@@ -150,33 +150,33 @@ export default function StudentDashboardPage() {
             label="Overall Average"
             value={`${performance?.overall_avg.toFixed(1)}%`}
             icon={<Award className="text-blue-500" />}
-            color="bg-blue-50"
+            color="bg-blue-500/10"
           />
           <StatCard
             label="Assessments Taken"
             value={`${performance?.total_assessments}`}
             icon={<BookOpen className="text-purple-500" />}
-            color="bg-purple-50"
+            color="bg-purple-500/10"
           />
           <StatCard
             label="Pass Rate"
             value={`${passRate}%`}
             icon={<CheckCircle2 className="text-green-500" />}
-            color="bg-green-50"
+            color="bg-green-500/10"
           />
           <StatCard
             label="Failed"
             value={`${performance?.failed_count}`}
             icon={<AlertCircle className="text-red-500" />}
-            color="bg-red-50"
+            color="bg-red-500/10"
           />
         </div>
 
         {/* Charts Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
           {/* Average by Subject */}
-          <div className="lg:col-span-2 bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">
+          <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-lg shadow-md p-6">
+            <h2 className="text-xl font-bold text-slate-100 mb-4">
               Average Score by Subject
             </h2>
             <ResponsiveContainer width="100%" height={300}>
@@ -191,8 +191,8 @@ export default function StudentDashboardPage() {
           </div>
 
           {/* Pass/Fail Pie */}
-          <div className="bg-white rounded-lg shadow-md p-6 flex flex-col items-center">
-            <h2 className="text-xl font-bold text-gray-900 mb-4 w-full">
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow-md p-6 flex flex-col items-center">
+            <h2 className="text-xl font-bold text-slate-100 mb-4 w-full">
               Results Distribution
             </h2>
             <ResponsiveContainer width="100%" height={250}>
@@ -218,8 +218,8 @@ export default function StudentDashboardPage() {
         </div>
 
         {/* Performance Trends */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
-          <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+        <div className="bg-slate-900 border border-slate-800 rounded-lg shadow-md p-6 mb-8">
+          <h2 className="text-xl font-bold text-slate-100 mb-4 flex items-center gap-2">
             <TrendingUp size={24} className="text-blue-500" />
             Performance Trends
           </h2>
@@ -243,7 +243,7 @@ export default function StudentDashboardPage() {
 
         {/* Weak Subjects Alert */}
         {weakSubjects.length > 0 && (
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-6">
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-6">
             <h2 className="text-xl font-bold text-amber-900 mb-4 flex items-center gap-2">
               <Target size={24} />
               Subjects Needing Improvement
@@ -252,17 +252,17 @@ export default function StudentDashboardPage() {
               {weakSubjects.map((subject, idx) => (
                 <div
                   key={idx}
-                  className="bg-white p-4 rounded-lg flex justify-between items-center"
+                  className="bg-slate-900 border border-slate-800 p-4 rounded-lg flex justify-between items-center"
                 >
                   <div>
-                    <p className="font-semibold text-gray-900">
+                    <p className="font-semibold text-slate-100">
                       {subject.subject}
                     </p>
-                    <p className="text-sm text-gray-600">
+                    <p className="text-sm text-slate-400">
                       Average: {subject.avg_score.toFixed(1)}%
                     </p>
                   </div>
-                  <span className="px-3 py-1 bg-amber-100 text-amber-800 rounded-full text-sm font-medium">
+                  <span className="px-3 py-1 bg-amber-500/15 text-amber-300 rounded-full text-sm font-medium">
                     {subject.status}
                   </span>
                 </div>
@@ -287,8 +287,8 @@ function StatCard({ label, value, icon, color }: StatCardProps) {
     <div className={`${color} rounded-lg p-6 shadow-md`}>
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-gray-600 text-sm font-medium">{label}</p>
-          <p className="text-2xl font-bold text-gray-900 mt-2">{value}</p>
+          <p className="text-slate-400 text-sm font-medium">{label}</p>
+          <p className="text-2xl font-bold text-slate-100 mt-2">{value}</p>
         </div>
         <div className="text-3xl">{icon}</div>
       </div>

@@ -75,7 +75,7 @@ export default function AttendanceReportPage() {
 
   if (error) return (
     <div className="flex items-center justify-center min-h-screen">
-      <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700">
+      <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2 text-red-300">
         <AlertCircle size={20} />{error}
       </div>
     </div>
@@ -87,14 +87,14 @@ export default function AttendanceReportPage() {
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   return (
-    <div className="min-h-screen bg-gray-100 p-6 print:bg-white print:p-0">
+    <div className="min-h-screen bg-blue-950 p-6 print:bg-slate-900 print:p-0">
       {/* Toolbar */}
       <div className="max-w-3xl mx-auto mb-4 flex items-center gap-4 print:hidden">
         <input
           type="month"
           value={month}
           onChange={e => setMonth(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          className="px-3 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500"
         />
         <button
           onClick={() => window.print()}
@@ -104,25 +104,25 @@ export default function AttendanceReportPage() {
         </button>
       </div>
 
-      <div className="max-w-3xl mx-auto bg-white shadow-lg print:shadow-none" style={{ padding: '16mm' }}>
+      <div className="max-w-3xl mx-auto bg-slate-900 shadow-lg print:shadow-none" style={{ padding: '16mm' }}>
         {/* Header */}
-        <div className="text-center border-b-2 border-gray-800 pb-4 mb-6">
-          <h1 className="text-2xl font-bold text-gray-900 uppercase">{data.school.name}</h1>
-          <p className="text-sm text-gray-600">{data.school.location}</p>
-          <h2 className="text-lg font-bold text-gray-800 mt-2 uppercase">Attendance Report</h2>
-          {data.term.name && <p className="text-sm text-gray-600">{data.term.name}</p>}
+        <div className="text-center border-b-2 border-slate-700 pb-4 mb-6">
+          <h1 className="text-2xl font-bold text-slate-100 uppercase">{data.school.name}</h1>
+          <p className="text-sm text-slate-400">{data.school.location}</p>
+          <h2 className="text-lg font-bold text-slate-200 mt-2 uppercase">Attendance Report</h2>
+          {data.term.name && <p className="text-sm text-slate-400">{data.term.name}</p>}
         </div>
 
         {/* Student Info */}
-        <div className="flex gap-8 mb-6 p-3 bg-gray-50 border border-gray-200 rounded text-sm">
-          <div><span className="text-gray-500">Name: </span><strong>{data.student.name}</strong></div>
-          <div><span className="text-gray-500">Reg No: </span><strong>{data.student.registration_number}</strong></div>
-          <div><span className="text-gray-500">Month: </span><strong>{month}</strong></div>
+        <div className="flex gap-8 mb-6 p-3 bg-slate-800 border border-slate-700 rounded text-sm">
+          <div><span className="text-slate-500">Name: </span><strong>{data.student.name}</strong></div>
+          <div><span className="text-slate-500">Reg No: </span><strong>{data.student.registration_number}</strong></div>
+          <div><span className="text-slate-500">Month: </span><strong>{month}</strong></div>
         </div>
 
         {/* Alert */}
         {data.summary.below_threshold && (
-          <div className="mb-4 p-3 bg-red-50 border border-red-300 rounded flex items-center gap-2 text-red-700 font-medium">
+          <div className="mb-4 p-3 bg-red-500/10 border border-red-500/40 rounded flex items-center gap-2 text-red-300 font-medium">
             <AlertTriangle size={18} />
             Attendance below 75% — immediate attention required
           </div>
@@ -132,7 +132,7 @@ export default function AttendanceReportPage() {
         <div className="mb-6">
           <div className="grid grid-cols-7 gap-1 mb-1">
             {days.map(d => (
-              <div key={d} className="text-center text-xs font-semibold text-gray-500 py-1">{d}</div>
+              <div key={d} className="text-center text-xs font-semibold text-slate-500 py-1">{d}</div>
             ))}
           </div>
           <div className="grid grid-cols-7 gap-1">
@@ -141,9 +141,9 @@ export default function AttendanceReportPage() {
                 key={i}
                 className={`h-10 flex items-center justify-center rounded text-sm font-medium
                   ${!cell.day ? '' :
-                    cell.status === 'weekend' ? 'bg-gray-100 text-gray-400' :
-                    cell.status ? STATUS_STYLE[cell.status] ?? 'bg-gray-200 text-gray-600' :
-                    'bg-gray-50 text-gray-400 border border-dashed border-gray-300'
+                    cell.status === 'weekend' ? 'bg-slate-800 text-slate-500' :
+                    cell.status ? STATUS_STYLE[cell.status] ?? 'bg-slate-700 text-slate-400' :
+                    'bg-slate-800 text-slate-500 border border-dashed border-slate-700'
                   }`}
               >
                 {cell.day ?? ''}
@@ -154,10 +154,10 @@ export default function AttendanceReportPage() {
 
         {/* Legend */}
         <div className="flex gap-4 mb-6 text-xs print:hidden">
-          {[['present','bg-green-500','Present'],['absent','bg-red-500','Absent'],['late','bg-amber-400','Late'],['weekend','bg-gray-100 border','Weekend']].map(([,cls,label]) => (
+          {[['present','bg-green-500','Present'],['absent','bg-red-500','Absent'],['late','bg-amber-400','Late'],['weekend','bg-slate-800 border','Weekend']].map(([,cls,label]) => (
             <div key={label} className="flex items-center gap-1">
               <div className={`w-4 h-4 rounded ${cls}`} />
-              <span className="text-gray-600">{label}</span>
+              <span className="text-slate-400">{label}</span>
             </div>
           ))}
         </div>
@@ -165,20 +165,20 @@ export default function AttendanceReportPage() {
         {/* Summary */}
         <div className="grid grid-cols-5 gap-3 text-center">
           {[
-            { label: 'Total Days', value: data.summary.total, color: 'text-gray-900' },
-            { label: 'Present', value: data.summary.present, color: 'text-green-700' },
-            { label: 'Absent', value: data.summary.absent, color: 'text-red-700' },
-            { label: 'Late', value: data.summary.late, color: 'text-amber-700' },
-            { label: 'Attendance %', value: `${data.summary.percentage}%`, color: data.summary.below_threshold ? 'text-red-700' : 'text-green-700' },
+            { label: 'Total Days', value: data.summary.total, color: 'text-slate-100' },
+            { label: 'Present', value: data.summary.present, color: 'text-green-300' },
+            { label: 'Absent', value: data.summary.absent, color: 'text-red-300' },
+            { label: 'Late', value: data.summary.late, color: 'text-amber-300' },
+            { label: 'Attendance %', value: `${data.summary.percentage}%`, color: data.summary.below_threshold ? 'text-red-300' : 'text-green-300' },
           ].map(({ label, value, color }) => (
-            <div key={label} className="p-3 bg-gray-50 border border-gray-200 rounded">
-              <p className="text-xs text-gray-500">{label}</p>
+            <div key={label} className="p-3 bg-slate-800 border border-slate-700 rounded">
+              <p className="text-xs text-slate-500">{label}</p>
               <p className={`text-2xl font-bold ${color}`}>{value}</p>
             </div>
           ))}
         </div>
 
-        <p className="text-xs text-gray-400 text-right mt-6">
+        <p className="text-xs text-slate-500 text-right mt-6">
           Generated: {new Date(data.generated_at).toLocaleString()}
         </p>
       </div>

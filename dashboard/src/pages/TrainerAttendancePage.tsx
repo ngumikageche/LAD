@@ -93,76 +93,76 @@ export default function TrainerAttendancePage() {
   const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   return (
-    <div className="min-h-screen bg-gray-100 p-6 print:bg-white print:p-0">
+    <div className="min-h-screen bg-blue-950 p-6 print:bg-slate-900 print:p-0">
       {/* Toolbar */}
       <div className="max-w-3xl mx-auto mb-4 flex items-center gap-3 print:hidden">
         <input
           type="month"
           value={month}
           onChange={e => setMonth(e.target.value)}
-          className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+          className="px-3 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500"
         />
         <button onClick={() => setShowLog(!showLog)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium">
           <Plus size={16} /> Log Day
         </button>
-        <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition font-medium">
+        <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition font-medium">
           <Printer size={16} /> Print
         </button>
       </div>
 
       {/* Log Form */}
       {showLog && (
-        <div className="max-w-3xl mx-auto mb-4 p-4 bg-white border border-gray-200 rounded-lg shadow print:hidden">
-          <h3 className="font-semibold text-gray-800 mb-3">Log Attendance</h3>
+        <div className="max-w-3xl mx-auto mb-4 p-4 bg-slate-900 border border-slate-700 rounded-lg shadow print:hidden">
+          <h3 className="font-semibold text-slate-200 mb-3">Log Attendance</h3>
           <div className="grid grid-cols-3 gap-3">
             <input type="date" value={logForm.date} onChange={e => setLogForm({ ...logForm, date: e.target.value })}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+              className="px-3 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500" />
             <select value={logForm.status} onChange={e => setLogForm({ ...logForm, status: e.target.value })}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+              className="px-3 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500">
               <option value="present">Present</option>
               <option value="absent">Absent</option>
               <option value="leave">Leave</option>
               <option value="substituted">Substituted</option>
             </select>
             <input placeholder="Notes (optional)" value={logForm.notes} onChange={e => setLogForm({ ...logForm, notes: e.target.value })}
-              className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
+              className="px-3 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500" />
           </div>
           <div className="flex gap-2 mt-3">
             <button onClick={logAttendance} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium disabled:opacity-50">
               {saving ? 'Saving…' : 'Save'}
             </button>
-            <button onClick={() => setShowLog(false)} className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition">Cancel</button>
+            <button onClick={() => setShowLog(false)} className="px-4 py-2 bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 transition">Cancel</button>
           </div>
         </div>
       )}
 
       {error && (
-        <div className="max-w-3xl mx-auto mb-4 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700">
+        <div className="max-w-3xl mx-auto mb-4 p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2 text-red-300">
           <AlertCircle size={18} />{error}
         </div>
       )}
 
       {data && (
-        <div className="max-w-3xl mx-auto bg-white shadow-lg print:shadow-none" style={{ padding: '16mm' }}>
+        <div className="max-w-3xl mx-auto bg-slate-900 shadow-lg print:shadow-none" style={{ padding: '16mm' }}>
           {/* Header */}
-          <div className="text-center border-b-2 border-gray-800 pb-4 mb-6">
-            <h1 className="text-2xl font-bold text-gray-900 uppercase">{data.school.name}</h1>
-            <p className="text-sm text-gray-600">{data.school.location}</p>
-            <h2 className="text-lg font-bold text-gray-800 mt-2 uppercase">Staff Attendance Summary</h2>
-            {data.term.name && <p className="text-sm text-gray-600">{data.term.name}</p>}
+          <div className="text-center border-b-2 border-slate-700 pb-4 mb-6">
+            <h1 className="text-2xl font-bold text-slate-100 uppercase">{data.school.name}</h1>
+            <p className="text-sm text-slate-400">{data.school.location}</p>
+            <h2 className="text-lg font-bold text-slate-200 mt-2 uppercase">Staff Attendance Summary</h2>
+            {data.term.name && <p className="text-sm text-slate-400">{data.term.name}</p>}
           </div>
 
           {/* Trainer Info */}
-          <div className="flex gap-8 mb-6 p-3 bg-gray-50 border border-gray-200 rounded text-sm">
-            <div><span className="text-gray-500">Trainer: </span><strong>{data.trainer.name}</strong></div>
-            <div><span className="text-gray-500">Month: </span><strong>{month}</strong></div>
+          <div className="flex gap-8 mb-6 p-3 bg-slate-800 border border-slate-700 rounded text-sm">
+            <div><span className="text-slate-500">Trainer: </span><strong>{data.trainer.name}</strong></div>
+            <div><span className="text-slate-500">Month: </span><strong>{month}</strong></div>
           </div>
 
           {/* Warnings */}
           {data.warnings.length > 0 && (
             <div className="mb-4 space-y-2">
               {data.warnings.map((w, i) => (
-                <div key={i} className="p-3 bg-amber-50 border border-amber-300 rounded flex items-center gap-2 text-amber-700 text-sm">
+                <div key={i} className="p-3 bg-amber-500/10 border border-amber-500/40 rounded flex items-center gap-2 text-amber-300 text-sm">
                   <AlertTriangle size={16} />{w}
                 </div>
               ))}
@@ -172,15 +172,15 @@ export default function TrainerAttendancePage() {
           {/* Calendar */}
           <div className="mb-6">
             <div className="grid grid-cols-7 gap-1 mb-1">
-              {days.map(d => <div key={d} className="text-center text-xs font-semibold text-gray-500 py-1">{d}</div>)}
+              {days.map(d => <div key={d} className="text-center text-xs font-semibold text-slate-500 py-1">{d}</div>)}
             </div>
             <div className="grid grid-cols-7 gap-1">
               {cells.map((cell, i) => (
                 <div key={i} className={`h-10 flex items-center justify-center rounded text-sm font-medium
                   ${!cell.day ? '' :
-                    cell.status === 'weekend' ? 'bg-gray-100 text-gray-400' :
-                    cell.status ? STATUS_STYLE[cell.status] ?? 'bg-gray-200 text-gray-600' :
-                    'bg-gray-50 text-gray-400 border border-dashed border-gray-300'}`}>
+                    cell.status === 'weekend' ? 'bg-slate-800 text-slate-500' :
+                    cell.status ? STATUS_STYLE[cell.status] ?? 'bg-slate-700 text-slate-400' :
+                    'bg-slate-800 text-slate-500 border border-dashed border-slate-700'}`}>
                   {cell.day ?? ''}
                 </div>
               ))}
@@ -192,7 +192,7 @@ export default function TrainerAttendancePage() {
             {[['present','bg-green-500','Present'],['absent','bg-red-500','Absent'],['leave','bg-blue-400','Leave'],['substituted','bg-purple-400','Substituted']].map(([,cls,label]) => (
               <div key={label} className="flex items-center gap-1">
                 <div className={`w-4 h-4 rounded ${cls}`} />
-                <span className="text-gray-600">{label}</span>
+                <span className="text-slate-400">{label}</span>
               </div>
             ))}
           </div>
@@ -200,20 +200,20 @@ export default function TrainerAttendancePage() {
           {/* Summary */}
           <div className="grid grid-cols-5 gap-3 text-center">
             {[
-              { label: 'Total', value: data.summary.total, color: 'text-gray-900' },
-              { label: 'Present', value: data.summary.present, color: 'text-green-700' },
-              { label: 'Absent', value: data.summary.absent, color: 'text-red-700' },
-              { label: 'Leave', value: data.summary.leave, color: 'text-blue-700' },
-              { label: 'Attendance %', value: `${data.summary.attendance_pct}%`, color: data.summary.attendance_pct < 75 ? 'text-red-700' : 'text-green-700' },
+              { label: 'Total', value: data.summary.total, color: 'text-slate-100' },
+              { label: 'Present', value: data.summary.present, color: 'text-green-300' },
+              { label: 'Absent', value: data.summary.absent, color: 'text-red-300' },
+              { label: 'Leave', value: data.summary.leave, color: 'text-blue-300' },
+              { label: 'Attendance %', value: `${data.summary.attendance_pct}%`, color: data.summary.attendance_pct < 75 ? 'text-red-300' : 'text-green-300' },
             ].map(({ label, value, color }) => (
-              <div key={label} className="p-3 bg-gray-50 border border-gray-200 rounded">
-                <p className="text-xs text-gray-500">{label}</p>
+              <div key={label} className="p-3 bg-slate-800 border border-slate-700 rounded">
+                <p className="text-xs text-slate-500">{label}</p>
                 <p className={`text-2xl font-bold ${color}`}>{value}</p>
               </div>
             ))}
           </div>
 
-          <p className="text-xs text-gray-400 text-right mt-6">
+          <p className="text-xs text-slate-500 text-right mt-6">
             Generated: {new Date(data.generated_at).toLocaleString()}
           </p>
         </div>

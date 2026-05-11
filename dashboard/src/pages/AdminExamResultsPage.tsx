@@ -26,7 +26,7 @@ interface ExamReport {
 }
 
 function TrendBadge({ delta }: { delta: number }) {
-  if (delta === 0) return <span className="text-gray-400 text-xs">—</span>;
+  if (delta === 0) return <span className="text-slate-500 text-xs">—</span>;
   const up = delta > 0;
   return (
     <span className={`inline-flex items-center gap-0.5 text-xs font-semibold ${up ? 'text-green-600' : 'text-red-600'}`}>
@@ -92,11 +92,11 @@ export default function AdminExamResultsPage() {
   if (!data) return null;
 
   return (
-    <div className="min-h-screen bg-gray-100 p-6 print:bg-white print:p-0">
+    <div className="min-h-screen bg-blue-950 p-6 print:bg-slate-900 print:p-0">
       {/* Toolbar */}
       <div className="max-w-6xl mx-auto mb-4 flex items-center gap-3 print:hidden">
-        <h1 className="text-xl font-bold text-gray-900 flex-1">School-Wide Exam Results</h1>
-        <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition font-medium">
+        <h1 className="text-xl font-bold text-slate-100 flex-1">School-Wide Exam Results</h1>
+        <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition font-medium">
           <Printer size={16} /> Print
         </button>
         <button onClick={handleExcelExport} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium">
@@ -107,14 +107,14 @@ export default function AdminExamResultsPage() {
         </button>
       </div>
 
-      <div className="max-w-6xl mx-auto bg-white shadow-lg print:shadow-none" style={{ padding: '16mm' }}>
+      <div className="max-w-6xl mx-auto bg-slate-900 shadow-lg print:shadow-none" style={{ padding: '16mm' }}>
         {/* Header */}
-        <div className="text-center border-b-2 border-gray-800 pb-4 mb-6">
-          <p className="text-xs text-gray-400 uppercase tracking-widest print:block hidden">CONFIDENTIAL</p>
-          <h1 className="text-2xl font-bold text-gray-900 uppercase">{data.school.name}</h1>
-          <p className="text-sm text-gray-600">{data.school.location}</p>
-          <h2 className="text-lg font-bold text-gray-800 mt-2 uppercase">School-Wide Exam Results</h2>
-          {data.term.name && <p className="text-sm text-gray-600">{data.term.name}</p>}
+        <div className="text-center border-b-2 border-slate-700 pb-4 mb-6">
+          <p className="text-xs text-slate-500 uppercase tracking-widest print:block hidden">CONFIDENTIAL</p>
+          <h1 className="text-2xl font-bold text-slate-100 uppercase">{data.school.name}</h1>
+          <p className="text-sm text-slate-400">{data.school.location}</p>
+          <h2 className="text-lg font-bold text-slate-200 mt-2 uppercase">School-Wide Exam Results</h2>
+          {data.term.name && <p className="text-sm text-slate-400">{data.term.name}</p>}
         </div>
 
         {/* Executive Summary */}
@@ -124,13 +124,13 @@ export default function AdminExamResultsPage() {
             { label: 'Pass Rate', value: `${data.summary.pass_rate}%`, delta: data.trend?.pass_rate_delta, color: 'text-green-600' },
             { label: 'Top Course', value: data.summary.top_course ?? '—', delta: null, color: 'text-purple-600' },
           ].map(({ label, value, delta, color }) => (
-            <div key={label} className="p-5 bg-gray-50 border border-gray-200 rounded-lg text-center">
-              <p className="text-xs text-gray-500 uppercase mb-1">{label}</p>
+            <div key={label} className="p-5 bg-slate-800 border border-slate-700 rounded-lg text-center">
+              <p className="text-xs text-slate-500 uppercase mb-1">{label}</p>
               <p className={`text-3xl font-bold ${color}`}>{value}</p>
               {delta != null && (
                 <div className="mt-1 flex justify-center items-center gap-1">
                   <TrendBadge delta={delta} />
-                  {data.trend && <span className="text-xs text-gray-400">vs {data.trend.prev_term}</span>}
+                  {data.trend && <span className="text-xs text-slate-500">vs {data.trend.prev_term}</span>}
                 </div>
               )}
             </div>
@@ -138,11 +138,11 @@ export default function AdminExamResultsPage() {
         </div>
 
         {/* By Course Table */}
-        <h3 className="font-bold text-gray-800 mb-3 uppercase text-sm">Performance by Course</h3>
+        <h3 className="font-bold text-slate-200 mb-3 uppercase text-sm">Performance by Course</h3>
         <div className="overflow-x-auto mb-8">
           <table className="w-full text-sm border-collapse">
             <thead>
-              <tr className="bg-gray-800 text-white">
+              <tr className="bg-slate-800 text-white">
                 <th className="px-3 py-2 text-left">Course</th>
                 <th className="px-3 py-2 text-center">Students</th>
                 <th className="px-3 py-2 text-center">Avg Marks</th>
@@ -152,18 +152,18 @@ export default function AdminExamResultsPage() {
             </thead>
             <tbody>
               {data.by_course.length === 0 ? (
-                <tr><td colSpan={5} className="px-3 py-6 text-center text-gray-400">No data for this term</td></tr>
+                <tr><td colSpan={5} className="px-3 py-6 text-center text-slate-500">No data for this term</td></tr>
               ) : data.by_course.map((row, i) => (
-                <tr key={row.course_id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                  <td className="px-3 py-2 font-medium text-gray-900">{row.course_name}</td>
-                  <td className="px-3 py-2 text-center text-gray-600">{row.student_count}</td>
+                <tr key={row.course_id} className={i % 2 === 0 ? 'bg-slate-900' : 'bg-slate-800'}>
+                  <td className="px-3 py-2 font-medium text-slate-100">{row.course_name}</td>
+                  <td className="px-3 py-2 text-center text-slate-400">{row.student_count}</td>
                   <td className="px-3 py-2 text-center">
                     <span className={`px-2 py-0.5 rounded text-xs font-bold ${row.avg_marks >= 75 ? 'bg-green-100 text-green-800' : row.avg_marks >= 50 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}`}>
                       {row.avg_marks}%
                     </span>
                   </td>
                   <td className="px-3 py-2 text-center font-semibold text-green-700">{row.pass_pct}%</td>
-                  <td className="px-3 py-2 text-gray-600 text-xs">{row.top_student ?? '—'}</td>
+                  <td className="px-3 py-2 text-slate-400 text-xs">{row.top_student ?? '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -171,11 +171,11 @@ export default function AdminExamResultsPage() {
         </div>
 
         {/* By Subject Table */}
-        <h3 className="font-bold text-gray-800 mb-3 uppercase text-sm">Performance by Subject</h3>
+        <h3 className="font-bold text-slate-200 mb-3 uppercase text-sm">Performance by Subject</h3>
         <div className="overflow-x-auto">
           <table className="w-full text-sm border-collapse">
             <thead>
-              <tr className="bg-gray-800 text-white">
+              <tr className="bg-slate-800 text-white">
                 <th className="px-3 py-2 text-left">Subject</th>
                 <th className="px-3 py-2 text-center">Entries</th>
                 <th className="px-3 py-2 text-center">Avg</th>
@@ -185,11 +185,11 @@ export default function AdminExamResultsPage() {
             </thead>
             <tbody>
               {data.by_subject.length === 0 ? (
-                <tr><td colSpan={5} className="px-3 py-6 text-center text-gray-400">No data for this term</td></tr>
+                <tr><td colSpan={5} className="px-3 py-6 text-center text-slate-500">No data for this term</td></tr>
               ) : data.by_subject.map((row, i) => (
-                <tr key={row.subject_id} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                  <td className="px-3 py-2 font-medium text-gray-900">{row.subject_name}</td>
-                  <td className="px-3 py-2 text-center text-gray-600">{row.entries}</td>
+                <tr key={row.subject_id} className={i % 2 === 0 ? 'bg-slate-900' : 'bg-slate-800'}>
+                  <td className="px-3 py-2 font-medium text-slate-100">{row.subject_name}</td>
+                  <td className="px-3 py-2 text-center text-slate-400">{row.entries}</td>
                   <td className="px-3 py-2 text-center font-semibold">{row.avg_marks}%</td>
                   <td className="px-3 py-2 text-center text-green-700 font-semibold">{row.pass_pct}%</td>
                   <td className="px-3 py-2 text-center text-red-700 font-semibold">{row.fail_pct}%</td>
@@ -199,7 +199,7 @@ export default function AdminExamResultsPage() {
           </table>
         </div>
 
-        <p className="text-xs text-gray-400 text-right mt-6">
+        <p className="text-xs text-slate-500 text-right mt-6">
           Generated by {data.generated_by} on {new Date(data.generated_at).toLocaleString()}
         </p>
       </div>

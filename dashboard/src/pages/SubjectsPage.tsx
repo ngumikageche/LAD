@@ -1,10 +1,11 @@
-
 import { useEffect, useMemo, useState, FormEvent } from 'react';
 import { Plus, X } from 'lucide-react';
 import ViewMarksModal, { type Mark } from '../components/ViewMarksModal';
 import { apiRequest } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { Module, Course } from '../types/backend';
+import { useTableControls } from '../hooks/useTableControls';
+import { TableFooter, SortableTh } from '../components/ui/TableControls';
 
 
 
@@ -171,6 +172,18 @@ const SubjectsPage = () => {
     });
   }, [subjects, modules, courses, searchTerm]);
 
+  const tc = useTableControls(
+    filtered,
+    15,
+    (item, key) => {
+      if (key === 'course') {
+        const mod = modules.find(m => m.id === item.module_id);
+        return mod ? courses.find(c => c.id === mod.course_id)?.name ?? '' : '';
+      }
+      return (item as any)[key];
+    },
+  );
+
   const openCreate = () => {
     setSubjectForm(emptySubjectForm);
     setSelectedCourseId('');
@@ -247,8 +260,8 @@ const SubjectsPage = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-800">Subjects</h1>
-          <p className="text-sm text-gray-500">Define subjects (modules) for each course.</p>
+          <h1 className="text-3xl font-bold text-slate-200">Subjects</h1>
+          <p className="text-sm text-slate-500">Define subjects (modules) for each course.</p>
         </div>
         {user?.permissions?.['subjects.create'] || user?.permissions?.['*'] ? (
           <button
@@ -269,37 +282,37 @@ const SubjectsPage = () => {
         ) : null}
       </div>
 
-      <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
-        <div className="p-6 border-b border-gray-200">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-lg border border-slate-800 overflow-hidden">
+        <div className="p-6 border-b border-slate-700">
           <input
             type="text"
             placeholder="Search by name, description, course..."
-            className="w-full max-w-md px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+            className="w-full max-w-md px-4 py-2.5 rounded-lg border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
           />
         </div>
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+          <table className="min-w-full divide-y divide-slate-800">
+            <thead className="bg-slate-800 border-b border-slate-700">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Course</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                <SortableTh label="Name" sortKey="name" sort={tc.sort} onSort={tc.setSort} />
+                <SortableTh label="Course" sortKey="course" sort={tc.sort} onSort={tc.setSort} />
+                <SortableTh label="Description" sortKey="description" sort={tc.sort} onSort={tc.setSort} />
                 <th className="px-6 py-3"></th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-slate-900 divide-y divide-slate-800">
               {isLoading ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-4 text-center text-gray-500">Loading...</td>
+                  <td colSpan={4} className="px-6 py-4 text-center text-slate-500">Loading...</td>
                 </tr>
-              ) : filtered.length === 0 ? (
+              ) : tc.paged.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-4 text-center text-gray-500">No subjects found.</td>
+                  <td colSpan={4} className="px-6 py-4 text-center text-slate-500">No subjects found.</td>
                 </tr>
               ) : (
-                filtered.map((item) => {
+                tc.paged.map((item) => {
                   const moduleObj = modules.find((m) => m.id === item.module_id);
                   const courseObj = moduleObj ? courses.find((c) => c.id === moduleObj.course_id) : undefined;
                   return (
@@ -348,14 +361,15 @@ const SubjectsPage = () => {
             </tbody>
           </table>
         </div>
+        <TableFooter page={tc.page} totalPages={tc.totalPages} total={tc.total} pageSize={tc.pageSize} onPage={tc.setPage} />
       </div>
 
       {/* Modal for create/edit */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-30">
-          <div className="bg-white rounded-xl shadow-lg p-8 w-full max-w-md relative">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl shadow-lg p-8 w-full max-w-md relative">
             <button
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              className="absolute top-4 right-4 text-slate-500 hover:text-slate-400"
               onClick={closeModal}
               disabled={isSubmitting}
             >
@@ -365,9 +379,9 @@ const SubjectsPage = () => {
             {error && <div className="mb-4 text-red-600 text-sm">{error}</div>}
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Course</label>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Course</label>
                 <select
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-4 py-2 rounded-lg border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   value={selectedCourseId}
                   onChange={(e) => {
                     setSelectedCourseId(e.target.value);
@@ -383,9 +397,9 @@ const SubjectsPage = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Module</label>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Module</label>
                 <select
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-4 py-2 rounded-lg border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   value={subjectForm.module_id}
                   onChange={(e) => setSubjectForm((f) => ({ ...f, module_id: e.target.value }))}
                   required
@@ -398,10 +412,10 @@ const SubjectsPage = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Subject Name</label>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Subject Name</label>
                 <input
                   type="text"
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-4 py-2 rounded-lg border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   value={subjectForm.name}
                   onChange={(e) => setSubjectForm((f) => ({ ...f, name: e.target.value }))}
                   required
@@ -409,9 +423,9 @@ const SubjectsPage = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Description</label>
                 <textarea
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-4 py-2 rounded-lg border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   value={subjectForm.description}
                   onChange={(e) => setSubjectForm((f) => ({ ...f, description: e.target.value }))}
                   rows={3}
@@ -625,14 +639,14 @@ function UploadMarksModal({ open, onClose, token, modules, courses, subjects }: 
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-30">
-      <div className="bg-white rounded-xl shadow-lg p-6 w-full max-w-2xl relative">
-        <button className="absolute top-4 right-4 text-gray-400 hover:text-gray-600" onClick={onClose} disabled={isSubmitting}>
+      <div className="bg-slate-900 border border-slate-800 rounded-xl shadow-lg p-6 w-full max-w-2xl relative">
+        <button className="absolute top-4 right-4 text-slate-500 hover:text-slate-400" onClick={onClose} disabled={isSubmitting}>
           <X className="w-5 h-5" />
         </button>
         <h2 className="text-xl font-bold mb-4">Upload Marks</h2>
         <div className="mb-4 flex items-center gap-3">
-          <button className={`px-3 py-1 mr-2 rounded-md ${tab === 'single' ? 'bg-indigo-600 text-white shadow' : 'bg-gray-100'}`} onClick={() => setTab('single')}>Single</button>
-          <button className={`px-3 py-1 rounded-md ${tab === 'bulk' ? 'bg-indigo-600 text-white shadow' : 'bg-gray-100'}`} onClick={() => setTab('bulk')}>Bulk (CSV)</button>
+          <button className={`px-3 py-1 mr-2 rounded-md ${tab === 'single' ? 'bg-indigo-600 text-white shadow' : 'bg-slate-800'}`} onClick={() => setTab('single')}>Single</button>
+          <button className={`px-3 py-1 rounded-md ${tab === 'bulk' ? 'bg-indigo-600 text-white shadow' : 'bg-slate-800'}`} onClick={() => setTab('bulk')}>Bulk (CSV)</button>
         </div>
         {error && <div className="mb-3 text-red-600 text-sm">{error}</div>}
         {successMessage && <div className="mb-3 text-green-600 text-sm">{successMessage}</div>}
@@ -641,14 +655,14 @@ function UploadMarksModal({ open, onClose, token, modules, courses, subjects }: 
           <form onSubmit={(e) => { e.preventDefault(); handleSingleSubmit(e); }} className="space-y-4">
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700">Course</label>
+                <label className="block text-sm font-medium text-slate-300">Course</label>
                 <select value={selectedCourseId} onChange={(e) => { setSelectedCourseId(e.target.value); setSelectedSubjectId(''); }} className="mt-1 block w-full px-3 py-2 border rounded-md">
                   <option value="">Select course...</option>
                   {courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">Subject</label>
+                <label className="block text-sm font-medium text-slate-300">Subject</label>
                 <select value={selectedSubjectId} onChange={(e) => setSelectedSubjectId(e.target.value)} className="mt-1 block w-full px-3 py-2 border rounded-md">
                   <option value="">Select subject...</option>
                   {subjects.filter(s => {
@@ -658,7 +672,7 @@ function UploadMarksModal({ open, onClose, token, modules, courses, subjects }: 
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">Module</label>
+                <label className="block text-sm font-medium text-slate-300">Module</label>
                 <select value={moduleId} onChange={(e) => setModuleId(e.target.value)} className="mt-1 block w-full px-3 py-2 border rounded-md">
                   <option value="">Select module...</option>
                   {modules.filter(m => m.course_id === selectedCourseId).map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
@@ -668,14 +682,14 @@ function UploadMarksModal({ open, onClose, token, modules, courses, subjects }: 
 
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700">Student</label>
+                <label className="block text-sm font-medium text-slate-300">Student</label>
                 <select value={studentId} onChange={(e) => setStudentId(e.target.value)} className="mt-1 block w-full px-3 py-2 border rounded-md">
                   <option value="">Select student...</option>
                   {students.map(s => <option key={s.id} value={s.id}>{s.user?.name ?? s.registration_number}</option>)}
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">Trainer</label>
+                <label className="block text-sm font-medium text-slate-300">Trainer</label>
                 <select value={trainerId} onChange={(e) => setTrainerId(e.target.value)} className="mt-1 block w-full px-3 py-2 border rounded-md">
                   <option value="">Select trainer...</option>
                   {trainers.map(t => <option key={t.id} value={t.id}>{t.user?.name ?? t.id}</option>)}
@@ -686,11 +700,11 @@ function UploadMarksModal({ open, onClose, token, modules, courses, subjects }: 
 
             <div className="grid grid-cols-1 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700">Assessment Tasks (one per line)</label>
+                <label className="block text-sm font-medium text-slate-300">Assessment Tasks (one per line)</label>
                 <textarea value={assessmentTasks} onChange={(e) => setAssessmentTasks(e.target.value)} placeholder="Task 1\nTask 2" className="mt-1 block w-full px-3 py-2 border rounded-md" rows={3} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">Performance Level</label>
+                <label className="block text-sm font-medium text-slate-300">Performance Level</label>
                 <select value={performanceLevel ?? ''} onChange={(e) => setPerformanceLevel(e.target.value || null)} className="mt-1 block w-full px-3 py-2 border rounded-md">
                   <option value="">Select level...</option>
                   <option value="4">4 — Exceeds Expectations (EE)</option>
@@ -703,11 +717,11 @@ function UploadMarksModal({ open, onClose, token, modules, courses, subjects }: 
 
             <div className="grid grid-cols-3 gap-3">
               <div>
-                <label className="block text-sm font-medium text-gray-700">Score</label>
+                <label className="block text-sm font-medium text-slate-300">Score</label>
                 <input placeholder="0 - 100" value={score} onChange={(e) => setScore(e.target.value)} className="mt-1 block w-full px-3 py-2 border rounded-md" required />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">Term (optional)</label>
+                <label className="block text-sm font-medium text-slate-300">Term (optional)</label>
                 <input placeholder="2026-Q2" value={term} onChange={(e) => setTerm(e.target.value)} className="mt-1 block w-full px-3 py-2 border rounded-md" />
               </div>
               <div className="flex items-end justify-end">
@@ -717,13 +731,13 @@ function UploadMarksModal({ open, onClose, token, modules, courses, subjects }: 
           </form>
         ) : (
           <div className="space-y-3">
-            <p className="text-sm text-gray-600">CSV must include header row with columns: <strong>student_id,trainer_id,module_id,score</strong>. <strong>competency_id</strong> is optional; if missing the system will auto-create a competency. Optional: <strong>term</strong></p>
-            <div className="mt-2 p-4 border-2 border-dashed border-gray-200 rounded-lg text-center">
+            <p className="text-sm text-slate-400">CSV must include header row with columns: <strong>student_id,trainer_id,module_id,score</strong>. <strong>competency_id</strong> is optional; if missing the system will auto-create a competency. Optional: <strong>term</strong></p>
+            <div className="mt-2 p-4 border-2 border-dashed border-slate-700 rounded-lg text-center">
               <input type="file" accept="text/csv" onChange={(e) => handleBulkFile(e.target.files?.[0])} className="mx-auto" />
-              <p className="text-xs text-gray-500 mt-2">Drop a CSV file here or click to select</p>
+              <p className="text-xs text-slate-500 mt-2">Drop a CSV file here or click to select</p>
             </div>
             <div className="flex justify-end">
-              <button className="px-4 py-2 bg-gray-200 rounded-md" onClick={() => { /* noop */ }} disabled={isSubmitting}>Close when done</button>
+              <button className="px-4 py-2 bg-slate-700 rounded-md" onClick={() => { /* noop */ }} disabled={isSubmitting}>Close when done</button>
             </div>
           </div>
         )}

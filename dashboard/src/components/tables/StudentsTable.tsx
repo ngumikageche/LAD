@@ -2,19 +2,40 @@ import { useEffect, useMemo, useState } from 'react';
 import { Search } from 'lucide-react';
 import { apiRequest } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
-import type { Student, Course, Module } from '../../types/backend';
+import type { Course, Module } from '../../types/backend';
+
+// The /students endpoint returns students with an embedded user object
+interface StudentWithUser {
+  id: string;
+  user_id: string;
+  registration_number: string;
+  course_id: string;
+  enrollment_year: number;
+  user?: { id: string; name: string; email: string };
+  // some API responses may also return these flat
+  name?: string;
+  email?: string;
+}
+
+function studentName(s: StudentWithUser) {
+  return s.user?.name ?? s.name ?? '—';
+}
+function studentEmail(s: StudentWithUser) {
+  return s.user?.email ?? s.email ?? '—';
+}
+import { useTableControls } from '../../hooks/useTableControls';
+import { TableFooter, SortableTh } from '../ui/TableControls';
 
 const StudentsTable = () => {
   const { token } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
-  const [students, setStudents] = useState<Student[]>([]);
+  const [students, setStudents] = useState<StudentWithUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
-  const [editStudent, setEditStudent] = useState<Student | null>(null);
-  // const [selectedModuleId, setSelectedModuleId] = useState('');
+  const [editStudent, setEditStudent] = useState<StudentWithUser | null>(null);
   const [isViewOpen, setIsViewOpen] = useState(false);
-  const [viewStudent, setViewStudent] = useState<Student | null>(null);
+  const [viewStudent, setViewStudent] = useState<StudentWithUser | null>(null);
   const [viewSubjects, setViewSubjects] = useState<any[]>([]);
   const [viewCourse, setViewCourse] = useState<string>('');
   const [viewModule, setViewModule] = useState<string>('');
@@ -28,7 +49,7 @@ const StudentsTable = () => {
     const loadAll = async () => {
       try {
         const [studentData, courseData, moduleData] = await Promise.all([
-          apiRequest<Student[]>('/students', { token }),
+          apiRequest<StudentWithUser[]>('/students', { token }),
           apiRequest<Course[]>('/courses', { token }),
           apiRequest<Module[]>('/modules', { token }),
         ]);
@@ -49,51 +70,61 @@ const StudentsTable = () => {
     const search = searchTerm.toLowerCase();
     return students.filter((student) => {
       return (
-        student.user.name.toLowerCase().includes(search) ||
-        student.user.email.toLowerCase().includes(search) ||
+        studentName(student).toLowerCase().includes(search) ||
+        studentEmail(student).toLowerCase().includes(search) ||
         student.registration_number.toLowerCase().includes(search)
       );
     });
   }, [searchTerm, students]);
 
+  const tc = useTableControls(
+    filteredStudents,
+    15,
+    (item, key) => {
+      if (key === 'name') return studentName(item);
+      if (key === 'email') return studentEmail(item);
+      return (item as any)[key];
+    },
+  );
+
   return (
-    <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
-      <div className="p-6 border-b border-gray-200">
+    <div className="bg-slate-900 rounded-2xl shadow-lg border border-slate-800 overflow-hidden">
+      <div className="p-6 border-b border-slate-700">
         <div className="flex justify-between items-center gap-4">
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-indigo-500 h-5 w-5" />
             <input
               type="text"
               placeholder="Search students..."
-              className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+              className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
         </div>
       </div>
       {isLoading ? (
-        <div className="p-6 text-sm text-gray-600">Loading students...</div>
+        <div className="p-6 text-sm text-slate-400">Loading students...</div>
       ) : error ? (
         <div className="p-6 text-sm text-red-600">{error}</div>
       ) : (
       <div className="overflow-x-auto">
         <table className="w-full text-left">
-          <thead className="bg-gray-50 border-b border-gray-200">
+          <thead className="bg-slate-800 border-b border-slate-700">
             <tr>
-              <th className="px-6 py-4 text-xs font-bold text-gray-600 uppercase tracking-wider">Name</th>
-              <th className="px-6 py-4 text-xs font-bold text-gray-600 uppercase tracking-wider">Email</th>
-              <th className="px-6 py-4 text-xs font-bold text-gray-600 uppercase tracking-wider">Reg No</th>
-              <th className="px-6 py-4 text-xs font-bold text-gray-600 uppercase tracking-wider">Enrollment Year</th>
-              <th className="px-6 py-4 text-xs font-bold text-gray-600 uppercase tracking-wider">Actions</th>
+              <SortableTh label="Name" sortKey="name" sort={tc.sort} onSort={tc.setSort} />
+              <SortableTh label="Email" sortKey="email" sort={tc.sort} onSort={tc.setSort} />
+              <SortableTh label="Reg No" sortKey="registration_number" sort={tc.sort} onSort={tc.setSort} />
+              <SortableTh label="Enrollment Year" sortKey="enrollment_year" sort={tc.sort} onSort={tc.setSort} />
+              <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200">
-            {filteredStudents.map(student => (
-              <tr key={student.id} className="hover:bg-gray-50 transition-colors">
-                <td className="px-6 py-4 font-medium text-gray-900">{student.user.name}</td>
-                <td className="px-6 py-4 text-gray-600">{student.user.email}</td>
-                <td className="px-6 py-4 text-gray-600">{student.registration_number}</td>
-                <td className="px-6 py-4 text-gray-600">{student.enrollment_year}</td>
+          <tbody className="divide-y divide-slate-800">
+            {tc.paged.map(student => (
+              <tr key={student.id} className="hover:bg-slate-800 transition-colors">
+                <td className="px-6 py-4 font-medium text-slate-100">{studentName(student)}</td>
+                <td className="px-6 py-4 text-slate-400">{studentEmail(student)}</td>
+                <td className="px-6 py-4 text-slate-400">{student.registration_number}</td>
+                <td className="px-6 py-4 text-slate-400">{student.enrollment_year}</td>
                 <td className="px-6 py-4 flex gap-2">
                   <button
                     className="px-3 py-1.5 text-xs font-medium text-blue-600 hover:underline rounded"
@@ -136,26 +167,26 @@ const StudentsTable = () => {
         {/* View Modal */}
         {isViewOpen && viewStudent && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4 overflow-y-auto">
-            <div className="w-full max-w-lg rounded-2xl bg-white p-4 sm:p-8 shadow-xl mx-auto flex flex-col">
+            <div className="w-full max-w-lg rounded-2xl bg-slate-900 p-4 sm:p-8 shadow-xl mx-auto flex flex-col">
               <div className="flex items-center justify-between mb-4 sm:mb-6">
-                <h2 className="text-xl sm:text-2xl font-bold text-gray-800">Student Details</h2>
-                <button onClick={() => setIsViewOpen(false)} className="p-2 rounded-full hover:bg-gray-100">
-                  <span className="text-gray-600">&times;</span>
+                <h2 className="text-xl sm:text-2xl font-bold text-slate-200">Student Details</h2>
+                <button onClick={() => setIsViewOpen(false)} className="p-2 rounded-full hover:bg-slate-800">
+                  <span className="text-slate-400">&times;</span>
                 </button>
               </div>
               <div className="space-y-3">
-                <div><span className="font-medium">Name:</span> {viewStudent.user.name}</div>
-                <div><span className="font-medium">Email:</span> {viewStudent.user.email}</div>
+                <div><span className="font-medium">Name:</span> {studentName(viewStudent)}</div>
+                <div><span className="font-medium">Email:</span> {studentEmail(viewStudent)}</div>
                 <div><span className="font-medium">Reg No:</span> {viewStudent.registration_number}</div>
                 <div><span className="font-medium">Enrollment Year:</span> {viewStudent.enrollment_year}</div>
                 <div><span className="font-medium">Course:</span> {viewCourse}</div>
                 <div><span className="font-medium">Module:</span> {viewModule}</div>
                 <div>
                   <span className="font-medium">Subjects:</span>
-                  <ul className="list-disc pl-5 mt-1 text-sm text-gray-700">
+                  <ul className="list-disc pl-5 mt-1 text-sm text-slate-300">
                     {viewSubjects.length > 0 ? viewSubjects.map(sub => (
                       <li key={sub.id}>{sub.name}</li>
-                    )) : <li className="text-gray-400">No subjects found</li>}
+                    )) : <li className="text-slate-500">No subjects found</li>}
                   </ul>
                 </div>
               </div>
@@ -163,7 +194,7 @@ const StudentsTable = () => {
                 <button
                   type="button"
                   onClick={() => setIsViewOpen(false)}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 w-full sm:w-auto"
+                  className="px-4 py-2 text-sm font-medium text-slate-300 bg-slate-800 rounded-md hover:bg-slate-700 w-full sm:w-auto"
                 >
                   Close
                 </button>
@@ -173,23 +204,16 @@ const StudentsTable = () => {
         )}
       </div>
       )}
-      <div className="flex justify-between items-center p-6 border-t border-gray-200 bg-gray-50">
-        <span className="text-sm text-gray-600">Showing {filteredStudents.length} of {students.length} students</span>
-        <div className="flex items-center space-x-2">
-          <button className="px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-100 transition-colors font-medium">Previous</button>
-          <button className="px-4 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition-colors font-medium">1</button>
-          <button className="px-4 py-2 rounded-lg border border-gray-300 hover:bg-gray-100 transition-colors font-medium">Next</button>
-        </div>
-      </div>
+      <TableFooter page={tc.page} totalPages={tc.totalPages} total={tc.total} pageSize={tc.pageSize} onPage={tc.setPage} />
 
       {/* Edit Modal */}
       {isEditOpen && editStudent && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4 overflow-y-auto">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-4 sm:p-8 shadow-xl mx-auto flex flex-col">
+          <div className="w-full max-w-lg rounded-2xl bg-slate-900 p-4 sm:p-8 shadow-xl mx-auto flex flex-col">
             <div className="flex items-center justify-between mb-4 sm:mb-6">
-              <h2 className="text-xl sm:text-2xl font-bold text-gray-800">Edit Student</h2>
-              <button onClick={() => setIsEditOpen(false)} className="p-2 rounded-full hover:bg-gray-100">
-                <span className="text-gray-600">&times;</span>
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-200">Edit Student</h2>
+              <button onClick={() => setIsEditOpen(false)} className="p-2 rounded-full hover:bg-slate-800">
+                <span className="text-slate-400">&times;</span>
               </button>
             </div>
             <form
@@ -212,9 +236,9 @@ const StudentsTable = () => {
               }}
             >
               <div>
-                <label className="block text-sm font-medium text-gray-700">Course</label>
+                <label className="block text-sm font-medium text-slate-300">Course</label>
                 <select
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="mt-1 block w-full rounded-md border border-slate-700 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   value={selectedCourseId}
                   onChange={e => setSelectedCourseId(e.target.value)}
                 >
@@ -225,9 +249,9 @@ const StudentsTable = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">Module</label>
+                <label className="block text-sm font-medium text-slate-300">Module</label>
                 <select
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                  className="mt-1 block w-full rounded-md border border-slate-700 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   value={selectedModuleId}
                   onChange={e => setSelectedModuleId(e.target.value)}
                   disabled={!selectedCourseId}
@@ -242,7 +266,7 @@ const StudentsTable = () => {
                 <button
                   type="button"
                   onClick={() => setIsEditOpen(false)}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 w-full sm:w-auto"
+                  className="px-4 py-2 text-sm font-medium text-slate-300 bg-slate-800 rounded-md hover:bg-slate-700 w-full sm:w-auto"
                 >
                   Cancel
                 </button>

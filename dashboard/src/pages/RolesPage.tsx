@@ -52,6 +52,8 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { apiRequest } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
+import { useTableControls } from '../hooks/useTableControls';
+import { TableFooter, SortableTh } from '../components/ui/TableControls';
 
 type Role = {
   id: string;
@@ -137,6 +139,8 @@ const RolesPage = () => {
     const search = searchTerm.toLowerCase();
     return roles.filter((item) => item.role_name.toLowerCase().includes(search));
   }, [roles, searchTerm]);
+
+  const tc = useTableControls(filtered);
 
   const openCreate = () => {
     setFormState(emptyForm);
@@ -230,8 +234,8 @@ const RolesPage = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-800">Roles</h1>
-          <p className="text-sm text-gray-500">Create roles and permissions.</p>
+          <h1 className="text-3xl font-bold text-slate-200">Roles</h1>
+          <p className="text-sm text-slate-500">Create roles and permissions.</p>
         </div>
         {user?.permissions?.['roles.create'] || user?.permissions?.['*'] ? (
           <button
@@ -244,42 +248,42 @@ const RolesPage = () => {
         ) : null}
       </div>
 
-      <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
-        <div className="p-6 border-b border-gray-200">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-lg border border-slate-800 overflow-hidden">
+        <div className="p-6 border-b border-slate-700">
           <input
             type="text"
             placeholder="Search by role name..."
-            className="w-full max-w-md px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+            className="w-full max-w-md px-4 py-2.5 rounded-lg border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
           />
         </div>
         {isLoading ? (
-          <div className="p-6 text-sm text-gray-600">Loading roles...</div>
+          <div className="p-6 text-sm text-slate-400">Loading roles...</div>
         ) : error ? (
           <div className="p-6 text-sm text-red-600">{error}</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left">
-              <thead className="bg-gray-50 border-b border-gray-200">
+              <thead className="bg-slate-800 border-b border-slate-700">
                 <tr>
-                  <th className="px-6 py-4 text-xs font-bold text-gray-600 uppercase tracking-wider">Role</th>
-                  <th className="px-6 py-4 text-xs font-bold text-gray-600 uppercase tracking-wider">Permissions</th>
-                  <th className="px-6 py-4 text-xs font-bold text-gray-600 uppercase tracking-wider">Actions</th>
+                  <SortableTh label="Role" sortKey="role_name" sort={tc.sort} onSort={tc.setSort} />
+                  <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Permissions</th>
+                  <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
-                {filtered.map((item) => (
-                  <tr key={item.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 font-medium text-gray-900">{item.role_name}</td>
-                    <td className="px-6 py-4 text-gray-600">
+              <tbody className="divide-y divide-slate-800">
+                {tc.paged.map((item) => (
+                  <tr key={item.id} className="hover:bg-slate-800 transition-colors">
+                    <td className="px-6 py-4 font-medium text-slate-100">{item.role_name}</td>
+                    <td className="px-6 py-4 text-slate-400">
                       {Object.keys(item.permissions ?? {}).length ? (
-                        <span className="text-xs text-gray-500">Custom permissions</span>
+                        <span className="text-xs text-slate-500">Custom permissions</span>
                       ) : (
-                        <span className="text-xs text-gray-400">No permissions</span>
+                        <span className="text-xs text-slate-500">No permissions</span>
                       )}
                     </td>
-                    <td className="px-6 py-4 text-gray-600">
+                    <td className="px-6 py-4 text-slate-400">
                       {user?.permissions?.['roles.update'] || user?.permissions?.['*'] ? (
                         <button
                           className="text-indigo-600 hover:text-indigo-700 text-sm font-medium"
@@ -295,48 +299,49 @@ const RolesPage = () => {
             </table>
           </div>
         )}
+        <TableFooter page={tc.page} totalPages={tc.totalPages} total={tc.total} pageSize={tc.pageSize} onPage={tc.setPage} />
       </div>
 
       {isModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4 overflow-y-auto">
-          <div className="w-full max-w-2xl rounded-2xl bg-white p-4 sm:p-8 shadow-xl mx-auto flex flex-col">
+          <div className="w-full max-w-2xl rounded-2xl bg-slate-900 border border-slate-800 p-4 sm:p-8 shadow-xl mx-auto flex flex-col">
             <div className="flex items-center justify-between mb-4 sm:mb-6">
-              <h2 className="text-xl sm:text-2xl font-bold text-gray-800">
+              <h2 className="text-xl sm:text-2xl font-bold text-slate-200">
                 {formState.id ? 'Update Role' : 'Create Role'}
               </h2>
-              <button onClick={closeModal} className="p-2 rounded-full hover:bg-gray-100">
-                <X className="text-gray-600" />
+              <button onClick={closeModal} className="p-2 rounded-full hover:bg-slate-800">
+                <X className="text-slate-400" />
               </button>
             </div>
             <form className="space-y-3 sm:space-y-4" onSubmit={handleSubmit}>
               <div>
-                <label className="block text-sm font-medium text-gray-700">Role name</label>
+                <label className="block text-sm font-medium text-slate-300">Role name</label>
                 <input
                   type="text"
                   required
                   value={formState.role_name}
                   onChange={(event) => setFormState({ ...formState, role_name: event.target.value })}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
+                  className="mt-1 block w-full rounded-md border border-slate-700 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">Permissions (JSON)</label>
+                <label className="block text-sm font-medium text-slate-300">Permissions (JSON)</label>
                 <textarea
                   rows={4}
                   value={formState.permissions}
                   onChange={(event) => setFormState({ ...formState, permissions: event.target.value })}
-                  className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 font-mono text-xs shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
+                  className="mt-1 block w-full rounded-md border border-slate-700 px-3 py-2 font-mono text-xs shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
                   placeholder='{"students.read": true}'
                 />
               </div>
               <div>
-                <p className="text-sm font-medium text-gray-700">Quick permissions</p>
+                <p className="text-sm font-medium text-slate-300">Quick permissions</p>
                 <div className="mt-3 grid gap-2 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
                   {PERMISSIONS.map((permission) => (
-                    <label key={permission.key} className="flex items-center gap-2 text-sm text-gray-600">
+                    <label key={permission.key} className="flex items-center gap-2 text-sm text-slate-400">
                       <input
                         type="checkbox"
-                        className="h-4 w-4 text-indigo-600 border-gray-300 rounded"
+                        className="h-4 w-4 text-indigo-600 border-slate-700 rounded"
                         checked={Boolean(permissionMap[permission.key])}
                         onChange={() => handlePermissionToggle(permission.key)}
                       />
@@ -350,7 +355,7 @@ const RolesPage = () => {
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 w-full sm:w-auto"
+                  className="px-4 py-2 text-sm font-medium text-slate-300 bg-slate-800 rounded-md hover:bg-slate-700 w-full sm:w-auto"
                 >
                   Cancel
                 </button>

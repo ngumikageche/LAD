@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useAuth } from '../../auth/AuthContext';
+import theme from '../../theme/theme';
 
 interface NavItem {
   name: string;
@@ -24,24 +25,24 @@ const studentGroups: NavGroup[] = [
   {
     label: 'Overview',
     items: [
-      { name: 'Dashboard',         icon: LayoutDashboard, path: '/student/dashboard',         color: 'text-indigo-600' },
-      { name: 'Notifications',     icon: Bell,            path: '/student/notifications',     color: 'text-amber-600'  },
-      { name: 'My Profile',        icon: UserCog,         path: '/student/profile',           color: 'text-violet-600' },
+      { name: 'Dashboard',         icon: LayoutDashboard, path: '/student/dashboard',         color: 'text-blue-300' },
+      { name: 'Notifications',     icon: Bell,            path: '/student/notifications',     color: 'text-amber-400'  },
+      { name: 'My Profile',        icon: UserCog,         path: '/student/profile',           color: 'text-teal-300' },
     ],
   },
   {
     label: 'Academics',
     items: [
-      { name: 'My Scores',         icon: FileText,        path: '/student/scores',            color: 'text-blue-600'   },
-      { name: 'My Subjects',       icon: Book,            path: '/student/subjects',          color: 'text-emerald-600'},
+      { name: 'My Scores',         icon: FileText,        path: '/student/scores',            color: 'text-blue-300'   },
+      { name: 'My Subjects',       icon: Book,            path: '/student/subjects',          color: 'text-teal-300'},
     ],
   },
   {
     label: 'Reports',
     items: [
-      { name: 'Report Card',       icon: ClipboardList,   path: '/student/report-card',       color: 'text-blue-500'   },
-      { name: 'Attendance',        icon: CalendarCheck,   path: '/student/attendance-report', color: 'text-green-600'  },
-      { name: 'Fee Statement',     icon: Receipt,         path: '/student/fee-statement',     color: 'text-purple-600' },
+      { name: 'Report Card',       icon: ClipboardList,   path: '/student/report-card',       color: 'text-blue-300'   },
+      { name: 'Attendance',        icon: CalendarCheck,   path: '/student/attendance-report', color: 'text-green-400'  },
+      { name: 'Fee Statement',     icon: Receipt,         path: '/student/fee-statement',     color: 'text-amber-400' },
     ],
   },
 ];
@@ -50,23 +51,23 @@ const trainerGroups: NavGroup[] = [
   {
     label: 'Overview',
     items: [
-      { name: 'Dashboard',         icon: LayoutDashboard, path: '/trainer-hub',               color: 'text-indigo-600' },
+      { name: 'Dashboard',         icon: LayoutDashboard, path: '/trainer-hub',               color: 'text-blue-300' },
     ],
   },
   {
     label: 'Students',
     items: [
-      { name: 'Student Profile',   icon: TrendingUp,      path: '/trainer/student-profile',   color: 'text-purple-600' },
-      { name: 'Provide Feedback',  icon: MessageSquare,   path: '/trainer/feedback',          color: 'text-cyan-600'   },
+      { name: 'Student Profile',   icon: TrendingUp,      path: '/trainer/student-profile',   color: 'text-teal-300' },
+      { name: 'Provide Feedback',  icon: MessageSquare,   path: '/trainer/feedback',          color: 'text-amber-400'   },
     ],
   },
   {
     label: 'Reports',
     items: [
-      { name: 'Trainer Reports',   icon: FileText,        path: '/trainer/reports',           color: 'text-indigo-600' },
-      { name: 'Class Performance', icon: BarChart3,       path: '/trainer/class-performance', color: 'text-blue-600'   },
-      { name: 'Syllabus Coverage', icon: BookOpen,        path: '/trainer/syllabus',          color: 'text-green-600'  },
-      { name: 'My Attendance',     icon: UserCheck,       path: '/trainer/attendance',        color: 'text-amber-600'  },
+      { name: 'Trainer Reports',   icon: FileText,        path: '/trainer/reports',           color: 'text-blue-300' },
+      { name: 'Class Performance', icon: BarChart3,       path: '/trainer/class-performance', color: 'text-teal-300'   },
+      { name: 'Syllabus Coverage', icon: BookOpen,        path: '/trainer/syllabus',          color: 'text-green-400'  },
+      { name: 'My Attendance',     icon: UserCheck,       path: '/trainer/attendance',        color: 'text-amber-400'  },
     ],
   },
 ];
@@ -75,44 +76,44 @@ const adminGroups: NavGroup[] = [
   {
     label: 'Overview',
     items: [
-      { name: 'Dashboard',         icon: LayoutDashboard, path: '/admin/dashboard',            color: 'text-indigo-600' },
-      { name: 'Analytics',         icon: BarChart,        path: '/admin/analytics',            color: 'text-red-600'    },
-      { name: 'Notifications',     icon: Bell,            path: '/admin/notifications',        color: 'text-red-600'    },
+      { name: 'Dashboard',         icon: LayoutDashboard, path: '/admin/dashboard',            color: 'text-blue-300' },
+      { name: 'Analytics',         icon: BarChart,        path: '/admin/analytics',            color: 'text-teal-300'    },
+      { name: 'Notifications',     icon: Bell,            path: '/admin/notifications',        color: 'text-amber-400'    },
     ],
   },
   {
     label: 'People',
     items: [
-      { name: 'Students',          icon: Users,           path: '/students',                   color: 'text-blue-600'   },
-      { name: 'Trainers',          icon: UserCog,         path: '/trainers',                   color: 'text-sky-600'    },
-      { name: 'Users',             icon: Shield,          path: '/users',                      color: 'text-rose-600'   },
-      { name: 'Roles',             icon: KeyRound,        path: '/roles',                      color: 'text-orange-600' },
+      { name: 'Students',          icon: Users,           path: '/students',                   color: 'text-blue-300'   },
+      { name: 'Trainers',          icon: UserCog,         path: '/trainers',                   color: 'text-teal-300'    },
+      { name: 'Users',             icon: Shield,          path: '/users',                      color: 'text-red-400'   },
+      { name: 'Roles',             icon: KeyRound,        path: '/roles',                      color: 'text-amber-400' },
     ],
   },
   {
     label: 'Institution',
     items: [
-      { name: 'Institutions',      icon: Building2,       path: '/institutions',               color: 'text-emerald-600'},
-      { name: 'Departments',       icon: School,          path: '/departments',                color: 'text-cyan-600'   },
-      { name: 'Courses',           icon: Book,            path: '/courses',                    color: 'text-amber-600'  },
-      { name: 'Modules',           icon: Book,            path: '/modules',                    color: 'text-indigo-600' },
-      { name: 'Subjects',          icon: Book,            path: '/subjects',                   color: 'text-amber-600'  },
+      { name: 'Institutions',      icon: Building2,       path: '/institutions',               color: 'text-blue-300'},
+      { name: 'Departments',       icon: School,          path: '/departments',                color: 'text-teal-300'   },
+      { name: 'Courses',           icon: Book,            path: '/courses',                    color: 'text-amber-400'  },
+      { name: 'Modules',           icon: Book,            path: '/modules',                    color: 'text-blue-300' },
+      { name: 'Subjects',          icon: Book,            path: '/subjects',                   color: 'text-amber-400'  },
     ],
   },
   {
     label: 'Academics',
     items: [
-      { name: 'Score Management',  icon: FileText,        path: '/admin/scores',               color: 'text-red-600'    },
-      { name: 'Progress',          icon: BarChart,        path: '/progress',                   color: 'text-emerald-600'},
+      { name: 'Score Management',  icon: FileText,        path: '/admin/scores',               color: 'text-red-400'    },
+      { name: 'Progress',          icon: BarChart,        path: '/progress',                   color: 'text-green-400'},
     ],
   },
   {
     label: 'Reports',
     items: [
-      { name: 'Exam Results',      icon: GraduationCap,   path: '/admin/reports/exam-results', color: 'text-indigo-600' },
-      { name: 'Fee Collection',    icon: Receipt,         path: '/admin/reports/fees',         color: 'text-green-600'  },
-      { name: 'Enrolment',         icon: ClipboardList,   path: '/admin/reports/enrolment',    color: 'text-purple-600' },
-      { name: 'All Reports',       icon: FileText,        path: '/reports',                    color: 'text-purple-600' },
+      { name: 'Exam Results',      icon: GraduationCap,   path: '/admin/reports/exam-results', color: 'text-blue-300' },
+      { name: 'Fee Collection',    icon: Receipt,         path: '/admin/reports/fees',         color: 'text-green-400'  },
+      { name: 'Enrolment',         icon: ClipboardList,   path: '/admin/reports/enrolment',    color: 'text-amber-400' },
+      { name: 'All Reports',       icon: FileText,        path: '/reports',                    color: 'text-teal-300' },
     ],
   },
 ];
@@ -137,7 +138,7 @@ function NavGroupSection({
       location.pathname === item.path ||
       location.pathname.startsWith(item.path + '/')
   );
-  const [open, setOpen] = useState(isAnyActive || true);
+  const [open, setOpen] = useState<boolean>(isAnyActive || true);
 
   if (isCollapsed) {
     return (
@@ -153,8 +154,8 @@ function NavGroupSection({
               title={item.name}
               className={`flex items-center justify-center p-3 rounded-lg transition-all mb-0.5 ${
                 active
-                  ? 'bg-indigo-50 border-l-2 border-indigo-600'
-                  : 'hover:bg-gray-50'
+                  ? 'bg-teal-500/15 border-l-2 border-teal-400'
+                  : 'hover:bg-blue-800/70'
               }`}
             >
               <item.icon className={`h-5 w-5 ${item.color}`} />
@@ -170,7 +171,7 @@ function NavGroupSection({
       {/* Group header */}
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold text-gray-400 uppercase tracking-wider hover:text-gray-600 transition-colors"
+        className={`w-full flex items-center justify-between px-3 py-1.5 text-xs font-semibold uppercase tracking-wider ${theme.text.muted} hover:text-slate-200 ${theme.interactive.base}`}
       >
         <span>{group.label}</span>
         {open ? <ChevronDown size={13} /> : <ChevronRight size={13} />}
@@ -178,7 +179,7 @@ function NavGroupSection({
 
       {/* Items — linked-list style with a left border connector */}
       {open && (
-        <ul className="relative ml-3 pl-3 border-l border-gray-200 space-y-0.5">
+        <ul className="relative ml-3 pl-3 border-l border-blue-800 space-y-0.5">
           {group.items.map((item) => {
             const active =
               location.pathname === item.path ||
@@ -186,16 +187,16 @@ function NavGroupSection({
             return (
               <li key={item.path} className="relative">
                 {/* Connector tick */}
-                <span className="absolute -left-3 top-1/2 -translate-y-1/2 w-3 h-px bg-gray-200" />
+                <span className="absolute -left-3 top-1/2 -translate-y-1/2 w-3 h-px bg-blue-800" />
                 <Link
                   to={item.path}
                   className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all font-medium ${
                     active
-                      ? 'bg-indigo-50 text-indigo-700 border-l-2 border-indigo-600'
-                      : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                      ? 'bg-teal-500/15 text-teal-200 border-l-2 border-teal-400'
+                      : 'text-slate-300 hover:bg-blue-800/70 hover:text-slate-100'
                   }`}
                 >
-                  <item.icon className={`h-4 w-4 shrink-0 ${active ? 'text-indigo-600' : item.color}`} />
+                  <item.icon className={`h-4 w-4 shrink-0 ${active ? 'text-teal-300' : item.color}`} />
                   <span className="truncate">{item.name}</span>
                 </Link>
               </li>
@@ -219,23 +220,23 @@ const Sidebar = () => {
 
   return (
     <div
-      className={`bg-white border-r border-gray-200 transition-all duration-300 flex flex-col ${
+      className={`${theme.layout.sidebar} border-r transition-all duration-300 flex flex-col ${
         isCollapsed ? 'w-16' : 'w-64'
-      } shadow-sm`}
+      } shadow-2xl shadow-blue-950/30`}
     >
       {/* Logo */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200 shrink-0">
+      <div className="flex items-center justify-between p-4 border-b border-blue-800 shrink-0">
         {!isCollapsed && (
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-indigo-600 rounded-full" />
-            <h1 className="text-lg font-bold bg-gradient-to-r from-indigo-600 to-blue-600 bg-clip-text text-transparent">
+            <div className="w-2 h-2 bg-teal-400 rounded-full" />
+            <h1 className="text-lg font-bold text-white">
               LAD
             </h1>
           </div>
         )}
         <button
           onClick={() => setIsCollapsed((c) => !c)}
-          className="p-2 rounded-md hover:bg-gray-100 transition-colors"
+          className="p-2 rounded-md hover:bg-blue-800/70 text-slate-300 transition-all duration-200"
         >
           {isCollapsed ? <ChevronsRight size={18} /> : <ChevronsLeft size={18} />}
         </button>

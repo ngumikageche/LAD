@@ -142,11 +142,11 @@ export default function ScoreUploadPage() {
       <div className="max-w-4xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="text-3xl font-bold text-slate-100 flex items-center gap-2">
             <Upload size={32} className="text-green-500" />
             Upload Scores
           </h1>
-          <p className="text-gray-600 mt-2">
+          <p className="text-slate-400 mt-2">
             Add student scores for assessments in your subjects
           </p>
         </div>
@@ -167,20 +167,20 @@ export default function ScoreUploadPage() {
         )}
 
         {/* Mode Selection */}
-        <div className="bg-white rounded-lg shadow p-6 mb-8">
-          <h2 className="text-lg font-bold text-gray-900 mb-4">Upload Method</h2>
+        <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6 mb-8">
+          <h2 className="text-lg font-bold text-slate-100 mb-4">Upload Method</h2>
           <div className="grid grid-cols-2 gap-4">
             <button
               onClick={() => setUploadMode('individual')}
               className={`p-4 rounded-lg border-2 transition ${
                 uploadMode === 'individual'
                   ? 'border-blue-500 bg-blue-50'
-                  : 'border-gray-300 hover:border-gray-400'
+                  : 'border-slate-700 hover:border-slate-600'
               }`}
             >
               <Plus size={24} className="mx-auto mb-2 text-blue-500" />
-              <p className="font-semibold text-gray-900">Individual Entry</p>
-              <p className="text-xs text-gray-600">Add scores one by one</p>
+              <p className="font-semibold text-slate-100">Individual Entry</p>
+              <p className="text-xs text-slate-400">Add scores one by one</p>
             </button>
 
             <button
@@ -188,30 +188,30 @@ export default function ScoreUploadPage() {
               className={`p-4 rounded-lg border-2 transition ${
                 uploadMode === 'bulk'
                   ? 'border-green-500 bg-green-50'
-                  : 'border-gray-300 hover:border-gray-400'
+                  : 'border-slate-700 hover:border-slate-600'
               }`}
             >
               <FileText size={24} className="mx-auto mb-2 text-green-500" />
-              <p className="font-semibold text-gray-900">CSV Upload</p>
-              <p className="text-xs text-gray-600">Bulk import from file</p>
+              <p className="font-semibold text-slate-100">CSV Upload</p>
+              <p className="text-xs text-slate-400">Bulk import from file</p>
             </button>
           </div>
         </div>
 
         {/* Individual Upload Mode */}
         {uploadMode === 'individual' && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-6">Add Scores</h2>
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
+            <h2 className="text-lg font-bold text-slate-100 mb-6">Add Scores</h2>
 
             {/* Subject Selection */}
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-slate-300 mb-2">
                 Subject
               </label>
               <select
                 value={selectedSubject}
                 onChange={(e) => setSelectedSubject(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
               >
                 <option value="">Select Subject</option>
                 {subjects.map((subject) => (
@@ -225,18 +225,18 @@ export default function ScoreUploadPage() {
             {/* Scores Table */}
             <div className="overflow-x-auto mb-6">
               <table className="w-full">
-                <thead className="bg-gray-50 border-b">
+                <thead className="bg-slate-800 border-b">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-700">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-300">
                       Student ID
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-700">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-300">
                       Assessment ID
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-700">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-300">
                       Marks (%)
                     </th>
-                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-700">
+                    <th className="px-4 py-3 text-left text-xs font-medium text-slate-300">
                       Action
                     </th>
                   </tr>
@@ -252,7 +252,7 @@ export default function ScoreUploadPage() {
                           onChange={(e) =>
                             updateScore(idx, 'student_id', e.target.value)
                           }
-                          className="w-full px-3 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                          className="w-full px-3 py-1 border border-slate-700 rounded text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
                         />
                       </td>
                       <td className="px-4 py-3">
@@ -263,7 +263,7 @@ export default function ScoreUploadPage() {
                           onChange={(e) =>
                             updateScore(idx, 'assessment_id', e.target.value)
                           }
-                          className="w-full px-3 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                          className="w-full px-3 py-1 border border-slate-700 rounded text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
                         />
                       </td>
                       <td className="px-4 py-3">
@@ -280,7 +280,7 @@ export default function ScoreUploadPage() {
                               parseFloat(e.target.value) || 0
                             )
                           }
-                          className="w-full px-3 py-1 border border-gray-300 rounded text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                          className="w-full px-3 py-1 border border-slate-700 rounded text-sm focus:ring-2 focus:ring-green-500 focus:border-transparent"
                         />
                       </td>
                       <td className="px-4 py-3">
@@ -302,7 +302,7 @@ export default function ScoreUploadPage() {
             {/* Add Row Button */}
             <button
               onClick={addScoreRow}
-              className="mb-6 px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition flex items-center gap-2"
+              className="mb-6 px-4 py-2 bg-slate-700 text-slate-200 rounded-lg hover:bg-slate-600 transition flex items-center gap-2"
             >
               <Plus size={18} />
               Add Another Row
@@ -322,8 +322,8 @@ export default function ScoreUploadPage() {
 
         {/* Bulk Upload Mode */}
         {uploadMode === 'bulk' && (
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-6">Bulk Upload from CSV</h2>
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
+            <h2 className="text-lg font-bold text-slate-100 mb-6">Bulk Upload from CSV</h2>
 
             {/* CSV Format Help */}
             <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
@@ -331,7 +331,7 @@ export default function ScoreUploadPage() {
               <p className="text-sm text-blue-800 mb-2">
                 Your CSV file should have the following columns:
               </p>
-              <code className="text-xs bg-white p-2 rounded block text-gray-900 mb-2">
+              <code className="text-xs bg-slate-900 border border-slate-800 p-2 rounded block text-slate-100 mb-2">
                 student_id, assessment_id, marks_obtained, subject_id
               </code>
               <p className="text-xs text-blue-700">
@@ -341,17 +341,17 @@ export default function ScoreUploadPage() {
 
             {/* File Upload */}
             <div className="mb-6">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-slate-300 mb-2">
                 Select CSV File
               </label>
               <input
                 type="file"
                 accept=".csv"
                 onChange={(e) => setCsvFile(e.target.files?.[0] || null)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
               />
               {csvFile && (
-                <p className="mt-2 text-sm text-gray-600">
+                <p className="mt-2 text-sm text-slate-400">
                   Selected: <span className="font-medium">{csvFile.name}</span>
                 </p>
               )}
@@ -368,9 +368,9 @@ export default function ScoreUploadPage() {
             </button>
 
             {/* Download Template */}
-            <div className="mt-6 p-4 bg-gray-50 rounded-lg text-center">
-              <p className="text-sm text-gray-600 mb-2">Need a template?</p>
-              <button className="px-4 py-2 bg-gray-300 text-gray-800 rounded-lg hover:bg-gray-400 transition font-medium">
+            <div className="mt-6 p-4 bg-slate-800 rounded-lg text-center">
+              <p className="text-sm text-slate-400 mb-2">Need a template?</p>
+              <button className="px-4 py-2 bg-slate-600 text-slate-200 rounded-lg hover:bg-slate-600 transition font-medium">
                 📥 Download Template
               </button>
             </div>

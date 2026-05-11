@@ -57,23 +57,23 @@ const ClassSummaryPanel = () => {
   if (!metrics) return <div>No data available</div>;
 
   return (
-    <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100">
-      <h3 className="text-lg font-bold text-gray-900 mb-5">{classTitle} Summary</h3>
+    <div className="bg-slate-900 p-6 rounded-2xl shadow-lg border border-slate-800">
+      <h3 className="text-lg font-bold text-slate-100 mb-5">{classTitle} Summary</h3>
       <div className="space-y-4">
-        <div className="flex items-center justify-between pb-4 border-b border-gray-100">
-          <p className="text-sm font-medium text-gray-600">Average Score</p>
+        <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+          <p className="text-sm font-medium text-slate-400">Average Score</p>
           <p className="text-2xl font-bold text-emerald-600">{metrics.average_score}%</p>
         </div>
-        <div className="flex items-center justify-between pb-4 border-b border-gray-100">
-          <p className="text-sm font-medium text-gray-600">Attendance</p>
+        <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+          <p className="text-sm font-medium text-slate-400">Attendance</p>
           <p className="text-lg font-bold text-indigo-600">--</p>
         </div>
-        <div className="flex items-center justify-between pb-4 border-b border-gray-100">
-          <p className="text-sm font-medium text-gray-600">Top Performer</p>
+        <div className="flex items-center justify-between pb-4 border-b border-slate-800">
+          <p className="text-sm font-medium text-slate-400">Top Performer</p>
           <p className="text-sm font-semibold text-indigo-600">--</p>
         </div>
         <div className="flex items-center justify-between">
-          <p className="text-sm font-medium text-gray-600">Students At Risk</p>
+          <p className="text-sm font-medium text-slate-400">Students At Risk</p>
           <span className="px-3 py-1 bg-red-100 text-red-700 text-sm font-bold rounded-full">{metrics.at_risk_count}</span>
         </div>
       </div>

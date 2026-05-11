@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { AlertCircle, Search } from 'lucide-react';
 import { trainerApi, type PaginatedScores, type TrainerSubject } from '../../services/trainerApi';
+import { SortableTh } from '../ui/TableControls';
+import type { SortState } from '../../hooks/useTableControls';
 
 type ScoresTableProps = {
   subjects: TrainerSubject[];
@@ -15,6 +17,15 @@ const ScoresTable = ({ subjects, refreshToken }: ScoresTableProps) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
+
+  const [sort, setSort] = useState<SortState | null>(null);
+
+  const handleSort = (key: string) => {
+    setSort((prev) =>
+      prev?.key === key ? { key, dir: prev.dir === 'asc' ? 'desc' : 'asc' } : { key, dir: 'asc' },
+    );
+    setPage(1);
+  };
 
   useEffect(() => {
     const loadScores = async () => {
@@ -40,23 +51,23 @@ const ScoresTable = ({ subjects, refreshToken }: ScoresTableProps) => {
   }, [page, refreshToken, studentId, subjectId, term]);
 
   return (
-    <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
+    <div className="rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-sm">
       <div className="mb-6 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h2 className="text-2xl font-semibold text-gray-900">Scores</h2>
-          <p className="mt-1 text-sm text-gray-600">Filter by subject, term, or student for fast review.</p>
+          <h2 className="text-2xl font-semibold text-slate-100">Scores</h2>
+          <p className="mt-1 text-sm text-slate-400">Filter by subject, term, or student for fast review.</p>
         </div>
 
         <div className="grid gap-3 md:grid-cols-3">
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-gray-700">Subject</span>
+            <span className="mb-2 block text-sm font-medium text-slate-300">Subject</span>
             <select
               value={subjectId}
               onChange={(event) => {
                 setPage(1);
                 setSubjectId(event.target.value);
               }}
-              className="w-full rounded-2xl border border-gray-300 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+              className="w-full rounded-2xl border border-slate-700 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
             >
               <option value="">All subjects</option>
               {subjects.map((subject) => (
@@ -68,30 +79,30 @@ const ScoresTable = ({ subjects, refreshToken }: ScoresTableProps) => {
           </label>
 
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-gray-700">Term</span>
+            <span className="mb-2 block text-sm font-medium text-slate-300">Term</span>
             <input
               value={term}
               onChange={(event) => {
                 setPage(1);
                 setTerm(event.target.value);
               }}
-              className="w-full rounded-2xl border border-gray-300 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+              className="w-full rounded-2xl border border-slate-700 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
               placeholder="Term 1"
             />
           </label>
 
           <label className="block">
-            <span className="mb-2 block text-sm font-medium text-gray-700">Student ID</span>
+            <span className="mb-2 block text-sm font-medium text-slate-300">Student</span>
             <div className="relative">
-              <Search className="pointer-events-none absolute left-4 top-3.5 text-gray-400" size={16} />
+              <Search className="pointer-events-none absolute left-4 top-3.5 text-slate-500" size={16} />
               <input
                 value={studentId}
                 onChange={(event) => {
                   setPage(1);
                   setStudentId(event.target.value);
                 }}
-                className="w-full rounded-2xl border border-gray-300 py-3 pl-10 pr-4 text-sm text-gray-900 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
-                placeholder="Filter by UUID"
+                className="w-full rounded-2xl border border-slate-700 py-3 pl-10 pr-4 text-sm text-slate-100 outline-none transition focus:border-sky-500 focus:ring-2 focus:ring-sky-100"
+                placeholder="Search by name or ID"
               />
             </div>
           </label>
@@ -105,22 +116,22 @@ const ScoresTable = ({ subjects, refreshToken }: ScoresTableProps) => {
         </div>
       ) : null}
 
-      <div className="overflow-x-auto rounded-2xl border border-gray-200">
-        <table className="min-w-full divide-y divide-gray-200">
-          <thead className="bg-gray-50">
+      <div className="overflow-x-auto rounded-2xl border border-slate-700">
+        <table className="min-w-full divide-y divide-slate-800">
+          <thead className="bg-slate-800">
             <tr>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Student</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Subject</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Term</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Score</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Status</th>
-              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">Feedback</th>
+              <SortableTh label="Student" sortKey="student" sort={sort} onSort={handleSort} className="px-4 py-3" />
+              <SortableTh label="Subject" sortKey="subject" sort={sort} onSort={handleSort} className="px-4 py-3" />
+              <SortableTh label="Term" sortKey="term" sort={sort} onSort={handleSort} className="px-4 py-3" />
+              <SortableTh label="Score" sortKey="score" sort={sort} onSort={handleSort} className="px-4 py-3" />
+              <SortableTh label="Status" sortKey="is_passed" sort={sort} onSort={handleSort} className="px-4 py-3" />
+              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">Feedback</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-gray-200 bg-white">
+          <tbody className="divide-y divide-slate-800 bg-slate-900">
             {isLoading ? (
               <tr>
-                <td className="px-4 py-8 text-sm text-gray-500" colSpan={6}>
+                <td className="px-4 py-8 text-sm text-slate-500" colSpan={6}>
                   Loading scores...
                 </td>
               </tr>
@@ -128,7 +139,7 @@ const ScoresTable = ({ subjects, refreshToken }: ScoresTableProps) => {
 
             {!isLoading && (scores?.items.length ?? 0) === 0 ? (
               <tr>
-                <td className="px-4 py-8 text-sm text-gray-500" colSpan={6}>
+                <td className="px-4 py-8 text-sm text-slate-500" colSpan={6}>
                   No scores match the current filters.
                 </td>
               </tr>
@@ -137,13 +148,13 @@ const ScoresTable = ({ subjects, refreshToken }: ScoresTableProps) => {
             {!isLoading
               ? scores?.items.map((item) => (
                   <tr key={item.id}>
-                    <td className="px-4 py-4 text-sm text-gray-900">
+                    <td className="px-4 py-4 text-sm text-slate-100">
                       <div className="font-medium">{item.student?.name ?? 'Unknown student'}</div>
-                      <div className="text-xs text-gray-500">{item.student?.registration_number ?? item.student_id}</div>
+                      <div className="text-xs text-slate-500">{item.student?.registration_number ?? item.student_id}</div>
                     </td>
-                    <td className="px-4 py-4 text-sm text-gray-700">{item.subject?.name ?? '-'}</td>
-                    <td className="px-4 py-4 text-sm text-gray-700">{item.term ?? '-'}</td>
-                    <td className="px-4 py-4 text-sm font-semibold text-gray-900">{item.score.toFixed(2)}</td>
+                    <td className="px-4 py-4 text-sm text-slate-300">{item.subject?.name ?? '-'}</td>
+                    <td className="px-4 py-4 text-sm text-slate-300">{item.term ?? '-'}</td>
+                    <td className="px-4 py-4 text-sm font-semibold text-slate-100">{item.score.toFixed(2)}</td>
                     <td className="px-4 py-4 text-sm">
                       <span
                         className={`rounded-full px-3 py-1 text-xs font-semibold ${
@@ -155,7 +166,7 @@ const ScoresTable = ({ subjects, refreshToken }: ScoresTableProps) => {
                         {(item.is_passed ?? item.score >= 50) ? 'Pass' : 'At Risk'}
                       </span>
                     </td>
-                    <td className="px-4 py-4 text-sm text-gray-600">{item.feedback || 'No feedback yet'}</td>
+                    <td className="px-4 py-4 text-sm text-slate-400">{item.feedback || 'No feedback yet'}</td>
                   </tr>
                 ))
               : null}
@@ -164,7 +175,7 @@ const ScoresTable = ({ subjects, refreshToken }: ScoresTableProps) => {
       </div>
 
       {scores ? (
-        <div className="mt-4 flex items-center justify-between text-sm text-gray-600">
+        <div className="mt-4 flex items-center justify-between text-sm text-slate-400">
           <span>
             Page {scores.pagination.page} of {scores.pagination.total_pages}
           </span>
@@ -173,7 +184,7 @@ const ScoresTable = ({ subjects, refreshToken }: ScoresTableProps) => {
               type="button"
               onClick={() => setPage((current) => Math.max(1, current - 1))}
               disabled={scores.pagination.page <= 1}
-              className="rounded-xl border border-gray-300 px-4 py-2 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-xl border border-slate-700 px-4 py-2 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Previous
             </button>
@@ -181,7 +192,7 @@ const ScoresTable = ({ subjects, refreshToken }: ScoresTableProps) => {
               type="button"
               onClick={() => setPage((current) => Math.min(scores.pagination.total_pages, current + 1))}
               disabled={scores.pagination.page >= scores.pagination.total_pages}
-              className="rounded-xl border border-gray-300 px-4 py-2 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+              className="rounded-xl border border-slate-700 px-4 py-2 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
               Next
             </button>

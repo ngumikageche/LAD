@@ -57,13 +57,13 @@ const StudentMarksPage = () => {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-4xl font-bold text-slate-900">My Scores</h1>
+        <h1 className="text-4xl font-bold text-slate-100">My Scores</h1>
         <p className="mt-2 text-slate-600">Filter your academic results by subject or term.</p>
       </div>
 
-      {error ? <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">{error}</div> : null}
+      {error ? <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-red-300">{error}</div> : null}
 
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-3xl border border-slate-700 bg-slate-900 border border-slate-800 p-6 shadow-sm">
         <div className="grid gap-4 lg:grid-cols-[1fr_1fr_auto]">
           <div>
             <label className="mb-2 block text-sm font-medium text-slate-700">Subject</label>
@@ -107,33 +107,33 @@ const StudentMarksPage = () => {
       </section>
 
       <div className="grid gap-5 md:grid-cols-3">
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="rounded-3xl border border-slate-700 bg-slate-900 border border-slate-800 p-6 shadow-sm">
           <p className="text-sm text-slate-500">Displayed average</p>
-          <p className="mt-3 text-3xl font-bold text-slate-900">{averageScore.toFixed(1)}%</p>
+          <p className="mt-3 text-3xl font-bold text-slate-100">{averageScore.toFixed(1)}%</p>
         </div>
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="rounded-3xl border border-slate-700 bg-slate-900 border border-slate-800 p-6 shadow-sm">
           <p className="text-sm text-slate-500">Records</p>
-          <p className="mt-3 text-3xl font-bold text-slate-900">{pagination.total}</p>
+          <p className="mt-3 text-3xl font-bold text-slate-100">{pagination.total}</p>
         </div>
-        <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <div className="rounded-3xl border border-slate-700 bg-slate-900 border border-slate-800 p-6 shadow-sm">
           <p className="text-sm text-slate-500">Current page</p>
-          <p className="mt-3 text-3xl font-bold text-slate-900">
+          <p className="mt-3 text-3xl font-bold text-slate-100">
             {pagination.page} / {pagination.total_pages}
           </p>
         </div>
       </div>
 
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+      <section className="rounded-3xl border border-slate-700 bg-slate-900 border border-slate-800 p-6 shadow-sm">
         {loading ? (
           <div className="flex h-48 items-center justify-center">
-            <div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-slate-700"></div>
+            <div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-700 border-t-slate-700"></div>
           </div>
         ) : (
           <>
             <div className="overflow-x-auto">
               <table className="w-full min-w-[720px]">
                 <thead>
-                  <tr className="border-b border-slate-200 text-left text-sm text-slate-500">
+                  <tr className="border-b border-slate-700 text-left text-sm text-slate-500">
                     <th className="pb-3">Subject</th>
                     <th className="pb-3">Assessment</th>
                     <th className="pb-3">Term</th>
@@ -175,7 +175,7 @@ const StudentMarksPage = () => {
                 <button
                   onClick={() => loadPage(Math.max(1, pagination.page - 1))}
                   disabled={pagination.page <= 1}
-                  className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                  className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   Previous
                 </button>

@@ -112,7 +112,7 @@ const TrainerSubjectsPage = () => {
       >
         {isSubmitting ? 'Assigning...' : 'Assign Subjects'}
       </button>
-      {message && <div className="mt-4 text-green-600">{message}</div>}
+      {message && <div className="mt-4 text-green-400">{message}</div>}
     </div>
   );
 };

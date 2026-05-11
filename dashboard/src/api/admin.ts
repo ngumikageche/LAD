@@ -22,21 +22,14 @@ export const adminReportsV2API = {
 // Admin Dashboard API
 export const adminDashboardAPI = {
   async getDashboardStats() {
-    try {
-      const response = await apiClient.get('/admin/dashboard/stats');
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
+    // Use analytics/dashboard which returns term_trend and at_risk_students
+    const response = await apiClient.get('/admin/analytics/dashboard');
+    return response.data;
   },
 
   async getDashboardOverview() {
-    try {
-      const response = await apiClient.get('/admin/dashboard');
-      return response.data;
-    } catch (error) {
-      throw error;
-    }
+    const response = await apiClient.get('/admin/dashboard');
+    return response.data;
   },
 };
 

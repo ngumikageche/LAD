@@ -188,11 +188,11 @@ export default function SearchPage() {
       <div className="max-w-5xl mx-auto">
         {/* Header */}
         <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center justify-center gap-2 mb-2">
+          <h1 className="text-3xl font-bold text-slate-100 flex items-center justify-center gap-2 mb-2">
             <Search size={32} className="text-blue-500" />
             Search
           </h1>
-          <p className="text-gray-600">
+          <p className="text-slate-400">
             Search across your scores, courses, announcements, and more
           </p>
         </div>
@@ -202,7 +202,7 @@ export default function SearchPage() {
           <div className="relative">
             <Search
               size={20}
-              className="absolute left-4 top-4 text-gray-400"
+              className="absolute left-4 top-4 text-slate-500"
             />
             <input
               type="text"
@@ -212,7 +212,7 @@ export default function SearchPage() {
                 setSearchTerm(e.target.value);
                 performSearch(e.target.value);
               }}
-              className="w-full pl-12 pr-4 py-3 text-lg border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-lg"
+              className="w-full pl-12 pr-4 py-3 text-lg border border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent shadow-lg"
             />
             {searchTerm && (
               <button
@@ -220,7 +220,7 @@ export default function SearchPage() {
                   setSearchTerm('');
                   setResults([]);
                 }}
-                className="absolute right-4 top-4 text-gray-400 hover:text-gray-600"
+                className="absolute right-4 top-4 text-slate-500 hover:text-slate-400"
               >
                 <X size={20} />
               </button>
@@ -229,11 +229,11 @@ export default function SearchPage() {
         </div>
 
         {/* Filters & Sort */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+        <div className="bg-slate-900 border border-slate-800 rounded-lg shadow-md p-6 mb-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* Filter by Type */}
             <div>
-              <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+              <h3 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
                 <Filter size={16} />
                 Filter by Type
               </h3>
@@ -249,7 +249,7 @@ export default function SearchPage() {
                       onChange={() => toggleFilter(filter)}
                       className="w-4 h-4 rounded"
                     />
-                    <span className="text-gray-700 capitalize">{filter}s</span>
+                    <span className="text-slate-300 capitalize">{filter}s</span>
                   </label>
                 ))}
               </div>
@@ -257,7 +257,7 @@ export default function SearchPage() {
 
             {/* Sort */}
             <div>
-              <h3 className="text-sm font-semibold text-gray-700 mb-3">
+              <h3 className="text-sm font-semibold text-slate-300 mb-3">
                 Sort By
               </h3>
               <select
@@ -265,7 +265,7 @@ export default function SearchPage() {
                 onChange={(e) =>
                   setSortBy(e.target.value as 'relevance' | 'date' | 'performance')
                 }
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="relevance">Relevance</option>
                 <option value="date">Most Recent</option>
@@ -278,10 +278,10 @@ export default function SearchPage() {
         {/* Results */}
         {searchTerm === '' ? (
           // Empty state
-          <div className="bg-white rounded-lg shadow-md p-12 text-center">
-            <Search size={48} className="mx-auto text-gray-300 mb-4" />
-            <p className="text-gray-500 text-lg">Start typing to search</p>
-            <p className="text-gray-400 mt-2">
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow-md p-12 text-center">
+            <Search size={48} className="mx-auto text-slate-500 mb-4" />
+            <p className="text-slate-500 text-lg">Start typing to search</p>
+            <p className="text-slate-500 mt-2">
               Search for scores, courses, announcements, and subjects
             </p>
           </div>
@@ -292,23 +292,23 @@ export default function SearchPage() {
           </div>
         ) : results.length === 0 ? (
           // No results
-          <div className="bg-white rounded-lg shadow-md p-12 text-center">
-            <Search size={48} className="mx-auto text-gray-300 mb-4" />
-            <p className="text-gray-500 text-lg">No results found</p>
-            <p className="text-gray-400 mt-2">
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow-md p-12 text-center">
+            <Search size={48} className="mx-auto text-slate-500 mb-4" />
+            <p className="text-slate-500 text-lg">No results found</p>
+            <p className="text-slate-500 mt-2">
               Try adjusting your search terms or filters
             </p>
           </div>
         ) : (
           // Results list
           <div className="space-y-4">
-            <p className="text-gray-600 text-sm font-medium">
+            <p className="text-slate-400 text-sm font-medium">
               Found {results.length} result{results.length !== 1 ? 's' : ''}
             </p>
             {results.map((result) => (
               <div
                 key={result.id}
-                className="bg-white rounded-lg shadow-md hover:shadow-lg transition p-6"
+                className="bg-slate-900 border border-slate-800 rounded-lg shadow-md hover:shadow-lg transition p-6"
               >
                 <div className="flex items-start gap-4">
                   {/* Icon */}
@@ -319,7 +319,7 @@ export default function SearchPage() {
                   {/* Content */}
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <h3 className="text-lg font-semibold text-gray-900 truncate">
+                      <h3 className="text-lg font-semibold text-slate-100 truncate">
                         {result.title}
                       </h3>
                       <span
@@ -328,11 +328,11 @@ export default function SearchPage() {
                         {result.type}
                       </span>
                     </div>
-                    <p className="text-gray-600 text-sm mb-2">
+                    <p className="text-slate-400 text-sm mb-2">
                       {result.description}
                     </p>
                     {result.date && (
-                      <p className="text-gray-500 text-xs">
+                      <p className="text-slate-500 text-xs">
                         {new Date(result.date).toLocaleDateString()}
                       </p>
                     )}
@@ -345,7 +345,7 @@ export default function SearchPage() {
                         <p className="text-2xl font-bold text-blue-600">
                           {result.score}%
                         </p>
-                        <p className="text-xs text-gray-600">Score</p>
+                        <p className="text-xs text-slate-400">Score</p>
                       </div>
                     </div>
                   )}
@@ -363,21 +363,21 @@ export default function SearchPage() {
         {/* Quick Links */}
         {searchTerm === '' && (
           <div className="mt-12 grid grid-cols-1 md:grid-cols-4 gap-4">
-            <button className="p-4 bg-white rounded-lg shadow hover:shadow-md transition text-center">
+            <button className="p-4 bg-slate-900 border border-slate-800 rounded-lg shadow hover:shadow-md transition text-center">
               <TrendingUp size={24} className="mx-auto mb-2 text-blue-500" />
-              <p className="font-medium text-gray-900">Recent Scores</p>
+              <p className="font-medium text-slate-100">Recent Scores</p>
             </button>
-            <button className="p-4 bg-white rounded-lg shadow hover:shadow-md transition text-center">
+            <button className="p-4 bg-slate-900 border border-slate-800 rounded-lg shadow hover:shadow-md transition text-center">
               <BookOpen size={24} className="mx-auto mb-2 text-green-500" />
-              <p className="font-medium text-gray-900">My Courses</p>
+              <p className="font-medium text-slate-100">My Courses</p>
             </button>
-            <button className="p-4 bg-white rounded-lg shadow hover:shadow-md transition text-center">
+            <button className="p-4 bg-slate-900 border border-slate-800 rounded-lg shadow hover:shadow-md transition text-center">
               <MessageSquare size={24} className="mx-auto mb-2 text-purple-500" />
-              <p className="font-medium text-gray-900">Announcements</p>
+              <p className="font-medium text-slate-100">Announcements</p>
             </button>
-            <button className="p-4 bg-white rounded-lg shadow hover:shadow-md transition text-center">
+            <button className="p-4 bg-slate-900 border border-slate-800 rounded-lg shadow hover:shadow-md transition text-center">
               <FileText size={24} className="mx-auto mb-2 text-orange-500" />
-              <p className="font-medium text-gray-900">Subjects</p>
+              <p className="font-medium text-slate-100">Subjects</p>
             </button>
           </div>
         )}

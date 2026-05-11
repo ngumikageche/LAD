@@ -27,6 +27,7 @@ export default function TrainerReportsPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [generatingTemplate, setGeneratingTemplate] = useState<string | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -63,7 +64,8 @@ export default function TrainerReportsPage() {
       setGenerating(true);
       setError(null);
       const report = await trainerReportsAPI.generateSubjectReport(selectedSubject);
-      setReports([report, ...reports]);
+      // Avoid duplicate reports - filter out any existing report with the same ID
+      setReports(prev => [report, ...prev.filter(r => r.id !== report.id)]);
       setSuccess('Report generated successfully!');
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
@@ -87,6 +89,66 @@ export default function TrainerReportsPage() {
     }
   };
 
+  const handleClassSummary = async () => {
+    if (!selectedSubject) {
+      setError('Please select a subject');
+      return;
+    }
+
+    try {
+      setGeneratingTemplate('class-summary');
+      setError(null);
+      const report = await trainerReportsAPI.generateSubjectReport(selectedSubject, 'class-summary');
+      setReports(prev => [report, ...prev.filter(r => r.id !== report.id)]);
+      setSuccess('Class Summary Report generated successfully!');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate Class Summary');
+    } finally {
+      setGeneratingTemplate(null);
+    }
+  };
+
+  const handlePerformanceTrends = async () => {
+    if (!selectedSubject) {
+      setError('Please select a subject');
+      return;
+    }
+
+    try {
+      setGeneratingTemplate('performance-trends');
+      setError(null);
+      const report = await trainerReportsAPI.generateSubjectReport(selectedSubject, 'performance-trends');
+      setReports(prev => [report, ...prev.filter(r => r.id !== report.id)]);
+      setSuccess('Performance Trends Report generated successfully!');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate Performance Trends');
+    } finally {
+      setGeneratingTemplate(null);
+    }
+  };
+
+  const handleAtRiskAnalysis = async () => {
+    if (!selectedSubject) {
+      setError('Please select a subject');
+      return;
+    }
+
+    try {
+      setGeneratingTemplate('at-risk');
+      setError(null);
+      const report = await trainerReportsAPI.generateSubjectReport(selectedSubject, 'at-risk');
+      setReports(prev => [report, ...prev.filter(r => r.id !== report.id)]);
+      setSuccess('At-Risk Analysis Report generated successfully!');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate At-Risk Analysis');
+    } finally {
+      setGeneratingTemplate(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -96,47 +158,47 @@ export default function TrainerReportsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-50 to-blue-50 p-6">
+    <div className="min-h-screen bg-blue-950 p-6">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="text-3xl font-bold text-slate-100 flex items-center gap-2">
             <FileText size={32} className="text-indigo-500" />
             Reports & Analysis
           </h1>
-          <p className="text-gray-600 mt-2">
+          <p className="text-slate-400 mt-2">
             Generate and export comprehensive reports on class performance
           </p>
         </div>
 
         {/* Alert Messages */}
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700">
+          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2 text-red-300">
             <AlertCircle size={20} />
             {error}
           </div>
         )}
 
         {success && (
-          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-700">
+          <div className="mb-6 p-4 bg-green-500/10 border border-green-500/30 rounded-lg text-green-300">
             {success}
           </div>
         )}
 
         {/* Report Generator */}
-        <div className="bg-white rounded-lg shadow p-8 mb-8">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Generate New Report</h2>
+        <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-8 mb-8">
+          <h2 className="text-2xl font-bold text-slate-100 mb-6">Generate New Report</h2>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Subject Selection */}
             <div className="md:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-slate-300 mb-2">
                 Select Subject
               </label>
               <select
                 value={selectedSubject}
                 onChange={(e) => setSelectedSubject(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                className="w-full px-4 py-2 bg-slate-800 text-slate-200 border border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
               >
                 <option value="">-- Select Subject --</option>
                 {subjects.map((subject) => (
@@ -161,42 +223,42 @@ export default function TrainerReportsPage() {
           </div>
 
           {/* Quick Info */}
-          <div className="mt-4 p-4 bg-blue-50 rounded-lg text-sm text-blue-800">
+          <div className="mt-4 p-4 bg-blue-500/10 rounded-lg text-sm text-blue-300">
             💡 Reports include: student averages, pass rates, score distributions, and comparative analytics
           </div>
         </div>
 
         {/* Historical Reports */}
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="p-6 border-b">
-            <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
+        <div className="bg-slate-900 border border-slate-800 rounded-lg shadow overflow-hidden">
+          <div className="p-6 border-b border-slate-800">
+            <h2 className="text-xl font-bold text-slate-100 flex items-center gap-2">
               <Calendar size={24} className="text-indigo-500" />
               Recent Reports
             </h2>
           </div>
 
           {reports.length === 0 ? (
-            <div className="p-12 text-center text-gray-500">
-              <FileText size={48} className="mx-auto text-gray-300 mb-4" />
+            <div className="p-12 text-center text-slate-500">
+              <FileText size={48} className="mx-auto text-slate-500 mb-4" />
               <p>No reports generated yet</p>
               <p className="text-sm">Generate your first report to see it here</p>
             </div>
           ) : (
-            <div className="divide-y">
+            <div className="divide-y divide-slate-800">
               {reports.map((report) => (
                 <div
                   key={report.id}
-                  className="p-6 hover:bg-gray-50 transition flex items-center justify-between"
+                  className="p-6 hover:bg-slate-800 transition flex items-center justify-between"
                 >
                   {/* Report Info */}
                   <div className="flex-1">
                     <div className="flex items-center gap-4 mb-2">
                       <BarChart3 size={24} className="text-indigo-500" />
                       <div>
-                        <h3 className="text-lg font-semibold text-gray-900">
+                        <h3 className="text-lg font-semibold text-slate-100">
                           {report.subject_name}
                         </h3>
-                        <p className="text-sm text-gray-600">
+                        <p className="text-sm text-slate-400">
                           Generated {new Date(report.generated_date).toLocaleDateString()}
                         </p>
                       </div>
@@ -205,20 +267,20 @@ export default function TrainerReportsPage() {
                     {/* Stats */}
                     <div className="grid grid-cols-3 gap-8">
                       <div>
-                        <p className="text-sm text-gray-600">Students</p>
-                        <p className="text-lg font-bold text-gray-900">
+                        <p className="text-sm text-slate-400">Students</p>
+                        <p className="text-lg font-bold text-slate-100">
                           {report.total_students}
                         </p>
                       </div>
                       <div>
-                        <p className="text-sm text-gray-600">Average Score</p>
-                        <p className="text-lg font-bold text-indigo-600">
+                        <p className="text-sm text-slate-400">Average Score</p>
+                        <p className="text-lg font-bold text-indigo-400">
                           {report.avg_score.toFixed(1)}%
                         </p>
                       </div>
                       <div>
-                        <p className="text-sm text-gray-600">Pass Rate</p>
-                        <p className="text-lg font-bold text-green-600">
+                        <p className="text-sm text-slate-400">Pass Rate</p>
+                        <p className="text-lg font-bold text-green-400">
                           {report.pass_rate.toFixed(0)}%
                         </p>
                       </div>
@@ -250,64 +312,79 @@ export default function TrainerReportsPage() {
 
         {/* Report Templates */}
         <div className="mt-8 grid grid-cols-1 md:grid-cols-3 gap-6">
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-3">📊 Class Summary</h3>
-            <p className="text-gray-600 text-sm mb-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
+            <h3 className="text-lg font-bold text-slate-100 mb-3">📊 Class Summary</h3>
+            <p className="text-slate-400 text-sm mb-4">
               Overall class performance metrics including averages, pass rates, and distributions
             </p>
-            <button className="w-full px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition font-medium">
-              Generate
+            <button 
+              onClick={handleClassSummary}
+              disabled={!selectedSubject || generatingTemplate === 'class-summary'}
+              className="w-full px-4 py-2 bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 rounded-lg hover:bg-indigo-500/25 transition font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              <RefreshCw size={16} className={generatingTemplate === 'class-summary' ? 'animate-spin' : ''} />
+              {generatingTemplate === 'class-summary' ? 'Generating...' : 'Generate'}
             </button>
           </div>
 
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-3">📈 Performance Trends</h3>
-            <p className="text-gray-600 text-sm mb-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
+            <h3 className="text-lg font-bold text-slate-100 mb-3">📈 Performance Trends</h3>
+            <p className="text-slate-400 text-sm mb-4">
               Track performance changes over time and identify improvement opportunities
             </p>
-            <button className="w-full px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition font-medium">
-              Generate
+            <button 
+              onClick={handlePerformanceTrends}
+              disabled={!selectedSubject || generatingTemplate === 'performance-trends'}
+              className="w-full px-4 py-2 bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 rounded-lg hover:bg-indigo-500/25 transition font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              <RefreshCw size={16} className={generatingTemplate === 'performance-trends' ? 'animate-spin' : ''} />
+              {generatingTemplate === 'performance-trends' ? 'Generating...' : 'Generate'}
             </button>
           </div>
 
-          <div className="bg-white rounded-lg shadow p-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-3">⚠️ At-Risk Analysis</h3>
-            <p className="text-gray-600 text-sm mb-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
+            <h3 className="text-lg font-bold text-slate-100 mb-3">⚠️ At-Risk Analysis</h3>
+            <p className="text-slate-400 text-sm mb-4">
               Detailed analysis of students needing intervention and support
             </p>
-            <button className="w-full px-4 py-2 bg-indigo-100 text-indigo-700 rounded-lg hover:bg-indigo-200 transition font-medium">
-              Generate
+            <button 
+              onClick={handleAtRiskAnalysis}
+              disabled={!selectedSubject || generatingTemplate === 'at-risk'}
+              className="w-full px-4 py-2 bg-indigo-500/15 text-indigo-300 border border-indigo-500/30 rounded-lg hover:bg-indigo-500/25 transition font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+            >
+              <RefreshCw size={16} className={generatingTemplate === 'at-risk' ? 'animate-spin' : ''} />
+              {generatingTemplate === 'at-risk' ? 'Generating...' : 'Generate'}
             </button>
           </div>
         </div>
 
         {/* Report Features */}
-        <div className="mt-8 bg-indigo-50 rounded-lg p-6 border border-indigo-200">
-          <h3 className="font-semibold text-indigo-900 mb-4">✨ Report Features</h3>
+        <div className="mt-8 bg-indigo-500/10 rounded-lg p-6 border border-indigo-500/30">
+          <h3 className="font-semibold text-indigo-300 mb-4">✨ Report Features</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="flex gap-3">
-              <span className="text-indigo-600 font-bold">✓</span>
-              <p className="text-indigo-800 text-sm">Class averages and statistics</p>
+              <span className="text-indigo-400 font-bold">✓</span>
+              <p className="text-indigo-300 text-sm">Class averages and statistics</p>
             </div>
             <div className="flex gap-3">
-              <span className="text-indigo-600 font-bold">✓</span>
-              <p className="text-indigo-800 text-sm">Individual student performance cards</p>
+              <span className="text-indigo-400 font-bold">✓</span>
+              <p className="text-indigo-300 text-sm">Individual student performance cards</p>
             </div>
             <div className="flex gap-3">
-              <span className="text-indigo-600 font-bold">✓</span>
-              <p className="text-indigo-800 text-sm">Grade distributions and analysis</p>
+              <span className="text-indigo-400 font-bold">✓</span>
+              <p className="text-indigo-300 text-sm">Grade distributions and analysis</p>
             </div>
             <div className="flex gap-3">
-              <span className="text-indigo-600 font-bold">✓</span>
-              <p className="text-indigo-800 text-sm">At-risk student identification</p>
+              <span className="text-indigo-400 font-bold">✓</span>
+              <p className="text-indigo-300 text-sm">At-risk student identification</p>
             </div>
             <div className="flex gap-3">
-              <span className="text-indigo-600 font-bold">✓</span>
-              <p className="text-indigo-800 text-sm">Performance trend analysis</p>
+              <span className="text-indigo-400 font-bold">✓</span>
+              <p className="text-indigo-300 text-sm">Performance trend analysis</p>
             </div>
             <div className="flex gap-3">
-              <span className="text-indigo-600 font-bold">✓</span>
-              <p className="text-indigo-800 text-sm">Exportable to CSV and PDF</p>
+              <span className="text-indigo-400 font-bold">✓</span>
+              <p className="text-indigo-300 text-sm">Exportable to CSV and PDF</p>
             </div>
           </div>
         </div>

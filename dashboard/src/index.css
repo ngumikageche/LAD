@@ -1,6 +1,22 @@
 @import "tailwindcss";
 @config "../tailwind.config.js";
 
+:root {
+  color: #e2e8f0;
+  background: #172554;
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+  background: #172554;
+}
+
+body {
+  color: #e2e8f0;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 8px;
@@ -8,14 +24,14 @@
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: #0f172a;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: #334155;
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #475569;
 }

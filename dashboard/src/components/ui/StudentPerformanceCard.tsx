@@ -44,8 +44,8 @@ const StudentPerformanceCard = () => {
   }, [token]);
 
   return (
-    <div className="bg-white p-6 rounded-2xl shadow-lg border border-gray-100 hover:shadow-xl transition-shadow duration-300">
-      <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center">
+    <div className="bg-slate-900 p-6 rounded-2xl shadow-lg border border-slate-800 hover:shadow-xl transition-shadow duration-300">
+      <h3 className="text-lg font-bold text-slate-100 mb-4 flex items-center">
         <span className="w-1 h-6 bg-gradient-to-b from-indigo-600 to-blue-600 rounded-full mr-3"></span>
         Top Performer
       </h3>
@@ -56,21 +56,21 @@ const StudentPerformanceCard = () => {
           alt="Student"
         />
         <div>
-          <p className="font-bold text-gray-900">{name}</p>
-          <p className="text-sm text-gray-500">{classLabel}</p>
+          <p className="font-bold text-slate-100">{name}</p>
+          <p className="text-sm text-slate-500">{classLabel}</p>
         </div>
       </div>
       <div className="space-y-4">
         {subjects.length === 0 ? (
-          <div className="text-gray-500">No subject scores available</div>
+          <div className="text-slate-500">No subject scores available</div>
         ) : (
           subjects.map((s) => (
             <div key={s.name}>
-              <div className="flex justify-between text-xs font-semibold text-gray-700 mb-1.5">
+              <div className="flex justify-between text-xs font-semibold text-slate-300 mb-1.5">
                 <span>{s.name}</span>
                 <span className="text-indigo-600 bg-indigo-100 px-2 py-1 rounded">{s.avg}%</span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-2.5">
+              <div className="w-full bg-slate-700 rounded-full h-2.5">
                 <div className="bg-gradient-to-r from-indigo-500 to-indigo-600 h-2.5 rounded-full" style={{ width: `${Math.min(100, s.avg)}%` }}></div>
               </div>
             </div>

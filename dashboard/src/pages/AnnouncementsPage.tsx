@@ -82,11 +82,11 @@ export default function AnnouncementsPage() {
         <div className="mb-8">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+              <h1 className="text-3xl font-bold text-slate-100 flex items-center gap-2">
                 <Bell size={32} className="text-blue-500" />
                 Announcements
               </h1>
-              <p className="text-gray-600 mt-2">
+              <p className="text-slate-400 mt-2">
                 Stay updated with the latest news and academic updates
               </p>
             </div>
@@ -100,9 +100,9 @@ export default function AnnouncementsPage() {
 
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4 mb-8">
-          <div className="bg-white rounded-lg shadow p-4 text-center">
-            <p className="text-gray-600 text-sm">Total</p>
-            <p className="text-2xl font-bold text-gray-900">
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-4 text-center">
+            <p className="text-slate-400 text-sm">Total</p>
+            <p className="text-2xl font-bold text-slate-100">
               {announcements.length}
             </p>
           </div>
@@ -127,7 +127,7 @@ export default function AnnouncementsPage() {
               className={`px-4 py-2 rounded-lg font-medium transition ${
                 filter === f
                   ? 'bg-blue-600 text-white'
-                  : 'bg-white text-gray-700 border border-gray-300 hover:border-gray-400'
+                  : 'bg-slate-900 text-slate-300 border border-slate-700 hover:border-slate-600'
               }`}
             >
               {f.charAt(0).toUpperCase() + f.slice(1)}
@@ -145,10 +145,10 @@ export default function AnnouncementsPage() {
 
         {/* Announcements List */}
         {filteredAnnouncements.length === 0 ? (
-          <div className="bg-white rounded-lg shadow p-12 text-center">
-            <Bell size={48} className="mx-auto text-gray-300 mb-4" />
-            <p className="text-gray-500 text-lg">No announcements</p>
-            <p className="text-gray-400">
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-12 text-center">
+            <Bell size={48} className="mx-auto text-slate-500 mb-4" />
+            <p className="text-slate-500 text-lg">No announcements</p>
+            <p className="text-slate-500">
               {filter === 'unread'
                 ? 'You have read all announcements'
                 : 'Check back soon for updates'}
@@ -162,7 +162,7 @@ export default function AnnouncementsPage() {
                 <div
                   key={announcement.id}
                   className={`rounded-lg shadow transition hover:shadow-lg ${
-                    isRead ? 'bg-white' : 'bg-blue-50 border-2 border-blue-200'
+                    isRead ? 'bg-slate-900' : 'bg-blue-50 border-2 border-blue-200'
                   }`}
                 >
                   <div className="p-6">
@@ -172,7 +172,7 @@ export default function AnnouncementsPage() {
                         <div className="flex items-center gap-2 mb-2">
                           <h2
                             className={`text-lg font-bold ${
-                              isRead ? 'text-gray-900' : 'text-blue-900'
+                              isRead ? 'text-slate-100' : 'text-blue-900'
                             }`}
                           >
                             {announcement.title}
@@ -187,7 +187,7 @@ export default function AnnouncementsPage() {
                             <span className="inline-block w-2 h-2 bg-blue-600 rounded-full"></span>
                           )}
                         </div>
-                        <div className="flex items-center gap-4 text-xs text-gray-500">
+                        <div className="flex items-center gap-4 text-xs text-slate-500">
                           <div className="flex items-center gap-1">
                             <Calendar size={14} />
                             {new Date(announcement.created_at).toLocaleDateString()}
@@ -218,7 +218,7 @@ export default function AnnouncementsPage() {
                     </div>
 
                     {/* Content */}
-                    <p className="text-gray-700 leading-relaxed">
+                    <p className="text-slate-300 leading-relaxed">
                       {announcement.content}
                     </p>
                   </div>
@@ -229,7 +229,7 @@ export default function AnnouncementsPage() {
         )}
 
         {/* Importance Legend */}
-        <div className="mt-8 p-4 bg-white rounded-lg shadow text-sm text-gray-600 flex items-center gap-2">
+        <div className="mt-8 p-4 bg-slate-900 border border-slate-800 rounded-lg shadow text-sm text-slate-400 flex items-center gap-2">
           <Flag size={16} className="text-red-500 fill-red-500" />
           <span>Important announcements are marked with a flag</span>
         </div>

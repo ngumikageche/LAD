@@ -47,7 +47,20 @@ export type TrainerDashboardResponse = {
   subjects_assigned: number;
   subjects: TrainerSubject[];
   total_students: number;
+  average_score: number;
+  pass_rate: number;
+  pass_count: number;
+  fail_count: number;
   recent_scores: TrainerScore[];
+  summary_panel?: {
+    mastery_rate: number;
+    at_risk_students: number;
+    attendance_rate: number;
+    portfolio_completion_rate: number;
+    alerts: number;
+  };
+  analytics?: any;
+  last_updated?: string;
 };
 
 export type TrainerStudentOption = {
@@ -145,7 +158,7 @@ export const trainerApi = {
     term: string;
     feedback?: string;
   }) {
-    const response = await trainerClient.post<TrainerScore>('/api/v1/scores', payload);
+    const response = await trainerClient.post<TrainerScore>('/api/v1/trainer/scores', payload);
     return response.data;
   },
 

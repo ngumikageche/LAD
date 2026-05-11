@@ -117,18 +117,18 @@ export default function ResultsPage() {
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="text-3xl font-bold text-slate-100 flex items-center gap-2">
             <Award size={32} className="text-amber-500" />
             Academic Results History
           </h1>
-          <p className="text-gray-600 mt-2">Review your past examination results</p>
+          <p className="text-slate-400 mt-2">Review your past examination results</p>
         </div>
 
         {/* Overall Stats */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white rounded-lg shadow p-6">
-            <p className="text-gray-600 text-sm font-medium">Total Results</p>
-            <p className="text-3xl font-bold text-gray-900 mt-2">{scores.length}</p>
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
+            <p className="text-slate-400 text-sm font-medium">Total Results</p>
+            <p className="text-3xl font-bold text-slate-100 mt-2">{scores.length}</p>
           </div>
           <div className="bg-green-50 rounded-lg shadow p-6">
             <p className="text-green-700 text-sm font-medium">Passed</p>
@@ -157,18 +157,18 @@ export default function ResultsPage() {
         </div>
 
         {/* Controls */}
-        <div className="bg-white rounded-lg shadow p-6 mb-8">
+        <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6 mb-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Filter by Term */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-slate-300 mb-2">
                 <Calendar size={16} className="inline mr-2" />
                 Filter by Period
               </label>
               <select
                 value={filterTerm}
                 onChange={(e) => setFilterTerm(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="all">All Periods</option>
                 {Object.keys(groupedByTerm)
@@ -183,7 +183,7 @@ export default function ResultsPage() {
 
             {/* Sort */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-slate-300 mb-2">
                 <Filter size={16} className="inline mr-2" />
                 Sort By
               </label>
@@ -194,7 +194,7 @@ export default function ResultsPage() {
                     e.target.value as 'newest' | 'oldest' | 'best' | 'worst'
                   )
                 }
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="newest">Newest First</option>
                 <option value="oldest">Oldest First</option>
@@ -221,7 +221,7 @@ export default function ResultsPage() {
               className={`px-4 py-2 rounded-lg whitespace-nowrap font-medium transition ${
                 filterTerm === 'all'
                   ? 'bg-blue-600 text-white'
-                  : 'bg-white text-gray-700 border border-gray-300 hover:border-gray-400'
+                  : 'bg-slate-900 text-slate-300 border border-slate-700 hover:border-slate-600'
               }`}
             >
               All ({scores.length})
@@ -233,7 +233,7 @@ export default function ResultsPage() {
                 className={`px-4 py-2 rounded-lg whitespace-nowrap font-medium transition ${
                   filterTerm === stat.term
                     ? 'bg-blue-600 text-white'
-                    : 'bg-white text-gray-700 border border-gray-300 hover:border-gray-400'
+                    : 'bg-slate-900 text-slate-300 border border-slate-700 hover:border-slate-600'
                 }`}
               >
                 {stat.term} ({stat.count})
@@ -250,10 +250,10 @@ export default function ResultsPage() {
         )}
 
         {sortedScores.length === 0 ? (
-          <div className="bg-white rounded-lg shadow p-12 text-center">
-            <Award size={48} className="mx-auto text-gray-300 mb-4" />
-            <p className="text-gray-500 text-lg">No results found</p>
-            <p className="text-gray-400">
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-12 text-center">
+            <Award size={48} className="mx-auto text-slate-500 mb-4" />
+            <p className="text-slate-500 text-lg">No results found</p>
+            <p className="text-slate-500">
               {filterTerm === 'all'
                 ? 'Your examination results will appear here once they are graded'
                 : `No results found for ${filterTerm}`}
@@ -264,20 +264,20 @@ export default function ResultsPage() {
             {sortedScores.map((score) => (
               <div
                 key={score.id}
-                className="bg-white rounded-lg shadow hover:shadow-md transition p-6"
+                className="bg-slate-900 border border-slate-800 rounded-lg shadow hover:shadow-md transition p-6"
               >
                 <div className="flex items-center justify-between">
                   {/* Score Info */}
                   <div className="flex-1">
                     <div className="flex items-center gap-4">
-                      <div className="text-4xl font-bold text-gray-900">
+                      <div className="text-4xl font-bold text-slate-100">
                         {score.marks_obtained.toFixed(0)}%
                       </div>
                       <div>
-                        <p className="font-semibold text-gray-900">
+                        <p className="font-semibold text-slate-100">
                           Assessment
                         </p>
-                        <p className="text-gray-600 text-sm">
+                        <p className="text-slate-400 text-sm">
                           {new Date(score.created_at).toLocaleDateString(
                             'en-US',
                             {
@@ -318,11 +318,11 @@ export default function ResultsPage() {
 
                 {/* Feedback if available */}
                 {score.feedback && (
-                  <div className="mt-4 pt-4 border-t border-gray-200">
-                    <p className="text-sm font-medium text-gray-700 mb-2">
+                  <div className="mt-4 pt-4 border-t border-slate-700">
+                    <p className="text-sm font-medium text-slate-300 mb-2">
                       Feedback:
                     </p>
-                    <p className="text-sm text-gray-600 italic">
+                    <p className="text-sm text-slate-400 italic">
                       "{score.feedback}"
                     </p>
                   </div>
@@ -334,8 +334,8 @@ export default function ResultsPage() {
 
         {/* Trend Analysis */}
         {scores.length > 0 && (
-          <div className="mt-8 bg-white rounded-lg shadow p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+          <div className="mt-8 bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
+            <h2 className="text-xl font-bold text-slate-100 mb-4 flex items-center gap-2">
               <TrendingUp size={24} className="text-blue-500" />
               Performance by Period
             </h2>
@@ -343,13 +343,13 @@ export default function ResultsPage() {
               {termStats.map((stat) => (
                 <div key={stat.term} className="flex items-center gap-4">
                   <div className="flex-1">
-                    <p className="font-medium text-gray-900">{stat.term}</p>
-                    <p className="text-xs text-gray-600">
+                    <p className="font-medium text-slate-100">{stat.term}</p>
+                    <p className="text-xs text-slate-400">
                       {stat.count} assessments, {stat.passed} passed
                     </p>
                   </div>
                   <div className="w-32">
-                    <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div className="w-full bg-slate-700 rounded-full h-2">
                       <div
                         className={`h-2 rounded-full transition-all ${
                           parseFloat(stat.avg) >= 70
@@ -363,7 +363,7 @@ export default function ResultsPage() {
                     </div>
                   </div>
                   <div className="text-right w-16">
-                    <p className="font-bold text-gray-900">{stat.avg}%</p>
+                    <p className="font-bold text-slate-100">{stat.avg}%</p>
                   </div>
                 </div>
               ))}

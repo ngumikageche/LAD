@@ -134,11 +134,11 @@ export default function ProfilePage() {
       <div className="max-w-2xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="text-3xl font-bold text-slate-100 flex items-center gap-2">
             <User size={32} className="text-blue-500" />
             My Profile
           </h1>
-          <p className="text-gray-600 mt-2">
+          <p className="text-slate-400 mt-2">
             Manage your personal information and security
           </p>
         </div>
@@ -159,16 +159,16 @@ export default function ProfilePage() {
         )}
 
         {/* Profile Section */}
-        <div className="bg-white rounded-lg shadow-md p-8 mb-6">
+        <div className="bg-slate-900 border border-slate-800 rounded-lg shadow-md p-8 mb-6">
           <div className="flex items-center gap-4 mb-8 pb-8 border-b">
             <div className="w-20 h-20 rounded-full bg-gradient-to-br from-blue-400 to-indigo-600 flex items-center justify-center text-white text-2xl font-bold">
               {profile?.name.charAt(0).toUpperCase()}
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-gray-900">
+              <h2 className="text-2xl font-bold text-slate-100">
                 {profile?.name}
               </h2>
-              <p className="text-gray-600">{profile?.email}</p>
+              <p className="text-slate-400">{profile?.email}</p>
             </div>
           </div>
 
@@ -176,7 +176,7 @@ export default function ProfilePage() {
           {editMode ? (
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-slate-300 mb-2">
                   <User size={16} className="inline mr-2" />
                   Full Name
                 </label>
@@ -186,12 +186,12 @@ export default function ProfilePage() {
                   onChange={(e) =>
                     setFormData({ ...formData, name: e.target.value })
                   }
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-slate-300 mb-2">
                   <Mail size={16} className="inline mr-2" />
                   Email
                 </label>
@@ -201,12 +201,12 @@ export default function ProfilePage() {
                   onChange={(e) =>
                     setFormData({ ...formData, email: e.target.value })
                   }
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-slate-300 mb-2">
                   <Phone size={16} className="inline mr-2" />
                   Phone Number
                 </label>
@@ -216,7 +216,7 @@ export default function ProfilePage() {
                   onChange={(e) =>
                     setFormData({ ...formData, phone: e.target.value })
                   }
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-4 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
 
@@ -231,7 +231,7 @@ export default function ProfilePage() {
                 </button>
                 <button
                   onClick={() => setEditMode(false)}
-                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                  className="flex-1 px-4 py-2 bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 transition"
                 >
                   Cancel
                 </button>
@@ -239,24 +239,24 @@ export default function ProfilePage() {
             </div>
           ) : (
             <div className="space-y-4">
-              <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
+              <div className="flex justify-between items-center p-4 bg-slate-800 rounded-lg">
                 <div>
-                  <p className="text-gray-600 text-sm">Full Name</p>
-                  <p className="text-gray-900 font-medium">{profile?.name}</p>
+                  <p className="text-slate-400 text-sm">Full Name</p>
+                  <p className="text-slate-100 font-medium">{profile?.name}</p>
                 </div>
               </div>
 
-              <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
+              <div className="flex justify-between items-center p-4 bg-slate-800 rounded-lg">
                 <div>
-                  <p className="text-gray-600 text-sm">Email</p>
-                  <p className="text-gray-900 font-medium">{profile?.email}</p>
+                  <p className="text-slate-400 text-sm">Email</p>
+                  <p className="text-slate-100 font-medium">{profile?.email}</p>
                 </div>
               </div>
 
-              <div className="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
+              <div className="flex justify-between items-center p-4 bg-slate-800 rounded-lg">
                 <div>
-                  <p className="text-gray-600 text-sm">Phone Number</p>
-                  <p className="text-gray-900 font-medium">
+                  <p className="text-slate-400 text-sm">Phone Number</p>
+                  <p className="text-slate-100 font-medium">
                     {profile?.phone || 'Not provided'}
                   </p>
                 </div>
@@ -273,8 +273,8 @@ export default function ProfilePage() {
         </div>
 
         {/* Security Section */}
-        <div className="bg-white rounded-lg shadow-md p-8">
-          <h3 className="text-xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+        <div className="bg-slate-900 border border-slate-800 rounded-lg shadow-md p-8">
+          <h3 className="text-xl font-bold text-slate-100 mb-6 flex items-center gap-2">
             <Lock size={24} className="text-red-500" />
             Security
           </h3>
@@ -282,7 +282,7 @@ export default function ProfilePage() {
           {showPasswordForm ? (
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-slate-300 mb-2">
                   Current Password
                 </label>
                 <input
@@ -294,12 +294,12 @@ export default function ProfilePage() {
                       currentPassword: e.target.value,
                     })
                   }
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                  className="w-full px-4 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-slate-300 mb-2">
                   New Password
                 </label>
                 <input
@@ -311,13 +311,13 @@ export default function ProfilePage() {
                       newPassword: e.target.value,
                     })
                   }
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                  className="w-full px-4 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
                   placeholder="At least 8 characters"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">
+                <label className="block text-sm font-medium text-slate-300 mb-2">
                   Confirm New Password
                 </label>
                 <input
@@ -329,7 +329,7 @@ export default function ProfilePage() {
                       confirmPassword: e.target.value,
                     })
                   }
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                  className="w-full px-4 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
                 />
               </div>
 
@@ -343,7 +343,7 @@ export default function ProfilePage() {
                 </button>
                 <button
                   onClick={() => setShowPasswordForm(false)}
-                  className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                  className="flex-1 px-4 py-2 bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 transition"
                 >
                   Cancel
                 </button>

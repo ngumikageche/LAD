@@ -84,29 +84,29 @@ export default function MySubjectsPage() {
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="text-3xl font-bold text-slate-100 flex items-center gap-2">
             <BookOpen size={32} className="text-blue-500" />
             My Subjects
           </h1>
-          <p className="text-gray-600 mt-2">
+          <p className="text-slate-400 mt-2">
             Manage all subjects assigned to you
           </p>
         </div>
 
         {/* Statistics */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-          <div className="bg-white rounded-lg shadow p-6">
-            <p className="text-gray-600 text-sm">Total Subjects</p>
-            <p className="text-3xl font-bold text-gray-900 mt-2">{stats.total}</p>
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
+            <p className="text-slate-400 text-sm">Total Subjects</p>
+            <p className="text-3xl font-bold text-slate-100 mt-2">{stats.total}</p>
           </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <p className="text-gray-600 text-sm">Total Students</p>
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
+            <p className="text-slate-400 text-sm">Total Students</p>
             <p className="text-3xl font-bold text-green-600 mt-2">
               {stats.totalStudents}
             </p>
           </div>
-          <div className="bg-white rounded-lg shadow p-6">
-            <p className="text-gray-600 text-sm">Average Performance</p>
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
+            <p className="text-slate-400 text-sm">Average Performance</p>
             <p className="text-3xl font-bold text-blue-600 mt-2">
               {stats.avgPerformance}%
             </p>
@@ -114,15 +114,15 @@ export default function MySubjectsPage() {
         </div>
 
         {/* Filters */}
-        <div className="bg-white rounded-lg shadow p-6 mb-8">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+        <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6 mb-8">
+          <h3 className="text-lg font-semibold text-slate-100 mb-4 flex items-center gap-2">
             <Filter size={20} />
             Filters & Search
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {/* Search */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-slate-300 mb-2">
                 Search Subject
               </label>
               <input
@@ -130,19 +130,19 @@ export default function MySubjectsPage() {
                 placeholder="Search by name or code..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               />
             </div>
 
             {/* Department Filter */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-slate-300 mb-2">
                 Department
               </label>
               <select
                 value={filterDept}
                 onChange={(e) => setFilterDept(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="all">All Departments</option>
                 {departments.map((dept) => (
@@ -155,13 +155,13 @@ export default function MySubjectsPage() {
 
             {/* Term Filter */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
+              <label className="block text-sm font-medium text-slate-300 mb-2">
                 Term
               </label>
               <select
                 value={filterTerm}
                 onChange={(e) => setFilterTerm(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
               >
                 <option value="all">All Terms</option>
                 {terms.map((term) => (
@@ -184,10 +184,10 @@ export default function MySubjectsPage() {
 
         {/* Subjects Grid */}
         {filteredSubjects.length === 0 ? (
-          <div className="bg-white rounded-lg shadow p-12 text-center">
-            <BookOpen size={48} className="mx-auto text-gray-300 mb-4" />
-            <p className="text-gray-500 text-lg">No subjects found</p>
-            <p className="text-gray-400">
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-12 text-center">
+            <BookOpen size={48} className="mx-auto text-slate-500 mb-4" />
+            <p className="text-slate-500 text-lg">No subjects found</p>
+            <p className="text-slate-500">
               {searchTerm || filterDept !== 'all' || filterTerm !== 'all'
                 ? 'Try adjusting your filters'
                 : 'You are not assigned to any subjects yet'}
@@ -198,47 +198,47 @@ export default function MySubjectsPage() {
             {filteredSubjects.map((subject) => (
               <div
                 key={subject.id}
-                className="bg-white rounded-lg shadow hover:shadow-lg transition overflow-hidden"
+                className="bg-slate-900 border border-slate-800 rounded-lg shadow hover:shadow-lg transition overflow-hidden"
               >
                 <div className="p-6">
                   {/* Header */}
                   <div className="mb-4">
-                    <h3 className="text-lg font-bold text-gray-900">
+                    <h3 className="text-lg font-bold text-slate-100">
                       {subject.subject_name}
                     </h3>
-                    <p className="text-sm text-gray-600">{subject.subject_code}</p>
+                    <p className="text-sm text-slate-400">{subject.subject_code}</p>
                   </div>
 
                   {/* Meta Info */}
-                  <div className="space-y-2 mb-4 pb-4 border-t border-gray-200 pt-4">
-                    <div className="text-sm text-gray-600">
+                  <div className="space-y-2 mb-4 pb-4 border-t border-slate-700 pt-4">
+                    <div className="text-sm text-slate-400">
                       <span className="font-medium">Course:</span> {subject.course_name}
                     </div>
-                    <div className="text-sm text-gray-600">
+                    <div className="text-sm text-slate-400">
                       <span className="font-medium">Department:</span>{' '}
                       {subject.department_name}
                     </div>
-                    <div className="text-sm text-gray-600">
+                    <div className="text-sm text-slate-400">
                       <span className="font-medium">Term:</span> {subject.term_name}
                     </div>
                   </div>
 
                   {/* Stats */}
-                  <div className="grid grid-cols-3 gap-2 mb-4 pb-4 border-t border-gray-200 pt-4">
+                  <div className="grid grid-cols-3 gap-2 mb-4 pb-4 border-t border-slate-700 pt-4">
                     <div className="text-center">
-                      <p className="text-sm text-gray-600">Students</p>
-                      <p className="text-lg font-bold text-gray-900">
+                      <p className="text-sm text-slate-400">Students</p>
+                      <p className="text-lg font-bold text-slate-100">
                         {subject.students_count}
                       </p>
                     </div>
                     <div className="text-center">
-                      <p className="text-sm text-gray-600">Assessments</p>
-                      <p className="text-lg font-bold text-gray-900">
+                      <p className="text-sm text-slate-400">Assessments</p>
+                      <p className="text-lg font-bold text-slate-100">
                         {subject.total_assessments}
                       </p>
                     </div>
                     <div className="text-center">
-                      <p className="text-sm text-gray-600">Avg Score</p>
+                      <p className="text-sm text-slate-400">Avg Score</p>
                       <p className="text-lg font-bold text-blue-600">
                         {subject.avg_score.toFixed(0)}%
                       </p>

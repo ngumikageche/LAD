@@ -100,18 +100,18 @@ export default function PerformanceAnalyticsPage() {
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="text-3xl font-bold text-slate-100 flex items-center gap-2">
             <BarChart3 size={32} className="text-purple-500" />
             Performance Analytics
           </h1>
-          <p className="text-gray-600 mt-2">
+          <p className="text-slate-400 mt-2">
             Monitor student performance and identify improvement opportunities
           </p>
         </div>
 
         {/* Subject Filter */}
-        <div className="bg-white rounded-lg shadow p-6 mb-8">
-          <label className="block text-sm font-medium text-gray-700 mb-2">
+        <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6 mb-8">
+          <label className="block text-sm font-medium text-slate-300 mb-2">
             Select Subject
           </label>
           <select
@@ -120,7 +120,7 @@ export default function PerformanceAnalyticsPage() {
               setSelectedSubject(e.target.value);
               loadPerformanceData(e.target.value);
             }}
-            className="w-full md:w-96 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+            className="w-full md:w-96 px-4 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
           >
             <option value="">-- Select Subject --</option>
             {subjects.map((subject) => (
@@ -141,36 +141,36 @@ export default function PerformanceAnalyticsPage() {
 
         {/* Key Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <div className="bg-white rounded-lg shadow p-6">
-            <p className="text-gray-600 text-sm">Class Average Score</p>
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
+            <p className="text-slate-400 text-sm">Class Average Score</p>
             <p className="text-3xl font-bold text-purple-600 mt-2">
               {classAverage.toFixed(1)}%
             </p>
-            <p className="text-xs text-gray-600 mt-2">Overall performance</p>
+            <p className="text-xs text-slate-400 mt-2">Overall performance</p>
           </div>
 
-          <div className="bg-white rounded-lg shadow p-6">
-            <p className="text-gray-600 text-sm">Low Performers</p>
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
+            <p className="text-slate-400 text-sm">Low Performers</p>
             <p className="text-3xl font-bold text-red-600 mt-2">
               {lowPerformers.filter((s) => s.overall_avg < 60).length}
             </p>
-            <p className="text-xs text-gray-600 mt-2">Below 60% average</p>
+            <p className="text-xs text-slate-400 mt-2">Below 60% average</p>
           </div>
 
-          <div className="bg-white rounded-lg shadow p-6">
-            <p className="text-gray-600 text-sm">Total Students</p>
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
+            <p className="text-slate-400 text-sm">Total Students</p>
             <p className="text-3xl font-bold text-blue-600 mt-2">
               {lowPerformers.length + Math.floor(Math.random() * 20) + 10}
             </p>
-            <p className="text-xs text-gray-600 mt-2">In this subject</p>
+            <p className="text-xs text-slate-400 mt-2">In this subject</p>
           </div>
         </div>
 
         {/* Charts */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           {/* Performance Trend */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">Performance Trend</h2>
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
+            <h2 className="text-lg font-bold text-slate-100 mb-4">Performance Trend</h2>
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" />
@@ -185,8 +185,8 @@ export default function PerformanceAnalyticsPage() {
           </div>
 
           {/* Score Distribution */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-4">Score Distribution</h2>
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
+            <h2 className="text-lg font-bold text-slate-100 mb-4">Score Distribution</h2>
             <ResponsiveContainer width="100%" height={300}>
               <BarChart
                 data={[
@@ -208,41 +208,41 @@ export default function PerformanceAnalyticsPage() {
         </div>
 
         {/* Low Performers Table */}
-        <div className="bg-white rounded-lg shadow overflow-hidden">
+        <div className="bg-slate-900 border border-slate-800 rounded-lg shadow overflow-hidden">
           <div className="p-6 border-b">
-            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
+            <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
               <TrendingDown size={24} className="text-red-500" />
               Students Needing Attention
             </h2>
           </div>
 
           {lowPerformers.length === 0 ? (
-            <div className="p-12 text-center text-gray-500">
+            <div className="p-12 text-center text-slate-500">
               <p>No low performers in this subject</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead className="bg-gray-50 border-b">
+                <thead className="bg-slate-800 border-b">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-300 uppercase">
                       Student Name
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-300 uppercase">
                       Average Score
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-300 uppercase">
                       Status
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-300 uppercase">
                       Action
                     </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
                   {lowPerformers.map((student, idx) => (
-                    <tr key={idx} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 text-sm font-medium text-gray-900">
+                    <tr key={idx} className="hover:bg-slate-800">
+                      <td className="px-6 py-4 text-sm font-medium text-slate-100">
                         {student.student_name}
                       </td>
                       <td className="px-6 py-4 text-sm">

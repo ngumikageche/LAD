@@ -1,15 +1,23 @@
 import { useState, useEffect } from 'react';
-import { Users, BookOpen, Building2, TrendingUp, AlertCircle, BarChart3, PieChart, LineChart as LineChartIcon } from 'lucide-react';
-import { LineChart, Line, BarChart, Bar, PieChart as PieChartComponent, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { Users, BookOpen, TrendingUp, AlertCircle, BarChart3, PieChart, LineChart as LineChartIcon } from 'lucide-react';
+import { LineChart, Line, PieChart as PieChartComponent, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { adminDashboardAPI, adminAnalyticsAPI } from '../api/admin';
+import { useNavigate } from 'react-router-dom';
+import CompetencyHeatmap from '../components/charts/CompetencyHeatmap';
+import AttendanceCorrelationChart from '../components/charts/AttendanceCorrelationChart';
+import CohortComparisonChart from '../components/charts/CohortComparisonChart';
+import InsightsPanel from '../components/ui/InsightsPanel';
+import PortfolioStatusPanel from '../components/ui/PortfolioStatusPanel';
+import WidgetHelp from '../components/ui/WidgetHelp';
+import type { AdvancedDashboardResponse, CohortComparisonResponse } from '../services/analyticsApi';
+import { loadCachedDashboard, saveCachedDashboard } from '../utils/dashboardCache';
 
 interface DashboardMetric {
   label: string;
-  value: number;
+  value: number | string;
   icon: any;
   color: string;
   bgColor: string;
-  trend?: number;
 }
 
 interface DepartmentPerformance {
@@ -20,101 +28,122 @@ interface DepartmentPerformance {
   pass_rate: number;
 }
 
+interface TermTrend {
+  term: string;
+  avg_score: number;
+  pass_rate: number;
+}
+
+interface AtRiskStudent {
+  student_id: string;
+  name: string;
+  avg_score: number;
+}
+
 const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#f87171'];
 
-const performanceTrendData = [
-  { month: 'Jan', avg_score: 72, pass_rate: 78 },
-  { month: 'Feb', avg_score: 74, pass_rate: 80 },
-  { month: 'Mar', avg_score: 76, pass_rate: 82 },
-  { month: 'Apr', avg_score: 75, pass_rate: 81 },
-  { month: 'May', avg_score: 78, pass_rate: 84 },
-  { month: 'Jun', avg_score: 80, pass_rate: 86 },
-];
-
 export default function AdminDashboard() {
+  const navigate = useNavigate();
   const [metrics, setMetrics] = useState<DashboardMetric[]>([]);
   const [departments, setDepartments] = useState<DepartmentPerformance[]>([]);
   const [departmentChartData, setDepartmentChartData] = useState<any[]>([]);
+  const [termTrend, setTermTrend] = useState<TermTrend[]>([]);
+  const [atRisk, setAtRisk] = useState<AtRiskStudent[]>([]);
+  const [advanced, setAdvanced] = useState<AdvancedDashboardResponse | null>(null);
+  const [comparison, setComparison] = useState<CohortComparisonResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const cached = loadCachedDashboard<{
+      metrics: DashboardMetric[];
+      departments: DepartmentPerformance[];
+      departmentChartData: any[];
+      termTrend: TermTrend[];
+      atRisk: AtRiskStudent[];
+      advanced: AdvancedDashboardResponse | null;
+      comparison: CohortComparisonResponse | null;
+    }>('lad.admin.dashboard.v2');
+    if (cached) {
+      setMetrics(cached.metrics);
+      setDepartments(cached.departments);
+      setDepartmentChartData(cached.departmentChartData);
+      setTermTrend(cached.termTrend);
+      setAtRisk(cached.atRisk);
+      setAdvanced(cached.advanced);
+      setComparison(cached.comparison);
+      setLoading(false);
+    }
+
     const loadDashboard = async () => {
       try {
         setLoading(true);
         setError(null);
 
-        // Fetch real data from API
-        const [dashboardData, departmentsData] = await Promise.all([
+        const [dashboardDataRaw, departmentsDataRaw] = await Promise.all([
           adminDashboardAPI.getDashboardStats(),
           adminAnalyticsAPI.getDepartmentsAnalytics(),
         ]);
+        const dashboardData = dashboardDataRaw as any;
+        const departmentsData = departmentsDataRaw as any[];
+        const advancedData = (dashboardDataRaw as any).analytics as AdvancedDashboardResponse;
 
-        // Build metrics from real data
-        setMetrics([
-          {
-            label: 'Total Students',
-            value: dashboardData.system_overview?.total_students || 0,
-            icon: Users,
-            color: 'text-blue-600',
-            bgColor: 'bg-blue-100',
-            trend: 12,
-          },
-          {
-            label: 'Active Trainers',
-            value: dashboardData.system_overview?.total_trainers || 0,
-            icon: Users,
-            color: 'text-purple-600',
-            bgColor: 'bg-purple-100',
-            trend: 5,
-          },
-          {
-            label: 'Total Courses',
-            value: dashboardData.system_overview?.total_courses || 0,
-            icon: BookOpen,
-            color: 'text-amber-600',
-            bgColor: 'bg-amber-100',
-            trend: 8,
-          },
-          {
-            label: 'Departments',
-            value: dashboardData.system_overview?.total_institutions || 0,
-            icon: Building2,
-            color: 'text-emerald-600',
-            bgColor: 'bg-emerald-100',
-            trend: 2,
-          },
-        ]);
+        const nextMetrics = [
+          { label: 'Total Students', value: dashboardData.system_overview?.total_students || 0, icon: Users, color: 'text-blue-600', bgColor: 'bg-blue-100' },
+          { label: 'Active Trainers', value: dashboardData.system_overview?.total_trainers || 0, icon: Users, color: 'text-purple-600', bgColor: 'bg-purple-100' },
+          { label: 'Total Courses', value: dashboardData.system_overview?.total_courses || 0, icon: BookOpen, color: 'text-amber-600', bgColor: 'bg-amber-100' },
+          { label: 'Overall Pass Rate', value: `${dashboardData.academic_metrics?.overall_pass_rate || 0}%`, icon: TrendingUp, color: 'text-emerald-600', bgColor: 'bg-emerald-100' },
+        ];
+        setMetrics(nextMetrics);
 
-        // Transform department data
-        const formattedDepts = (departmentsData || []).map((dept: any, idx: number) => ({
+        // Real term trend from dashboard
+        const trend: TermTrend[] = (dashboardData.term_trend || []).map((t: any) => ({
+          term: t.term,
+          avg_score: t.avg_score,
+          pass_rate: t.pass_rate,
+        }));
+        setTermTrend(trend);
+
+        // At-risk students from dashboard
+        setAtRisk(dashboardData.at_risk_students || []);
+        setAdvanced(advancedData);
+
+        const formattedDepts = (departmentsData || []).map((dept: any) => ({
           department_id: dept.department_id,
           name: dept.name,
           avg_score: Math.round(dept.avg_score || 0),
           students_count: dept.students_count || 0,
           pass_rate: Math.round(dept.pass_rate || 0),
         }));
-
         setDepartments(formattedDepts);
-
-        // Create pie chart data from departments
-        const chartData = formattedDepts.map((dept: any, idx: number) => ({
+        setDepartmentChartData(formattedDepts.map((dept: any, idx: number) => ({
           name: dept.name,
           value: dept.avg_score,
           fill: COLORS[idx % COLORS.length],
-        }));
-        setDepartmentChartData(chartData);
+        })));
+
+        const nextComparison: CohortComparisonResponse | null = advancedData?.cohort_comparison ?? null;
+
+        saveCachedDashboard('lad.admin.dashboard.v2', {
+          metrics: nextMetrics,
+          departments: formattedDepts,
+          departmentChartData: formattedDepts.map((dept: any, idx: number) => ({
+            name: dept.name,
+            value: dept.avg_score,
+            fill: COLORS[idx % COLORS.length],
+          })),
+          termTrend: trend,
+          atRisk: dashboardData.at_risk_students || [],
+          advanced: advancedData,
+          comparison: nextComparison,
+        });
+        setComparison(nextComparison);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load dashboard');
-        // Use empty data on error
-        setMetrics([]);
-        setDepartments([]);
-        setDepartmentChartData([]);
       } finally {
         setLoading(false);
       }
     };
-
     loadDashboard();
   }, []);
 
@@ -127,12 +156,12 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 p-6">
+    <div className="min-h-screen bg-blue-950 p-6">
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-4xl font-bold text-gray-900">Admin Dashboard</h1>
-          <p className="text-gray-600 mt-2">System overview and institutional analytics</p>
+          <h1 className="text-4xl font-bold text-slate-100">Admin Dashboard</h1>
+          <p className="text-slate-400 mt-2">System overview and institutional analytics</p>
         </div>
 
         {/* Alert */}
@@ -145,22 +174,23 @@ export default function AdminDashboard() {
 
         {/* Key Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          {metrics.map((metric, idx) => {
+          {[
+            { ...metrics[0], description: 'Shows the total number of learner records currently active in the institution-level dataset.' },
+            { ...metrics[1], description: 'Shows the number of trainers currently active in the system.' },
+            { ...metrics[2], description: 'Shows the total number of courses configured across the institution.' },
+            { ...metrics[3], description: 'Shows the percentage of recorded scores that meet the pass threshold across the dashboard scope.' },
+          ].filter(Boolean).map((metric, idx) => {
             const Icon = metric.icon;
             return (
-              <div key={idx} className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition">
+              <div key={idx} className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6 hover:shadow-lg transition">
                 <div className="flex items-center justify-between mb-4">
+                  <WidgetHelp title={metric.label} description={(metric as any).description} />
                   <div className={`${metric.bgColor} p-3 rounded-lg`}>
                     <Icon className={`${metric.color}`} size={24} />
                   </div>
-                  {metric.trend && (
-                    <span className="text-green-600 font-semibold text-sm">
-                      ↑ {metric.trend}%
-                    </span>
-                  )}
                 </div>
-                <p className="text-gray-600 text-sm">{metric.label}</p>
-                <p className="text-3xl font-bold text-gray-900 mt-2">{metric.value.toLocaleString()}</p>
+                <p className="text-slate-400 text-sm">{metric.label}</p>
+                <p className="text-3xl font-bold text-slate-100 mt-2">{typeof metric.value === 'number' ? metric.value.toLocaleString() : metric.value}</p>
               </div>
             );
           })}
@@ -168,31 +198,41 @@ export default function AdminDashboard() {
 
         {/* Charts Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          {/* Performance Trend */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <LineChartIcon size={24} className="text-blue-500" />
-              Performance Trend
-            </h2>
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={performanceTrendData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip />
-                <Legend />
-                <Line type="monotone" dataKey="avg_score" stroke="#3b82f6" strokeWidth={2} name="Avg Score" />
-                <Line type="monotone" dataKey="pass_rate" stroke="#10b981" strokeWidth={2} name="Pass Rate" />
-              </LineChart>
-            </ResponsiveContainer>
+          {/* Performance Trend — real term data */}
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <LineChartIcon size={24} className="text-blue-400" />
+                <h2 className="text-lg font-bold text-slate-100">Performance Trend by Term</h2>
+              </div>
+              <WidgetHelp title="Performance Trend by Term" description="Shows institution-wide average score and pass rate across terms so leadership can monitor academic movement over time." />
+            </div>
+            {termTrend.length === 0 ? (
+              <div className="h-[300px] flex items-center justify-center text-slate-500">No term data yet</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={termTrend}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="term" tick={{ fontSize: 11 }} />
+                  <YAxis domain={[0, 100]} />
+                  <Tooltip formatter={(v) => `${Number(v ?? 0)}%`} />
+                  <Legend />
+                  <Line type="monotone" dataKey="avg_score" stroke="#3b82f6" strokeWidth={2} name="Avg Score" />
+                  <Line type="monotone" dataKey="pass_rate" stroke="#10b981" strokeWidth={2} name="Pass Rate" />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
           </div>
 
           {/* Department Performance Distribution */}
-          <div className="bg-white rounded-lg shadow p-6">
-            <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <PieChart size={24} className="text-purple-500" />
-              Department Distribution
-            </h2>
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <PieChart size={24} className="text-purple-400" />
+                <h2 className="text-lg font-bold text-slate-100">Department Distribution</h2>
+              </div>
+              <WidgetHelp title="Department Distribution" description="Shows how department average performance is distributed, helping compare departmental contribution and strength." />
+            </div>
             {departmentChartData.length > 0 ? (
               <ResponsiveContainer width="100%" height={300}>
                 <PieChartComponent>
@@ -214,48 +254,92 @@ export default function AdminDashboard() {
                 </PieChartComponent>
               </ResponsiveContainer>
             ) : (
-              <div className="h-[300px] flex items-center justify-center text-gray-500">
+              <div className="h-[300px] flex items-center justify-center text-slate-500">
                 No data available
               </div>
             )}
           </div>
         </div>
 
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h2 className="text-lg font-bold text-slate-100">Competency Heatmap</h2>
+              <WidgetHelp title="Competency Heatmap" description="Shows student and competency performance using low, medium, and high mastery color coding for rapid institutional diagnosis." />
+            </div>
+            <CompetencyHeatmap items={advanced?.heatmap?.items || []} />
+          </div>
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <h2 className="text-lg font-bold text-slate-100">Institutional Recommendations</h2>
+              <WidgetHelp title="Institutional Recommendations" description="Shows rule-based intervention ideas generated from cohort risk, competency weakness, and overall learning patterns." />
+            </div>
+            <InsightsPanel items={advanced?.recommendations?.items || []} previewCount={3} />
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6 lg:col-span-1">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h2 className="text-lg font-bold text-slate-100">Attendance Correlation</h2>
+              <WidgetHelp title="Attendance Correlation" description="Shows the relationship between attendance rates and academic scores across learners, useful for early-warning analysis." />
+            </div>
+            <AttendanceCorrelationChart items={advanced?.attendance_correlation?.items || []} />
+          </div>
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6 lg:col-span-1">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h2 className="text-lg font-bold text-slate-100">Portfolio Tracking</h2>
+              <WidgetHelp title="Portfolio Tracking" description="Shows completion levels for digital portfolio evidence so missing submissions can be tracked at a glance." />
+            </div>
+            <PortfolioStatusPanel portfolio={advanced?.portfolio || { items: [], last_updated: '' }} />
+          </div>
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6 lg:col-span-1">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h2 className="text-lg font-bold text-slate-100">Cohort Comparison</h2>
+              <WidgetHelp title="Cohort Comparison" description="Compares two cohorts side by side using average score, making it easier to evaluate relative performance." />
+            </div>
+            <CohortComparisonChart items={(comparison?.cohorts || []).map((cohort) => ({ subject_name: cohort.subject_name, average_score: cohort.average_score }))} />
+          </div>
+        </div>
+
         {/* Department Performance Table */}
-        <div className="bg-white rounded-lg shadow overflow-hidden mb-8">
-          <div className="p-6 border-b">
-            <h2 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-              <BarChart3 size={24} className="text-emerald-500" />
-              Department Performance
-            </h2>
+        <div className="bg-slate-900 border border-slate-800 rounded-lg shadow overflow-hidden mb-8">
+          <div className="p-6 border-b border-slate-800">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <BarChart3 size={24} className="text-emerald-400" />
+                <h2 className="text-lg font-bold text-slate-100">Department Performance</h2>
+              </div>
+              <WidgetHelp title="Department Performance" description="Tabulates department-level learner count, average score, and pass rate to support institutional benchmarking." />
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-slate-800 border-b border-slate-700">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">
                     Department
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">
                     Students
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">
                     Avg Score
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">
                     Pass Rate
                   </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">
                     Status
                   </th>
                 </tr>
               </thead>
-              <tbody className="divide-y">
+              <tbody className="divide-y divide-slate-800">
                 {departments.length > 0 ? (
                   departments.map((dept, idx) => (
-                    <tr key={idx} className="hover:bg-gray-50">
-                      <td className="px-6 py-4 font-medium text-gray-900">{dept.name}</td>
-                      <td className="px-6 py-4 text-gray-600">{dept.students_count.toLocaleString()}</td>
+                    <tr key={idx} className="hover:bg-slate-800/60">
+                      <td className="px-6 py-4 font-medium text-slate-200">{dept.name}</td>
+                      <td className="px-6 py-4 text-slate-400">{dept.students_count.toLocaleString()}</td>
                       <td className="px-6 py-4">
                         <span className={`px-3 py-1 rounded-full text-sm font-bold ${
                           dept.avg_score >= 75
@@ -279,7 +363,7 @@ export default function AdminDashboard() {
                   ))
                 ) : (
                   <tr>
-                    <td colSpan={5} className="px-6 py-4 text-center text-gray-500">
+                    <td colSpan={5} className="px-6 py-4 text-center text-slate-500">
                       No department data available
                     </td>
                   </tr>
@@ -289,23 +373,56 @@ export default function AdminDashboard() {
           </div>
         </div>
 
+        {/* At-Risk Students */}
+        {atRisk.length > 0 && (
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow overflow-hidden mb-8">
+            <div className="p-6 border-b border-slate-800 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <AlertCircle size={20} className="text-orange-400" />
+                <h2 className="text-lg font-bold text-slate-100">At-Risk Students (avg &lt; 50%)</h2>
+              </div>
+              <WidgetHelp title="At-Risk Students" description="Lists learners whose average score is below the risk threshold, helping leaders focus intervention resources." />
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-slate-800 border-b border-slate-700">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Student</th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-slate-400 uppercase">Avg Score</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-800">
+                  {atRisk.map((s) => (
+                    <tr key={s.student_id} className="hover:bg-red-900/20">
+                      <td className="px-6 py-3 font-medium text-slate-200">{s.name}</td>
+                      <td className="px-6 py-3">
+                        <span className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm font-bold">{s.avg_score}%</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* Quick Actions */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <button className="p-4 bg-white border border-blue-200 rounded-lg hover:bg-blue-50 transition text-left">
-            <p className="font-semibold text-gray-900">👥 Manage Users</p>
-            <p className="text-sm text-gray-600 mt-1">Create/edit user accounts</p>
+          <button onClick={() => navigate('/users')} className="p-4 bg-slate-900 border border-blue-800 rounded-lg hover:bg-blue-900/40 transition text-left">
+            <p className="font-semibold text-slate-100">👥 Manage Users</p>
+            <p className="text-sm text-slate-400 mt-1">Create/edit user accounts</p>
           </button>
-          <button className="p-4 bg-white border border-purple-200 rounded-lg hover:bg-purple-50 transition text-left">
-            <p className="font-semibold text-gray-900">🏫 Institutions</p>
-            <p className="text-sm text-gray-600 mt-1">Manage institution data</p>
+          <button onClick={() => navigate('/institutions')} className="p-4 bg-slate-900 border border-purple-800 rounded-lg hover:bg-purple-900/40 transition text-left">
+            <p className="font-semibold text-slate-100">🏫 Institutions</p>
+            <p className="text-sm text-slate-400 mt-1">Manage institution data</p>
           </button>
-          <button className="p-4 bg-white border border-emerald-200 rounded-lg hover:bg-emerald-50 transition text-left">
-            <p className="font-semibold text-gray-900">📊 Analytics</p>
-            <p className="text-sm text-gray-600 mt-1">View system analytics</p>
+          <button onClick={() => navigate('/admin/analytics')} className="p-4 bg-slate-900 border border-emerald-800 rounded-lg hover:bg-emerald-900/40 transition text-left">
+            <p className="font-semibold text-slate-100">📊 Analytics</p>
+            <p className="text-sm text-slate-400 mt-1">View system analytics</p>
           </button>
-          <button className="p-4 bg-white border border-orange-200 rounded-lg hover:bg-orange-50 transition text-left">
-            <p className="font-semibold text-gray-900">📢 Announcements</p>
-            <p className="text-sm text-gray-600 mt-1">Create system announcements</p>
+          <button onClick={() => navigate('/admin/reports/exam-results')} className="p-4 bg-slate-900 border border-orange-800 rounded-lg hover:bg-orange-900/40 transition text-left">
+            <p className="font-semibold text-slate-100">📈 Exam Results</p>
+            <p className="text-sm text-slate-400 mt-1">School-wide report</p>
           </button>
         </div>
       </div>

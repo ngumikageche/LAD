@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react';
 import { FileText, Edit2, Trash2, Upload, CheckCircle2, AlertCircle, Download } from 'lucide-react';
 import { adminScoresAPI } from '../api/admin';
+import { apiRequest } from '../api/client';
+import { useTableControls } from '../hooks/useTableControls';
+import { TableFooter, SortableTh } from '../components/ui/TableControls';
 
 interface Score {
   id: string;
@@ -11,10 +14,12 @@ interface Score {
   subject_name: string | null;
   assessment_id: string | null;
   assessment_name: string | null;
+  course_name: string | null;
   marks_obtained: number;
   grade: string | null;
   is_passed: boolean | null;
   term: string | null;
+  feedback: string | null;
   created_at: string | null;
 }
 
@@ -48,8 +53,57 @@ export default function AdminScoreManagementPage() {
     try {
       setLoading(true);
       setError(null);
-      const data = await adminScoresAPI.getScores() as { items: Score[] };
-      setScores(Array.isArray(data?.items) ? data.items : []);
+
+      // Fetch scores and students in parallel
+      // Fetch all students with a high per_page to avoid pagination cutoff
+      const [rawData, studentsRaw] = await Promise.all([
+        adminScoresAPI.getScores({ per_page: 200 }) as Promise<any>,
+        apiRequest<any>('/students?per_page=500').catch(() => []),
+      ]);
+
+      const items: any[] = Array.isArray(rawData?.items) ? rawData.items
+        : Array.isArray(rawData) ? rawData : [];
+
+      // /students may return array or { items: [] } or { students: [] }
+      const studentList: any[] = Array.isArray(studentsRaw) ? studentsRaw
+        : Array.isArray(studentsRaw?.items) ? studentsRaw.items
+        : Array.isArray(studentsRaw?.students) ? studentsRaw.students
+        : [];
+
+      // Build student lookup by id
+      const studentMap: Record<string, { name: string; registration_number: string }> = {};
+      for (const s of studentList) {
+        const sid = s.id ?? s.student_id;
+        if (!sid) continue;
+        studentMap[sid] = {
+          name: s.user?.name ?? s.name ?? '—',
+          registration_number: s.registration_number ?? '—',
+        };
+      }
+
+      const enriched: Score[] = items.map((s: any) => {
+        const sid = s.student_id && s.student_id !== 'None' ? s.student_id : null;
+        const studentInfo = sid ? studentMap[sid] : null;
+        return {
+          id: s.id,
+          student_id: sid,
+          student_name: studentInfo?.name ?? s.student_name ?? '—',
+          registration_number: studentInfo?.registration_number ?? s.registration_number ?? '—',
+          subject_id: s.subject_id ?? null,
+          subject_name: s.subject_name ?? null,
+          assessment_id: s.assessment_id && s.assessment_id !== 'None' ? s.assessment_id : null,
+          assessment_name: s.assessment_name ?? null,
+          course_name: s.course_name ?? null,
+          marks_obtained: s.marks_obtained ?? 0,
+          grade: s.grade ?? null,
+          is_passed: s.is_passed ?? null,
+          term: s.term ?? null,
+          feedback: s.feedback ?? null,
+          created_at: s.created_at ?? null,
+        };
+      });
+
+      setScores(enriched);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load scores');
     } finally {
@@ -120,9 +174,12 @@ export default function AdminScoreManagementPage() {
     searchTerm === '' ||
     (score.student_name ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (score.registration_number ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (score.subject_name ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (score.course_name ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (score.assessment_name ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (score.assessment_name ?? '').toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  const tc = useTableControls(filteredScores);
 
   if (loading) {
     return (
@@ -138,11 +195,11 @@ export default function AdminScoreManagementPage() {
         {/* Header */}
         <div className="mb-8 flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+            <h1 className="text-3xl font-bold text-slate-100 flex items-center gap-2">
               <FileText size={32} className="text-blue-500" />
               Score Management
             </h1>
-            <p className="text-gray-600 mt-2">Monitor, add, edit and validate academic scores</p>
+            <p className="text-slate-400 mt-2">Monitor, add, edit and validate academic scores</p>
           </div>
           <div className="flex gap-3">
             <button
@@ -185,10 +242,10 @@ export default function AdminScoreManagementPage() {
 
         {/* Bulk Upload */}
         {showUpload && (
-          <div className="mb-6 p-6 bg-white rounded-lg shadow border-2 border-dashed border-green-300">
-            <h3 className="text-lg font-bold text-gray-900 mb-4">Bulk Upload Scores</h3>
+          <div className="mb-6 p-6 bg-slate-900 border border-slate-800 rounded-lg shadow border-2 border-dashed border-green-300">
+            <h3 className="text-lg font-bold text-slate-100 mb-4">Bulk Upload Scores</h3>
             <div className="space-y-4">
-              <div className="p-6 border-2 border-dashed border-gray-300 rounded-lg text-center">
+              <div className="p-6 border-2 border-dashed border-slate-700 rounded-lg text-center">
                 <input
                   type="file"
                   accept=".csv,.xlsx"
@@ -200,20 +257,20 @@ export default function AdminScoreManagementPage() {
                   htmlFor="file-upload"
                   className="cursor-pointer flex flex-col items-center justify-center"
                 >
-                  <Upload size={48} className="text-gray-300 mb-2" />
-                  <p className="font-medium text-gray-900">Click to upload or drag and drop</p>
-                  <p className="text-sm text-gray-600">CSV or Excel files (Max 5MB)</p>
+                  <Upload size={48} className="text-slate-500 mb-2" />
+                  <p className="font-medium text-slate-100">Click to upload or drag and drop</p>
+                  <p className="text-sm text-slate-400">CSV or Excel files (Max 5MB)</p>
                 </label>
               </div>
               <div>
-                <h4 className="font-medium text-gray-900 mb-2">CSV Format:</h4>
-                <code className="block bg-gray-100 p-3 rounded text-sm text-gray-700 overflow-x-auto">
+                <h4 className="font-medium text-slate-100 mb-2">CSV Format:</h4>
+                <code className="block bg-slate-800 p-3 rounded text-sm text-slate-300 overflow-x-auto">
                   student_id,subject_id,marks_obtained,total_marks
                 </code>
               </div>
               <button
                 onClick={() => setShowUpload(false)}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                className="px-4 py-2 bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 transition"
               >
                 Cancel
               </button>
@@ -224,14 +281,14 @@ export default function AdminScoreManagementPage() {
         {/* Form Modal */}
         {showForm && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-lg max-w-md w-full">
+            <div className="bg-slate-900 border border-slate-800 rounded-lg shadow-lg max-w-md w-full">
               <div className="p-6 border-b flex items-center justify-between">
-                <h2 className="text-xl font-bold text-gray-900">
+                <h2 className="text-xl font-bold text-slate-100">
                   Edit Score
                 </h2>
                 <button
                   onClick={resetForm}
-                  className="text-gray-600 hover:text-gray-900 text-2xl"
+                  className="text-slate-400 hover:text-slate-100 text-2xl"
                 >
                   ×
                 </button>
@@ -239,7 +296,7 @@ export default function AdminScoreManagementPage() {
 
               <form onSubmit={handleAddScore} className="p-6 space-y-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
                     Marks Obtained
                   </label>
                   <input
@@ -247,11 +304,11 @@ export default function AdminScoreManagementPage() {
                     value={formData.marks_obtained}
                     onChange={(e) => setFormData({ ...formData, marks_obtained: Number(e.target.value) })}
                     min="0"
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-4 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
                     Grade
                   </label>
                   <input
@@ -259,18 +316,18 @@ export default function AdminScoreManagementPage() {
                     value={formData.grade}
                     onChange={(e) => setFormData({ ...formData, grade: e.target.value })}
                     placeholder="A, B, C..."
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-4 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                  <label className="block text-sm font-medium text-slate-300 mb-2">
                     Feedback
                   </label>
                   <textarea
                     value={formData.feedback}
                     onChange={(e) => setFormData({ ...formData, feedback: e.target.value })}
                     rows={3}
-                    className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="w-full px-4 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
 
@@ -284,7 +341,7 @@ export default function AdminScoreManagementPage() {
                   <button
                     type="button"
                     onClick={resetForm}
-                    className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition"
+                    className="px-4 py-2 bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 transition"
                   >
                     Cancel
                   </button>
@@ -295,14 +352,14 @@ export default function AdminScoreManagementPage() {
         )}
 
         {/* Filters */}
-        <div className="mb-6 flex gap-4 bg-white p-4 rounded-lg shadow">
+        <div className="mb-6 flex gap-4 bg-slate-900 border border-slate-800 p-4 rounded-lg shadow">
           <div className="flex-1">
             <input
               type="text"
               placeholder="Search scores..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+              className="w-full px-4 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
           <button className="px-6 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition font-medium flex items-center gap-2">
@@ -312,41 +369,40 @@ export default function AdminScoreManagementPage() {
         </div>
 
         {/* Scores Table */}
-        <div className="bg-white rounded-lg shadow overflow-hidden">
-          <div className="p-6 border-b">
-            <h2 className="text-lg font-bold text-gray-900">All Scores ({filteredScores.length})</h2>
+        <div className="bg-slate-900 border border-slate-800 rounded-lg shadow overflow-hidden">
+          <div className="p-6 border-b border-slate-800">
+            <h2 className="text-lg font-bold text-slate-100">All Scores ({tc.total})</h2>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead className="bg-gray-50 border-b">
+              <thead className="bg-slate-800 border-b border-slate-700">
                 <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Student</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Subject</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Assessment</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Marks</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Grade</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Status</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Term</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Date</th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase">Actions</th>
+                  <SortableTh label="Student" sortKey="student_name" sort={tc.sort} onSort={tc.setSort} />
+                  <SortableTh label="Reg No" sortKey="registration_number" sort={tc.sort} onSort={tc.setSort} />
+                  <SortableTh label="Course" sortKey="course_name" sort={tc.sort} onSort={tc.setSort} />
+                  <SortableTh label="Assessment" sortKey="assessment_name" sort={tc.sort} onSort={tc.setSort} />
+                  <SortableTh label="Marks" sortKey="marks_obtained" sort={tc.sort} onSort={tc.setSort} />
+                  <SortableTh label="Grade" sortKey="grade" sort={tc.sort} onSort={tc.setSort} />
+                  <SortableTh label="Status" sortKey="is_passed" sort={tc.sort} onSort={tc.setSort} />
+                  <SortableTh label="Term" sortKey="term" sort={tc.sort} onSort={tc.setSort} />
+                  <SortableTh label="Date" sortKey="created_at" sort={tc.sort} onSort={tc.setSort} />
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-300 uppercase">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y">
-                {filteredScores.map((score) => (
-                  <tr key={score.id} className="hover:bg-gray-50">
+              <tbody className="divide-y divide-slate-800">
+                {tc.paged.map((score) => (
+                  <tr key={score.id} className="hover:bg-slate-800">
                     <td className="px-6 py-4">
-                      <p className="text-sm font-medium text-gray-900">{score.student_name ?? '—'}</p>
-                      {score.registration_number && (
-                        <p className="text-xs text-gray-500">{score.registration_number}</p>
-                      )}
+                      <p className="text-sm font-medium text-slate-100">{score.student_name ?? '—'}</p>
+                      <p className="text-xs text-slate-500">{score.registration_number ?? '—'}</p>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-700">{score.subject_name ?? '—'}</td>
-                    <td className="px-6 py-4 text-sm text-gray-700">{score.assessment_name ?? '—'}</td>
-                    <td className="px-6 py-4 text-gray-900 font-bold">{score.marks_obtained}</td>
+                    <td className="px-6 py-4 text-sm text-slate-300">{score.course_name ?? '—'}</td>
+                    <td className="px-6 py-4 text-sm text-slate-300">{score.assessment_name ?? '—'}</td>
+                    <td className="px-6 py-4 text-slate-100 font-bold">{score.marks_obtained}</td>
                     <td className="px-6 py-4">
                       {score.grade ? (
-                        <span className="px-3 py-1 rounded-full text-sm font-bold bg-blue-100 text-blue-800">{score.grade}</span>
-                      ) : <span className="text-gray-400">—</span>}
+                        <span className="px-3 py-1 rounded-full text-sm font-bold bg-blue-500/15 text-blue-300">{score.grade}</span>
+                      ) : <span className="text-slate-500">—</span>}
                     </td>
                     <td className="px-6 py-4">
                       <span className={`px-3 py-1 rounded-full text-xs font-bold ${
@@ -354,13 +410,13 @@ export default function AdminScoreManagementPage() {
                           ? 'bg-green-100 text-green-800'
                           : score.is_passed === false
                             ? 'bg-red-100 text-red-800'
-                            : 'bg-gray-100 text-gray-600'
+                            : 'bg-slate-800 text-slate-400'
                       }`}>
                         {score.is_passed === true ? 'Passed' : score.is_passed === false ? 'Failed' : 'N/A'}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-600">{score.term ?? '—'}</td>
-                    <td className="px-6 py-4 text-sm text-gray-600">
+                    <td className="px-6 py-4 text-sm text-slate-400">{score.term ?? '—'}</td>
+                    <td className="px-6 py-4 text-sm text-slate-400">
                       {score.created_at ? new Date(score.created_at).toLocaleDateString() : '—'}
                     </td>
                     <td className="px-6 py-4">
@@ -386,6 +442,7 @@ export default function AdminScoreManagementPage() {
               </tbody>
             </table>
           </div>
+          <TableFooter page={tc.page} totalPages={tc.totalPages} total={tc.total} pageSize={tc.pageSize} onPage={tc.setPage} />
         </div>
       </div>
     </div>

@@ -3,6 +3,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:5000
 type RequestOptions = Omit<RequestInit, 'body'> & {
   body?: unknown;
   token?: string | null;
+  responseType?: 'json' | 'blob' | 'text';
 };
 
 export type ApiError = {
@@ -30,18 +31,25 @@ export const apiRequest = async <T>(path: string, options: RequestOptions = {}):
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
-  const data = (await response.json()) as T | ApiError;
   if (!response.ok) {
-    const error = (data as ApiError)?.error ?? 'Request failed';
+    const data = await response.json() as ApiError;
+    const error = data?.error ?? 'Request failed';
     throw new Error(error);
   }
 
+  // Check if responseType indicates blob
+  if (rest.responseType === 'blob') {
+    return response.blob() as Promise<T>;
+  }
+
+  const data = (await response.json()) as T | ApiError;
   return data as T;
 };
 // API client with common methods
 export const apiClient = {
   async get<T>(path: string, options?: RequestOptions): Promise<{ data: T }> {
-    const data = await apiRequest<T>(path, { ...options, method: 'GET' });
+    const { responseType, ...rest } = options || {};
+    const data = await apiRequest<T>(path, { ...rest, method: 'GET', responseType });
     return { data };
   },
   

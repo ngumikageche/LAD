@@ -3,6 +3,8 @@ import { Plus, X } from 'lucide-react';
 import { apiRequest } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { Module, Course } from '../types/backend';
+import { useTableControls } from '../hooks/useTableControls';
+import { TableFooter, SortableTh } from '../components/ui/TableControls';
 
 const emptyForm: Omit<Module, 'id'> = {
   name: '',
@@ -88,6 +90,12 @@ const ModulesPage = () => {
     });
   }, [modules, courses, searchTerm]);
 
+  const tc = useTableControls(
+    filtered,
+    15,
+    (item, key) => key === 'course' ? courses.find(c => c.id === item.course_id)?.name ?? '' : (item as any)[key],
+  );
+
   const openCreate = () => {
     setFormState(emptyForm);
     setEditId(null);
@@ -169,8 +177,8 @@ const ModulesPage = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-800">Modules</h1>
-          <p className="text-sm text-gray-500">Manage modules for each course.</p>
+          <h1 className="text-3xl font-bold text-slate-200">Modules</h1>
+          <p className="text-sm text-slate-500">Manage modules for each course.</p>
         </div>
         {user?.permissions?.['modules.create'] || user?.permissions?.['*'] ? (
           <button
@@ -183,37 +191,37 @@ const ModulesPage = () => {
         ) : null}
       </div>
 
-      <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
-        <div className="p-6 border-b border-gray-200">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-lg border border-slate-800 overflow-hidden">
+        <div className="p-6 border-b border-slate-700">
           <input
             type="text"
             placeholder="Search by name, description, course..."
-            className="w-full max-w-md px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+            className="w-full max-w-md px-4 py-2.5 rounded-lg border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
           />
         </div>
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+          <table className="min-w-full divide-y divide-slate-800">
+            <thead className="bg-slate-800 border-b border-slate-700">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Name</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Course</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                <SortableTh label="Name" sortKey="name" sort={tc.sort} onSort={tc.setSort} />
+                <SortableTh label="Course" sortKey="course" sort={tc.sort} onSort={tc.setSort} />
+                <SortableTh label="Description" sortKey="description" sort={tc.sort} onSort={tc.setSort} />
                 <th className="px-6 py-3"></th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-slate-900 divide-y divide-slate-800">
               {isLoading ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-4 text-center text-gray-500">Loading...</td>
+                  <td colSpan={4} className="px-6 py-4 text-center text-slate-500">Loading...</td>
                 </tr>
-              ) : filtered.length === 0 ? (
+              ) : tc.paged.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-4 text-center text-gray-500">No modules found.</td>
+                  <td colSpan={4} className="px-6 py-4 text-center text-slate-500">No modules found.</td>
                 </tr>
               ) : (
-                filtered.map((item) => (
+                tc.paged.map((item) => (
                   <tr key={item.id}>
                     <td className="px-6 py-4 whitespace-nowrap">{item.name}</td>
                     <td className="px-6 py-4 whitespace-nowrap">{courses.find((c) => c.id === item.course_id)?.name ?? '-'}</td>
@@ -256,14 +264,15 @@ const ModulesPage = () => {
             </tbody>
           </table>
         </div>
+        <TableFooter page={tc.page} totalPages={tc.totalPages} total={tc.total} pageSize={tc.pageSize} onPage={tc.setPage} />
       </div>
 
       {/* Modal for create/edit */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-30">
-          <div className="bg-white rounded-xl shadow-lg p-8 w-full max-w-md relative">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl shadow-lg p-8 w-full max-w-md relative">
             <button
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              className="absolute top-4 right-4 text-slate-500 hover:text-slate-400"
               onClick={closeModal}
               disabled={isSubmitting}
             >
@@ -273,10 +282,10 @@ const ModulesPage = () => {
             {error && <div className="mb-4 text-red-600 text-sm">{error}</div>}
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Name</label>
                 <input
                   type="text"
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-4 py-2 rounded-lg border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   value={formState.name}
                   onChange={(e) => setFormState((f) => ({ ...f, name: e.target.value }))}
                   required
@@ -284,9 +293,9 @@ const ModulesPage = () => {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Course</label>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Course</label>
                 <select
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-4 py-2 rounded-lg border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   value={formState.course_id}
                   onChange={(e) => setFormState((f) => ({ ...f, course_id: e.target.value }))}
                   required
@@ -299,9 +308,9 @@ const ModulesPage = () => {
                 </select>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Description</label>
                 <textarea
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full px-4 py-2 rounded-lg border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   value={formState.description}
                   onChange={(e) => setFormState((f) => ({ ...f, description: e.target.value }))}
                   rows={3}

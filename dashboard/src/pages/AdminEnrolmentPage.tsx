@@ -71,11 +71,11 @@ export default function AdminEnrolmentPage() {
   if (!data) return null;
 
   return (
-    <div className="min-h-screen bg-gray-100 p-6 print:bg-white print:p-0">
+    <div className="min-h-screen bg-blue-950 p-6 print:bg-slate-900 print:p-0">
       {/* Toolbar */}
       <div className="max-w-5xl mx-auto mb-4 flex items-center gap-3 print:hidden">
-        <h1 className="text-xl font-bold text-gray-900 flex-1">Enrolment & Attendance Overview</h1>
-        <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition font-medium">
+        <h1 className="text-xl font-bold text-slate-100 flex-1">Enrolment & Attendance Overview</h1>
+        <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition font-medium">
           <Printer size={16} /> Print
         </button>
         <button onClick={handleExcelExport} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium">
@@ -86,26 +86,26 @@ export default function AdminEnrolmentPage() {
         </button>
       </div>
 
-      <div className="max-w-5xl mx-auto bg-white shadow-lg print:shadow-none" style={{ padding: '16mm' }}>
+      <div className="max-w-5xl mx-auto bg-slate-900 shadow-lg print:shadow-none" style={{ padding: '16mm' }}>
         {/* Header */}
-        <div className="text-center border-b-2 border-gray-800 pb-4 mb-6">
-          <p className="text-xs text-gray-400 uppercase tracking-widest print:block hidden">CONFIDENTIAL</p>
-          <h1 className="text-2xl font-bold text-gray-900 uppercase">{data.school.name}</h1>
-          <p className="text-sm text-gray-600">{data.school.location}</p>
-          <h2 className="text-lg font-bold text-gray-800 mt-2 uppercase">Enrolment & Attendance Overview</h2>
-          {data.term.name && <p className="text-sm text-gray-600">{data.term.name}</p>}
+        <div className="text-center border-b-2 border-slate-700 pb-4 mb-6">
+          <p className="text-xs text-slate-500 uppercase tracking-widest print:block hidden">CONFIDENTIAL</p>
+          <h1 className="text-2xl font-bold text-slate-100 uppercase">{data.school.name}</h1>
+          <p className="text-sm text-slate-400">{data.school.location}</p>
+          <h2 className="text-lg font-bold text-slate-200 mt-2 uppercase">Enrolment & Attendance Overview</h2>
+          {data.term.name && <p className="text-sm text-slate-400">{data.term.name}</p>}
         </div>
 
         {/* Summary Cards */}
         <div className="grid grid-cols-4 gap-4 mb-6">
           {[
             { label: 'Total Enrolled', value: data.summary.total_enrolled, color: 'text-indigo-600' },
-            { label: 'Total Courses', value: data.summary.total_courses, color: 'text-gray-700' },
+            { label: 'Total Courses', value: data.summary.total_courses, color: 'text-slate-300' },
             { label: 'Overall Attendance', value: data.summary.overall_attendance_pct != null ? `${data.summary.overall_attendance_pct}%` : '—', color: (data.summary.overall_attendance_pct ?? 100) < 75 ? 'text-red-600' : 'text-green-600' },
             { label: 'Flagged Courses', value: data.summary.flagged_courses, color: data.summary.flagged_courses > 0 ? 'text-amber-600' : 'text-green-600' },
           ].map(({ label, value, color }) => (
-            <div key={label} className="p-4 bg-gray-50 border border-gray-200 rounded-lg text-center">
-              <p className="text-xs text-gray-500 uppercase mb-1">{label}</p>
+            <div key={label} className="p-4 bg-slate-800 border border-slate-700 rounded-lg text-center">
+              <p className="text-xs text-slate-500 uppercase mb-1">{label}</p>
               <p className={`text-2xl font-bold ${color}`}>{value}</p>
             </div>
           ))}
@@ -131,7 +131,7 @@ export default function AdminEnrolmentPage() {
         {/* Main Table */}
         <table className="w-full text-sm border-collapse">
           <thead>
-            <tr className="bg-gray-800 text-white">
+            <tr className="bg-slate-800 text-white">
               <th className="px-3 py-2 text-left">Course</th>
               <th className="px-3 py-2 text-left">Level</th>
               <th className="px-3 py-2 text-center">Enrolled</th>
@@ -141,25 +141,25 @@ export default function AdminEnrolmentPage() {
           </thead>
           <tbody>
             {data.by_course.length === 0 ? (
-              <tr><td colSpan={5} className="px-3 py-6 text-center text-gray-400">No data available</td></tr>
+              <tr><td colSpan={5} className="px-3 py-6 text-center text-slate-500">No data available</td></tr>
             ) : data.by_course.map((row, i) => (
               <tr
                 key={row.course_id}
-                className={`border-b ${row.below_threshold ? 'bg-amber-50' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}
+                className={`border-b ${row.below_threshold ? 'bg-amber-50' : i % 2 === 0 ? 'bg-slate-900' : 'bg-slate-800'}`}
               >
-                <td className="px-3 py-2 font-medium text-gray-900">{row.course_name}</td>
-                <td className="px-3 py-2 text-gray-500 text-xs">{row.cbet_level}</td>
-                <td className="px-3 py-2 text-center font-semibold text-gray-700">{row.enrolled}</td>
+                <td className="px-3 py-2 font-medium text-slate-100">{row.course_name}</td>
+                <td className="px-3 py-2 text-slate-500 text-xs">{row.cbet_level}</td>
+                <td className="px-3 py-2 text-center font-semibold text-slate-300">{row.enrolled}</td>
                 <td className="px-3 py-2 text-center">
                   {row.attendance_pct != null ? (
                     <span className={`px-2 py-0.5 rounded text-xs font-bold ${row.attendance_pct >= 75 ? 'bg-green-100 text-green-800' : 'bg-amber-100 text-amber-800'}`}>
                       {row.attendance_pct}%
                     </span>
-                  ) : <span className="text-gray-400 text-xs">No data</span>}
+                  ) : <span className="text-slate-500 text-xs">No data</span>}
                 </td>
                 <td className="px-3 py-2 text-center">
                   {row.attendance_pct == null
-                    ? <span className="text-gray-400 text-xs">—</span>
+                    ? <span className="text-slate-500 text-xs">—</span>
                     : row.below_threshold
                       ? <span className="flex items-center justify-center gap-1 text-amber-700 text-xs font-medium"><AlertTriangle size={12} />Low</span>
                       : <span className="text-green-700 text-xs font-medium">✓ Good</span>}
@@ -169,7 +169,7 @@ export default function AdminEnrolmentPage() {
           </tbody>
         </table>
 
-        <p className="text-xs text-gray-400 text-right mt-6">
+        <p className="text-xs text-slate-500 text-right mt-6">
           Generated by {data.generated_by} on {new Date(data.generated_at).toLocaleString()}
         </p>
       </div>

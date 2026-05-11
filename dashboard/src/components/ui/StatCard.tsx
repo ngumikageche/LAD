@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import theme from '../../theme/theme';
 
 interface StatCardProps {
   title: string;
@@ -10,35 +11,35 @@ interface StatCardProps {
 const StatCard = ({ title, value, icon, colorScheme = 'indigo' }: StatCardProps) => {
   const colorConfigs = {
     indigo: {
-      bg: 'from-indigo-100 via-blue-50 to-indigo-50',
-      text: 'text-indigo-600',
-      title: 'group-hover:text-indigo-600'
+      bg: 'bg-blue-500/15 border border-blue-500/20',
+      text: 'text-blue-300',
+      title: 'group-hover:text-blue-300'
     },
     emerald: {
-      bg: 'from-emerald-100 via-green-50 to-emerald-50',
-      text: 'text-emerald-600',
-      title: 'group-hover:text-emerald-600'
+      bg: 'bg-green-500/15 border border-green-500/20',
+      text: 'text-green-300',
+      title: 'group-hover:text-green-300'
     },
     amber: {
-      bg: 'from-amber-100 via-yellow-50 to-amber-50',
-      text: 'text-amber-600',
-      title: 'group-hover:text-amber-600'
+      bg: 'bg-amber-500/15 border border-amber-500/20',
+      text: 'text-amber-300',
+      title: 'group-hover:text-amber-300'
     },
     red: {
-      bg: 'from-red-100 via-rose-50 to-red-50',
-      text: 'text-red-600',
-      title: 'group-hover:text-red-600'
+      bg: 'bg-red-500/15 border border-red-500/20',
+      text: 'text-red-300',
+      title: 'group-hover:text-red-300'
     }
   };
 
   const config = colorConfigs[colorScheme];
   return (
-    <div className="bg-white p-6 rounded-2xl shadow-md hover:shadow-xl transition-all duration-300 flex items-start justify-between border border-gray-100 group">
+    <div className={`${theme.surface.card} p-4 sm:p-6 hover:border-slate-600 transition-all duration-200 flex items-start justify-between group`}>
       <div className="flex-1">
-        <p className={`text-xs font-bold text-gray-500 uppercase tracking-widest mb-2.5 ${config.title} transition-colors`}>{title}</p>
-        <p className="text-4xl font-bold bg-gradient-to-r from-gray-900 to-gray-700 bg-clip-text text-transparent">{value}</p>
+        <p className={`text-xs font-bold text-slate-400 uppercase tracking-widest mb-2.5 ${config.title} transition-colors`}>{title}</p>
+        <p className="text-3xl sm:text-4xl font-bold text-slate-100">{value}</p>
       </div>
-      <div className={`bg-gradient-to-br ${config.bg} p-4 rounded-2xl ml-4 group-hover:shadow-lg transition-all duration-300`}>
+      <div className={`${config.bg} p-4 rounded-2xl ml-4 group-hover:shadow-lg transition-all duration-200`}>
         <div className={`${config.text} drop-shadow-sm`}>
           {icon}
         </div>

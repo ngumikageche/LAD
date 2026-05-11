@@ -1,5 +1,6 @@
 import React from 'react';
 import { X } from 'lucide-react';
+import theme from '../../theme/theme';
 
 interface ModalProps {
   isOpen: boolean;
@@ -41,25 +42,25 @@ export const Modal: React.FC<ModalProps> = ({
       onClick={handleBackdropClick}
     >
       {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/50 transition-opacity" />
+      <div className={`fixed inset-0 ${theme.surface.overlay} transition-opacity`} />
 
       {/* Modal Container */}
       <div className="flex items-center justify-center min-h-screen px-4 sm:px-6 lg:px-8 py-12">
         <div
-          className={`relative bg-white rounded-lg shadow-xl transform transition-all w-full ${sizeClasses[size]}`}
+          className={`relative ${theme.surface.card} shadow-2xl transform transition-all w-full ${sizeClasses[size]}`}
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800">
             <div>
-              <h2 className="text-xl font-bold text-gray-900">{title}</h2>
+              <h2 className="text-xl font-bold text-slate-100">{title}</h2>
               {description && (
-                <p className="mt-1 text-sm text-gray-500">{description}</p>
+                <p className="mt-1 text-sm text-slate-400">{description}</p>
               )}
             </div>
             <button
               onClick={onClose}
-              className="text-gray-400 hover:text-gray-600 transition-colors"
+              className="text-slate-500 hover:text-slate-200 transition-all duration-200"
               aria-label="Close modal"
             >
               <X size={24} />
@@ -83,7 +84,7 @@ export const ModalFooter: React.FC<ModalFooterProps> = ({
   children,
   className = '',
 }) => (
-  <div className={`flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 ${className}`}>
+  <div className={`flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-800 ${className}`}>
     {children}
   </div>
 );

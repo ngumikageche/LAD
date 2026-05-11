@@ -48,7 +48,7 @@ export default function FeeStatementPage() {
 
   if (error) return (
     <div className="flex items-center justify-center min-h-screen">
-      <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700">
+      <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2 text-red-300">
         <AlertCircle size={20} />{error}
       </div>
     </div>
@@ -59,7 +59,7 @@ export default function FeeStatementPage() {
   const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2 });
 
   return (
-    <div className="min-h-screen bg-gray-100 p-6 print:bg-white print:p-0">
+    <div className="min-h-screen bg-blue-950 p-6 print:bg-slate-900 print:p-0">
       {/* Toolbar */}
       <div className="max-w-3xl mx-auto mb-4 flex gap-3 print:hidden">
         <button
@@ -70,24 +70,24 @@ export default function FeeStatementPage() {
         </button>
       </div>
 
-      <div className="max-w-3xl mx-auto bg-white shadow-lg print:shadow-none" style={{ padding: '16mm' }}>
+      <div className="max-w-3xl mx-auto bg-slate-900 shadow-lg print:shadow-none" style={{ padding: '16mm' }}>
         {/* Header */}
-        <div className="text-center border-b-2 border-gray-800 pb-4 mb-6">
-          <h1 className="text-2xl font-bold text-gray-900 uppercase">{data.school.name}</h1>
-          <p className="text-sm text-gray-600">{data.school.location}</p>
-          <h2 className="text-lg font-bold text-gray-800 mt-2 uppercase">Fee Statement</h2>
-          {data.term.name && <p className="text-sm text-gray-600">{data.term.name}</p>}
+        <div className="text-center border-b-2 border-slate-700 pb-4 mb-6">
+          <h1 className="text-2xl font-bold text-slate-100 uppercase">{data.school.name}</h1>
+          <p className="text-sm text-slate-400">{data.school.location}</p>
+          <h2 className="text-lg font-bold text-slate-200 mt-2 uppercase">Fee Statement</h2>
+          {data.term.name && <p className="text-sm text-slate-400">{data.term.name}</p>}
         </div>
 
         {/* Student Info */}
-        <div className="flex gap-8 mb-6 p-3 bg-gray-50 border border-gray-200 rounded text-sm">
-          <div><span className="text-gray-500">Name: </span><strong>{data.student.name}</strong></div>
-          <div><span className="text-gray-500">Reg No: </span><strong>{data.student.registration_number}</strong></div>
+        <div className="flex gap-8 mb-6 p-3 bg-slate-800 border border-slate-700 rounded text-sm">
+          <div><span className="text-slate-500">Name: </span><strong>{data.student.name}</strong></div>
+          <div><span className="text-slate-500">Reg No: </span><strong>{data.student.registration_number}</strong></div>
         </div>
 
         {/* Note banner if no fee module */}
         {data.note && (
-          <div className="mb-6 p-3 bg-blue-50 border border-blue-200 rounded flex items-center gap-2 text-blue-700 text-sm">
+          <div className="mb-6 p-3 bg-blue-500/10 border border-blue-500/30 rounded flex items-center gap-2 text-blue-300 text-sm">
             <Info size={16} />{data.note}
           </div>
         )}
@@ -95,7 +95,7 @@ export default function FeeStatementPage() {
         {/* Line Items */}
         <table className="w-full mb-6 text-sm border-collapse">
           <thead>
-            <tr className="bg-gray-800 text-white">
+            <tr className="bg-slate-800 text-white">
               <th className="px-3 py-2 text-left">Description</th>
               <th className="px-3 py-2 text-right">Charged</th>
               <th className="px-3 py-2 text-right">Paid</th>
@@ -105,24 +105,24 @@ export default function FeeStatementPage() {
           <tbody>
             {data.line_items.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-3 py-6 text-center text-gray-400">No fee records available</td>
+                <td colSpan={4} className="px-3 py-6 text-center text-slate-500">No fee records available</td>
               </tr>
             ) : data.line_items.map((item, i) => (
-              <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+              <tr key={i} className={i % 2 === 0 ? 'bg-slate-900' : 'bg-slate-800'}>
                 <td className="px-3 py-2">{item.description}</td>
                 <td className="px-3 py-2 text-right">{fmt(item.amount)}</td>
-                <td className="px-3 py-2 text-right text-green-700">{fmt(item.paid)}</td>
-                <td className={`px-3 py-2 text-right font-medium ${item.balance > 0 ? 'text-red-700' : 'text-green-700'}`}>
+                <td className="px-3 py-2 text-right text-green-300">{fmt(item.paid)}</td>
+                <td className={`px-3 py-2 text-right font-medium ${item.balance > 0 ? 'text-red-300' : 'text-green-300'}`}>
                   {fmt(item.balance)}
                 </td>
               </tr>
             ))}
             {/* Totals row */}
-            <tr className="bg-gray-100 font-bold border-t-2 border-gray-400">
+            <tr className="bg-slate-800 font-bold border-t-2 border-slate-600">
               <td className="px-3 py-2">Total</td>
               <td className="px-3 py-2 text-right">{fmt(data.summary.total_charged)}</td>
-              <td className="px-3 py-2 text-right text-green-700">{fmt(data.summary.total_paid)}</td>
-              <td className={`px-3 py-2 text-right ${data.summary.balance > 0 ? 'text-red-700' : 'text-green-700'}`}>
+              <td className="px-3 py-2 text-right text-green-300">{fmt(data.summary.total_paid)}</td>
+              <td className={`px-3 py-2 text-right ${data.summary.balance > 0 ? 'text-red-300' : 'text-green-300'}`}>
                 {fmt(data.summary.balance)}
               </td>
             </tr>
@@ -131,7 +131,7 @@ export default function FeeStatementPage() {
 
         {/* Outstanding balance alert */}
         {data.summary.balance > 0 && (
-          <div className="mb-6 p-3 bg-red-50 border border-red-300 rounded text-red-700 font-semibold text-sm">
+          <div className="mb-6 p-3 bg-red-500/10 border border-red-500/40 rounded text-red-300 font-semibold text-sm">
             Outstanding Balance: {fmt(data.summary.balance)} — Please settle at the earliest.
           </div>
         )}
@@ -139,10 +139,10 @@ export default function FeeStatementPage() {
         {/* Payment History */}
         {data.payments.length > 0 && (
           <>
-            <h3 className="font-semibold text-gray-800 mb-2 text-sm uppercase">Payment History</h3>
+            <h3 className="font-semibold text-slate-200 mb-2 text-sm uppercase">Payment History</h3>
             <table className="w-full text-sm border-collapse mb-6">
               <thead>
-                <tr className="bg-gray-100 border-b border-gray-300">
+                <tr className="bg-slate-800 border-b border-slate-700">
                   <th className="px-3 py-2 text-left">Date</th>
                   <th className="px-3 py-2 text-left">Reference</th>
                   <th className="px-3 py-2 text-right">Amount</th>
@@ -150,10 +150,10 @@ export default function FeeStatementPage() {
               </thead>
               <tbody>
                 {data.payments.map((p, i) => (
-                  <tr key={i} className="border-b border-gray-100">
+                  <tr key={i} className="border-b border-slate-800">
                     <td className="px-3 py-2">{p.date}</td>
-                    <td className="px-3 py-2 text-gray-600">{p.reference}</td>
-                    <td className="px-3 py-2 text-right text-green-700 font-medium">{fmt(p.amount)}</td>
+                    <td className="px-3 py-2 text-slate-400">{p.reference}</td>
+                    <td className="px-3 py-2 text-right text-green-300 font-medium">{fmt(p.amount)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -161,7 +161,7 @@ export default function FeeStatementPage() {
           </>
         )}
 
-        <p className="text-xs text-gray-400 text-right mt-6">
+        <p className="text-xs text-slate-500 text-right mt-6">
           Generated: {new Date(data.generated_at).toLocaleString()}
         </p>
       </div>

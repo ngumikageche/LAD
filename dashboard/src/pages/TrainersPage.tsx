@@ -2,6 +2,8 @@ import { FormEvent, useEffect, useMemo, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { apiRequest } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
+import { useTableControls } from '../hooks/useTableControls';
+import { TableFooter, SortableTh } from '../components/ui/TableControls';
 
 type Department = {
   id: string;
@@ -101,11 +103,11 @@ const AssignSubjectsModal = ({ isOpen, onClose, trainer, token }) => {
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-lg rounded-2xl bg-white p-8 shadow-xl">
+      <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 p-8 shadow-xl">
         <div className="flex items-center justify-between mb-6">
-          <h2 className="text-2xl font-bold text-gray-800">Assign Subjects to {trainer?.user?.name}</h2>
-          <button onClick={onClose} className="p-2 rounded-full hover:bg-gray-100">
-            <X className="text-gray-600" />
+          <h2 className="text-2xl font-bold text-slate-200">Assign Subjects to {trainer?.user?.name}</h2>
+          <button onClick={onClose} className="p-2 rounded-full hover:bg-slate-800">
+            <X className="text-slate-400" />
           </button>
         </div>
         <div className="mb-4">
@@ -162,7 +164,7 @@ const AssignSubjectsModal = ({ isOpen, onClose, trainer, token }) => {
         >
           {isSubmitting ? 'Assigning...' : 'Assign Subjects'}
         </button>
-        {message && <div className="mt-4 text-green-600">{message}</div>}
+        {message && <div className="mt-4 text-green-400">{message}</div>}
       </div>
     </div>
   );
@@ -225,6 +227,17 @@ const TrainersPage = () => {
       );
     });
   }, [trainers, departments, searchTerm]);
+
+  const tc = useTableControls(
+    filtered,
+    15,
+    (item, key) => {
+      if (key === 'name') return item.user.name;
+      if (key === 'email') return item.user.email;
+      if (key === 'department') return departments.find(d => d.id === item.department_id)?.name ?? '';
+      return (item as any)[key];
+    },
+  );
 
   const openCreate = () => {
     setFormState(emptyForm);
@@ -297,7 +310,7 @@ const TrainersPage = () => {
 
   if (!canReadTrainers) {
     return (
-      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+      <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-300">
         You do not have permission to view trainers.
       </div>
     );
@@ -307,8 +320,8 @@ const TrainersPage = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-800">Trainers</h1>
-          <p className="text-sm text-gray-500">Manage trainer assignments and departments.</p>
+          <h1 className="text-3xl font-bold text-slate-200">Trainers</h1>
+          <p className="text-sm text-slate-500">Manage trainer assignments and departments.</p>
         </div>
         {canCreateTrainers ? (
           <button
@@ -321,53 +334,53 @@ const TrainersPage = () => {
         ) : null}
       </div>
 
-      <div className="bg-white rounded-2xl shadow-lg border border-gray-100 overflow-hidden">
-        <div className="p-6 border-b border-gray-200">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-lg border border-slate-800 overflow-hidden">
+        <div className="p-6 border-b border-slate-700">
           <input
             type="text"
             placeholder="Search by name, email, or department..."
-            className="w-full max-w-md px-4 py-2.5 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+            className="w-full max-w-md px-4 py-2.5 rounded-lg border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
           />
         </div>
         {isLoading ? (
-          <div className="p-6 text-sm text-gray-600">Loading trainers...</div>
+          <div className="p-6 text-sm text-slate-400">Loading trainers...</div>
         ) : error ? (
-          <div className="p-6 text-sm text-red-600">{error}</div>
+          <div className="p-6 text-sm text-red-400">{error}</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left">
-              <thead className="bg-gray-50 border-b border-gray-200">
+              <thead className="bg-slate-800 border-b border-slate-700">
                 <tr>
-                  <th className="px-6 py-4 text-xs font-bold text-gray-600 uppercase tracking-wider">Name</th>
-                  <th className="px-6 py-4 text-xs font-bold text-gray-600 uppercase tracking-wider">Email</th>
-                  <th className="px-6 py-4 text-xs font-bold text-gray-600 uppercase tracking-wider">Department</th>
-                  <th className="px-6 py-4 text-xs font-bold text-gray-600 uppercase tracking-wider">Specialization</th>
-                  <th className="px-6 py-4 text-xs font-bold text-gray-600 uppercase tracking-wider">Actions</th>
+                  <SortableTh label="Name" sortKey="name" sort={tc.sort} onSort={tc.setSort} />
+                  <SortableTh label="Email" sortKey="email" sort={tc.sort} onSort={tc.setSort} />
+                  <SortableTh label="Department" sortKey="department" sort={tc.sort} onSort={tc.setSort} />
+                  <SortableTh label="Specialization" sortKey="specialization" sort={tc.sort} onSort={tc.setSort} />
+                  <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-200">
-                {filtered.map((item) => (
-                  <tr key={item.id} className="hover:bg-gray-50 transition-colors">
-                    <td className="px-6 py-4 font-medium text-gray-900">{item.user.name}</td>
-                    <td className="px-6 py-4 text-gray-600">{item.user.email}</td>
-                    <td className="px-6 py-4 text-gray-600">
+              <tbody className="divide-y divide-slate-800">
+                {tc.paged.map((item) => (
+                  <tr key={item.id} className="hover:bg-slate-800 transition-colors">
+                    <td className="px-6 py-4 font-medium text-slate-100">{item.user.name}</td>
+                    <td className="px-6 py-4 text-slate-400">{item.user.email}</td>
+                    <td className="px-6 py-4 text-slate-400">
                       {departments.find((dept) => dept.id === item.department_id)?.name ?? '—'}
                     </td>
-                    <td className="px-6 py-4 text-gray-600">{item.specialization ?? '—'}</td>
-                    <td className="px-6 py-4 text-gray-600">
+                    <td className="px-6 py-4 text-slate-400">{item.specialization ?? '—'}</td>
+                    <td className="px-6 py-4 text-slate-400">
                       <div className="flex items-center gap-3">
                         {canUpdateTrainers ? (
                           <>
                             <button
-                              className="text-indigo-600 hover:text-indigo-700 text-sm font-medium"
+                              className="text-indigo-400 hover:text-indigo-300 text-sm font-medium"
                               onClick={() => openEdit(item)}
                             >
                               Edit
                             </button>
                             <button
-                              className="ml-2 text-blue-600 hover:text-blue-700 text-sm font-medium"
+                              className="ml-2 text-blue-400 hover:text-blue-300 text-sm font-medium"
                               onClick={() => { setSelectedTrainer(item); setAssignModalOpen(true); }}
                             >
                               Assign Subjects
@@ -376,7 +389,7 @@ const TrainersPage = () => {
                         ) : null}
                         {canDeleteTrainers ? (
                           <button
-                            className="text-red-600 hover:text-red-700 text-sm font-medium disabled:opacity-50"
+                            className="text-red-400 hover:text-red-300 text-sm font-medium disabled:opacity-50"
                             onClick={() => handleDelete(item)}
                             disabled={isSubmitting}
                           >
@@ -391,29 +404,30 @@ const TrainersPage = () => {
             </table>
           </div>
         )}
+        <TableFooter page={tc.page} totalPages={tc.totalPages} total={tc.total} pageSize={tc.pageSize} onPage={tc.setPage} />
       </div>
 
       {isModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div className="w-full max-w-xl rounded-2xl bg-white p-8 shadow-xl">
+          <div className="w-full max-w-xl rounded-2xl bg-slate-900 border border-slate-800 p-8 shadow-xl">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-gray-800">
+              <h2 className="text-2xl font-bold text-slate-200">
                 {formState.id ? 'Update Trainer' : 'Create Trainer'}
               </h2>
-              <button onClick={closeModal} className="p-2 rounded-full hover:bg-gray-100">
-                <X className="text-gray-600" />
+              <button onClick={closeModal} className="p-2 rounded-full hover:bg-slate-800">
+                <X className="text-slate-400" />
               </button>
             </div>
             <form className="space-y-4" onSubmit={handleSubmit}>
               <div className="grid gap-4 md:grid-cols-2">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">User</label>
+                  <label className="block text-sm font-medium text-slate-300">User</label>
                   {canReadUsers ? (
                     <select
                       required
                       value={formState.user_id}
                       onChange={(event) => setFormState({ ...formState, user_id: event.target.value })}
-                      className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                      className="mt-1 block w-full rounded-md border border-slate-700 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                     >
                       <option value="">Select user</option>
                       {users.map((item) => (
@@ -429,12 +443,12 @@ const TrainersPage = () => {
                   )}
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Department</label>
+                  <label className="block text-sm font-medium text-slate-300">Department</label>
                   <select
                     required
                     value={formState.department_id}
                     onChange={(event) => setFormState({ ...formState, department_id: event.target.value })}
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    className="mt-1 block w-full rounded-md border border-slate-700 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   >
                     <option value="">Select department</option>
                     {departments.map((dept) => (
@@ -445,21 +459,21 @@ const TrainersPage = () => {
                   </select>
                 </div>
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700">Specialization</label>
+                  <label className="block text-sm font-medium text-slate-300">Specialization</label>
                   <input
                     type="text"
                     value={formState.specialization}
                     onChange={(event) => setFormState({ ...formState, specialization: event.target.value })}
-                    className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    className="mt-1 block w-full rounded-md border border-slate-700 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
                   />
                 </div>
               </div>
-              {error ? <p className="text-sm text-red-600">{error}</p> : null}
+              {error ? <p className="text-sm text-red-400">{error}</p> : null}
               <div className="flex justify-end gap-3 pt-4">
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+                  className="px-4 py-2 text-sm font-medium text-slate-300 bg-slate-800 rounded-md hover:bg-slate-700"
                 >
                   Cancel
                 </button>

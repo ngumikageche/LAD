@@ -83,10 +83,21 @@ export type StudentDashboardResponse = {
   average_score: number;
   enrolled_subjects_count: number;
   recent_scores: StudentScore[];
+  subject_performance: Array<{ subject_name: string; average_score: number; scores_count: number }>;
+  trend: Array<{ term: string; average_score: number; scores_count: number }>;
   notifications_summary: {
     unread_count: number;
     recent: StudentNotification[];
   };
+  summary_panel?: {
+    mastery_rate: number;
+    at_risk_students: number;
+    attendance_rate: number;
+    portfolio_completion_rate: number;
+    alerts: number;
+  };
+  analytics?: any;
+  last_updated?: string;
 };
 
 export type StudentProfile = {

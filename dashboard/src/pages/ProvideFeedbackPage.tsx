@@ -95,25 +95,25 @@ export default function ProvideFeedbackPage() {
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="text-3xl font-bold text-slate-100 flex items-center gap-2">
             <MessageSquare size={32} className="text-cyan-500" />
             Provide Feedback
           </h1>
-          <p className="text-gray-600 mt-2">
+          <p className="text-slate-400 mt-2">
             Guide students with constructive feedback on their performance
           </p>
         </div>
 
         {/* Alert Messages */}
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700">
+          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2 text-red-300">
             <AlertCircle size={20} />
             {error}
           </div>
         )}
 
         {success && (
-          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2 text-green-700">
+          <div className="mb-6 p-4 bg-green-500/10 border border-green-500/30 rounded-lg flex items-center gap-2 text-green-300">
             <CheckCircle2 size={20} />
             {success}
           </div>
@@ -121,10 +121,10 @@ export default function ProvideFeedbackPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Student List */}
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <div className="p-6 border-b bg-gray-50">
-              <h2 className="text-lg font-bold text-gray-900">My Students</h2>
-              <p className="text-sm text-gray-600 mt-1">
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow overflow-hidden">
+            <div className="p-6 border-b bg-slate-800">
+              <h2 className="text-lg font-bold text-slate-100">My Students</h2>
+              <p className="text-sm text-slate-400 mt-1">
                 {students.length} student{students.length !== 1 ? 's' : ''}
               </p>
             </div>
@@ -136,21 +136,21 @@ export default function ProvideFeedbackPage() {
                   onClick={() => handleSelectStudent(student)}
                   className={`w-full text-left p-4 border-b transition ${
                     selectedStudent?.id === student.id
-                      ? 'bg-blue-100 border-blue-300'
-                      : 'hover:bg-gray-50 border-gray-200'
+                      ? 'bg-blue-500/15 border-blue-300'
+                      : 'hover:bg-slate-800 border-slate-700'
                   }`}
                 >
-                  <p className="font-semibold text-gray-900">{student.name}</p>
-                  <p className="text-xs text-gray-600 mt-1">{student.email}</p>
+                  <p className="font-semibold text-slate-100">{student.name}</p>
+                  <p className="text-xs text-slate-400 mt-1">{student.email}</p>
                   <div className="flex items-center justify-between mt-2">
-                    <span className="text-xs text-gray-600">{student.student_id}</span>
+                    <span className="text-xs text-slate-400">{student.student_id}</span>
                     <span
                       className={`px-2 py-1 rounded text-xs font-bold ${
                         student.overall_avg >= 70
-                          ? 'bg-green-100 text-green-800'
+                          ? 'bg-green-500/15 text-green-300'
                           : student.overall_avg >= 60
-                            ? 'bg-yellow-100 text-yellow-800'
-                            : 'bg-red-100 text-red-800'
+                            ? 'bg-amber-500/15 text-amber-300'
+                            : 'bg-red-500/15 text-red-300'
                       }`}
                     >
                       {student.overall_avg.toFixed(1)}%
@@ -166,38 +166,38 @@ export default function ProvideFeedbackPage() {
             {selectedStudent ? (
               <>
                 {/* Selected Student Info */}
-                <div className="bg-white rounded-lg shadow p-6">
-                  <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+                <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
+                  <h2 className="text-lg font-bold text-slate-100 mb-4 flex items-center gap-2">
                     <User size={24} className="text-blue-500" />
                     {selectedStudent.name}
                   </h2>
 
                   <div className="grid grid-cols-2 gap-4 mb-4 pb-4 border-b">
                     <div>
-                      <p className="text-sm text-gray-600">Email</p>
-                      <p className="font-medium text-gray-900 flex items-center gap-2 mt-1">
+                      <p className="text-sm text-slate-400">Email</p>
+                      <p className="font-medium text-slate-100 flex items-center gap-2 mt-1">
                         <Mail size={16} />
                         {selectedStudent.email}
                       </p>
                     </div>
                     <div>
-                      <p className="text-sm text-gray-600">Current Average</p>
-                      <p className="font-bold text-lg text-blue-600 flex items-center gap-2 mt-1">
+                      <p className="text-sm text-slate-400">Current Average</p>
+                      <p className="font-bold text-lg text-blue-400 flex items-center gap-2 mt-1">
                         <BarChart3 size={16} />
                         {selectedStudent.overall_avg.toFixed(1)}%
                       </p>
                     </div>
                   </div>
 
-                  <p className="text-xs text-gray-600">Student ID: {selectedStudent.student_id}</p>
+                  <p className="text-xs text-slate-400">Student ID: {selectedStudent.student_id}</p>
                 </div>
 
                 {/* Feedback Form */}
-                <div className="bg-white rounded-lg shadow p-6">
-                  <h3 className="text-lg font-bold text-gray-900 mb-4">Write Feedback</h3>
+                <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
+                  <h3 className="text-lg font-bold text-slate-100 mb-4">Write Feedback</h3>
 
                   <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                    <label className="block text-sm font-medium text-slate-300 mb-2">
                       Feedback Message
                     </label>
                     <textarea
@@ -205,15 +205,15 @@ export default function ProvideFeedbackPage() {
                       onChange={(e) => setFeedbackText(e.target.value)}
                       placeholder="Provide constructive feedback to guide the student's improvement..."
                       rows={6}
-                      className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                      className="w-full px-4 py-3 border border-slate-700 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
                     />
-                    <p className="text-xs text-gray-600 mt-2">
+                    <p className="text-xs text-slate-400 mt-2">
                       {feedbackText.length}/500 characters
                     </p>
                   </div>
 
                   {/* Feedback Templates */}
-                  <div className="mb-4 p-4 bg-blue-50 rounded-lg">
+                  <div className="mb-4 p-4 bg-blue-500/10 rounded-lg">
                     <p className="text-sm font-medium text-blue-900 mb-2">💡 Suggested Focus Areas:</p>
                     <div className="space-y-2">
                       <button
@@ -223,7 +223,7 @@ export default function ProvideFeedbackPage() {
                             '\n- Focus on understanding fundamental concepts before moving to advanced topics.\n'
                           )
                         }
-                        className="text-left text-xs text-blue-800 hover:text-blue-700 w-full"
+                        className="text-left text-xs text-blue-300 hover:text-blue-300 w-full"
                       >
                         • Suggest reviewing fundamentals
                       </button>
@@ -234,7 +234,7 @@ export default function ProvideFeedbackPage() {
                             '\n- Great effort! Continue practicing regularly to improve your performance.\n'
                           )
                         }
-                        className="text-left text-xs text-blue-800 hover:text-blue-700 w-full"
+                        className="text-left text-xs text-blue-300 hover:text-blue-300 w-full"
                       >
                         • Encourage consistent practice
                       </button>
@@ -245,7 +245,7 @@ export default function ProvideFeedbackPage() {
                             '\n- Excellent work! You are showing strong understanding of the concepts.\n'
                           )
                         }
-                        className="text-left text-xs text-blue-800 hover:text-blue-700 w-full"
+                        className="text-left text-xs text-blue-300 hover:text-blue-300 w-full"
                       >
                         • Praise good performance
                       </button>
@@ -265,23 +265,23 @@ export default function ProvideFeedbackPage() {
 
                 {/* Feedback History */}
                 {feedbackHistory.length > 0 && (
-                  <div className="bg-white rounded-lg shadow p-6">
-                    <h3 className="text-lg font-bold text-gray-900 mb-4">Previous Feedback</h3>
+                  <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
+                    <h3 className="text-lg font-bold text-slate-100 mb-4">Previous Feedback</h3>
                     <div className="space-y-4">
                       {feedbackHistory.map((item, idx) => (
                         <div
                           key={idx}
-                          className="p-4 bg-gray-50 rounded-lg border-l-4 border-blue-500"
+                          className="p-4 bg-slate-800 rounded-lg border-l-4 border-blue-500"
                         >
                           <div className="flex items-center justify-between mb-2">
-                            <p className="font-medium text-gray-900">{item.date}</p>
+                            <p className="font-medium text-slate-100">{item.date}</p>
                             {item.score && (
-                              <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs font-bold">
+                              <span className="px-2 py-1 bg-blue-500/15 text-blue-300 rounded text-xs font-bold">
                                 {item.score}%
                               </span>
                             )}
                           </div>
-                          <p className="text-gray-700 text-sm">{item.feedback}</p>
+                          <p className="text-slate-300 text-sm">{item.feedback}</p>
                         </div>
                       ))}
                     </div>
@@ -289,9 +289,9 @@ export default function ProvideFeedbackPage() {
                 )}
               </>
             ) : (
-              <div className="bg-white rounded-lg shadow p-12 text-center col-span-2">
-                <MessageSquare size={48} className="mx-auto text-gray-300 mb-4" />
-                <p className="text-gray-500 text-lg">Select a student to provide feedback</p>
+              <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-12 text-center col-span-2">
+                <MessageSquare size={48} className="mx-auto text-slate-500 mb-4" />
+                <p className="text-slate-500 text-lg">Select a student to provide feedback</p>
               </div>
             )}
           </div>

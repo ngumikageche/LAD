@@ -39,10 +39,10 @@ const LoginPage = () => {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-100 to-white">
-      <div className="w-full max-w-md p-8 space-y-8 bg-white rounded-2xl shadow-md">
+      <div className="w-full max-w-md p-8 space-y-8 bg-slate-900 border border-slate-800 rounded-2xl shadow-md">
         <div className="text-center">
-          <h1 className="text-3xl font-bold text-gray-900">Welcome Back</h1>
-          <p className="mt-2 text-sm text-gray-600">Sign in to continue to LAD</p>
+          <h1 className="text-3xl font-bold text-slate-100">Welcome Back</h1>
+          <p className="mt-2 text-sm text-slate-400">Sign in to continue to LAD</p>
         </div>
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <div className="relative">
@@ -53,12 +53,12 @@ const LoginPage = () => {
               required
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              className="peer h-10 w-full border-b-2 border-gray-300 text-gray-900 placeholder-transparent focus:outline-none focus:border-indigo-600"
+              className="peer h-10 w-full border-b-2 border-slate-700 text-slate-100 placeholder-transparent focus:outline-none focus:border-indigo-600"
               placeholder="john@doe.com"
             />
             <label
               htmlFor="email"
-              className="absolute left-0 -top-3.5 text-gray-600 text-sm transition-all peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-placeholder-shown:top-2 peer-focus:-top-3.5 peer-focus:text-gray-600 peer-focus:text-sm"
+              className="absolute left-0 -top-3.5 text-slate-400 text-sm transition-all peer-placeholder-shown:text-base peer-placeholder-shown:text-slate-500 peer-placeholder-shown:top-2 peer-focus:-top-3.5 peer-focus:text-slate-400 peer-focus:text-sm"
             >
               Email address
             </label>
@@ -71,20 +71,20 @@ const LoginPage = () => {
               required
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              className="peer h-10 w-full border-b-2 border-gray-300 text-gray-900 placeholder-transparent focus:outline-none focus:border-indigo-600"
+              className="peer h-10 w-full border-b-2 border-slate-700 text-slate-100 placeholder-transparent focus:outline-none focus:border-indigo-600"
               placeholder="Password"
             />
             <label
               htmlFor="password"
-              className="absolute left-0 -top-3.5 text-gray-600 text-sm transition-all peer-placeholder-shown:text-base peer-placeholder-shown:text-gray-400 peer-placeholder-shown:top-2 peer-focus:-top-3.5 peer-focus:text-gray-600 peer-focus:text-sm"
+              className="absolute left-0 -top-3.5 text-slate-400 text-sm transition-all peer-placeholder-shown:text-base peer-placeholder-shown:text-slate-500 peer-placeholder-shown:top-2 peer-focus:-top-3.5 peer-focus:text-slate-400 peer-focus:text-sm"
             >
               Password
             </label>
           </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center">
-              <input id="remember-me" name="remember-me" type="checkbox" className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded" />
-              <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-900">
+              <input id="remember-me" name="remember-me" type="checkbox" className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-slate-700 rounded" />
+              <label htmlFor="remember-me" className="ml-2 block text-sm text-slate-100">
                 Remember me
               </label>
             </div>
@@ -105,7 +105,7 @@ const LoginPage = () => {
           </div>
           {error ? <p className="text-sm text-red-600">{error}</p> : null}
         </form>
-        <p className="text-center text-sm text-gray-600">
+        <p className="text-center text-sm text-slate-400">
           Don't have an account?{' '}
           <Link to="/register" className="font-medium text-indigo-600 hover:text-indigo-500">
             Sign up

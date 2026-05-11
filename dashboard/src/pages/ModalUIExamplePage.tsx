@@ -63,16 +63,16 @@ const ModalUIExamplePage = () => {
   return (
     <div className="p-8">
       <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold text-gray-900 mb-4">
+        <h1 className="text-3xl font-bold text-slate-100 mb-4">
           Modal UI Standards Example
         </h1>
 
         <div className="space-y-6">
           <section>
-            <h2 className="text-xl font-bold text-gray-900 mb-4">
+            <h2 className="text-xl font-bold text-slate-100 mb-4">
               Professional Modal with Radio Buttons
             </h2>
-            <p className="text-gray-600 mb-6">
+            <p className="text-slate-400 mb-6">
               This example shows how to use the new standardized modal component
               with radio buttons and form fields that follow UI best practices.
             </p>

@@ -104,11 +104,11 @@ export default function WeakSubjectsPage() {
       <div className="max-w-5xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="text-3xl font-bold text-slate-100 flex items-center gap-2">
             <Target size={32} className="text-orange-500" />
             Areas for Improvement
           </h1>
-          <p className="text-gray-600 mt-2">
+          <p className="text-slate-400 mt-2">
             Focus on these subjects to enhance your academic performance
           </p>
         </div>
@@ -121,22 +121,22 @@ export default function WeakSubjectsPage() {
         )}
 
         {/* Summary Card */}
-        <div className="bg-white rounded-lg shadow-md p-6 mb-8">
+        <div className="bg-slate-900 border border-slate-800 rounded-lg shadow-md p-6 mb-8">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="text-center">
-              <p className="text-gray-600 text-sm">Subjects Needing Help</p>
+              <p className="text-slate-400 text-sm">Subjects Needing Help</p>
               <p className="text-3xl font-bold text-orange-600">
                 {weakSubjects.length}
               </p>
             </div>
             <div className="text-center">
-              <p className="text-gray-600 text-sm">Critical Priority</p>
+              <p className="text-slate-400 text-sm">Critical Priority</p>
               <p className="text-3xl font-bold text-red-600">
                 {weakSubjects.filter((s) => s.status === 'poor').length}
               </p>
             </div>
             <div className="text-center">
-              <p className="text-gray-600 text-sm">Average in Weak Areas</p>
+              <p className="text-slate-400 text-sm">Average in Weak Areas</p>
               <p className="text-3xl font-bold text-yellow-600">
                 {weakSubjects.length > 0
                   ? (
@@ -152,12 +152,12 @@ export default function WeakSubjectsPage() {
 
         {/* Weak Subjects List */}
         {weakSubjects.length === 0 ? (
-          <div className="bg-white rounded-lg shadow p-12 text-center">
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-12 text-center">
             <TrendingUp size={48} className="mx-auto text-green-400 mb-4" />
-            <p className="text-gray-500 text-lg font-medium">
+            <p className="text-slate-500 text-lg font-medium">
               Excellent! All your subjects are performing well!
             </p>
-            <p className="text-gray-400 mt-2">
+            <p className="text-slate-500 mt-2">
               Keep up the great work and maintain this momentum
             </p>
           </div>
@@ -173,14 +173,14 @@ export default function WeakSubjectsPage() {
                   <div className={`${colors.bg} p-6`}>
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-4">
-                        <div className="text-4xl font-bold text-gray-900">
+                        <div className="text-4xl font-bold text-slate-100">
                           {getScoreGrade(subject.avg_score)}
                         </div>
                         <div>
-                          <h3 className="text-xl font-bold text-gray-900">
+                          <h3 className="text-xl font-bold text-slate-100">
                             {subject.subject}
                           </h3>
-                          <p className="text-gray-700">
+                          <p className="text-slate-300">
                             Average: {subject.avg_score.toFixed(1)}%
                           </p>
                         </div>
@@ -191,7 +191,7 @@ export default function WeakSubjectsPage() {
                     </div>
 
                     {/* Progress Bar */}
-                    <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div className="w-full bg-slate-700 rounded-full h-2">
                       <div
                         className={`h-2 rounded-full transition-all ${
                           subject.avg_score >= 70
@@ -212,8 +212,8 @@ export default function WeakSubjectsPage() {
 
         {/* Improvement Tips */}
         {weakSubjects.length > 0 && (
-          <div className="bg-white rounded-lg shadow-md p-8">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6 flex items-center gap-2">
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow-md p-8">
+            <h2 className="text-2xl font-bold text-slate-100 mb-6 flex items-center gap-2">
               <AlertTriangle size={28} className="text-amber-500" />
               Actionable Improvement Tips
             </h2>

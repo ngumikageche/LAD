@@ -128,10 +128,10 @@ const ScoreForm = ({ subjects, onCreated }: ScoreFormProps) => {
   };
 
   return (
-    <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
+    <div className="rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-sm">
       <div className="mb-6">
-        <h2 className="text-2xl font-semibold text-gray-900">Upload Score</h2>
-        <p className="mt-1 text-sm text-gray-600">Record one validated score at a time with subject ownership checks.</p>
+        <h2 className="text-2xl font-semibold text-slate-100">Upload Score</h2>
+        <p className="mt-1 text-sm text-slate-400">Record one validated score at a time with subject ownership checks.</p>
       </div>
 
       {error ? (
@@ -150,15 +150,15 @@ const ScoreForm = ({ subjects, onCreated }: ScoreFormProps) => {
 
       <form className="grid gap-4 md:grid-cols-2" onSubmit={handleSubmit}>
         <div className="md:col-span-2">
-          <span className="mb-2 block text-sm font-medium text-gray-700">Student</span>
+          <span className="mb-2 block text-sm font-medium text-slate-300">Student</span>
           <div className="grid gap-3 lg:grid-cols-[1fr_auto]">
-            <div className="rounded-2xl border border-gray-300 p-3 focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-100">
+            <div className="rounded-2xl border border-slate-700 p-3 focus-within:border-emerald-500 focus-within:ring-2 focus-within:ring-emerald-100">
               <div className="flex items-center gap-2">
-                <Search size={16} className="text-gray-400" />
+                <Search size={16} className="text-slate-500" />
                 <input
                   value={studentQuery}
                   onChange={(event) => setStudentQuery(event.target.value)}
-                  className="w-full border-0 p-0 text-sm text-gray-900 outline-none placeholder:text-gray-400"
+                  className="w-full border-0 p-0 text-sm text-slate-100 outline-none placeholder:text-slate-500"
                   placeholder={
                     studentsLoading
                       ? 'Loading students...'
@@ -171,7 +171,7 @@ const ScoreForm = ({ subjects, onCreated }: ScoreFormProps) => {
               </div>
 
               {subjectId && !studentsLoading && filteredStudents.length > 0 ? (
-                <div className="mt-3 max-h-48 overflow-y-auto rounded-xl border border-gray-200">
+                <div className="mt-3 max-h-48 overflow-y-auto rounded-xl border border-slate-700">
                   {filteredStudents.slice(0, 6).map((student) => {
                     const isActive = student.id === studentId;
                     return (
@@ -180,12 +180,12 @@ const ScoreForm = ({ subjects, onCreated }: ScoreFormProps) => {
                         type="button"
                         onClick={() => selectStudent(student)}
                         className={`flex w-full items-start justify-between px-4 py-3 text-left transition ${
-                          isActive ? 'bg-emerald-50 text-emerald-900' : 'bg-white hover:bg-gray-50'
+                          isActive ? 'bg-emerald-50 text-emerald-900' : 'bg-slate-900 hover:bg-slate-800'
                         }`}
                       >
                         <div>
                           <div className="text-sm font-medium">{student.name ?? 'Unnamed Student'}</div>
-                          <div className="text-xs text-gray-500">
+                          <div className="text-xs text-slate-500">
                             {student.registration_number}
                             {student.email ? ` • ${student.email}` : ''}
                           </div>
@@ -198,7 +198,7 @@ const ScoreForm = ({ subjects, onCreated }: ScoreFormProps) => {
               ) : null}
 
               {subjectId && !studentsLoading && students.length > 0 && filteredStudents.length === 0 ? (
-                <p className="mt-3 text-sm text-gray-500">No students match that search.</p>
+                <p className="mt-3 text-sm text-slate-500">No students match that search.</p>
               ) : null}
             </div>
 
@@ -206,7 +206,7 @@ const ScoreForm = ({ subjects, onCreated }: ScoreFormProps) => {
               type="button"
               onClick={() => setIsStudentModalOpen(true)}
               disabled={!subjectId || studentsLoading || students.length === 0}
-              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-gray-300 px-4 py-3 text-sm font-medium text-gray-700 transition hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-700 px-4 py-3 text-sm font-medium text-slate-300 transition hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-60"
             >
               <Users size={16} />
               Browse All
@@ -221,11 +221,11 @@ const ScoreForm = ({ subjects, onCreated }: ScoreFormProps) => {
         </div>
 
         <label className="block">
-          <span className="mb-2 block text-sm font-medium text-gray-700">Subject</span>
+          <span className="mb-2 block text-sm font-medium text-slate-300">Subject</span>
           <select
             value={subjectId}
             onChange={(event) => setSubjectId(event.target.value)}
-            className="w-full rounded-2xl border border-gray-300 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+            className="w-full rounded-2xl border border-slate-700 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
           >
             <option value="">Select a subject</option>
             {subjects.map((subject) => (
@@ -237,17 +237,17 @@ const ScoreForm = ({ subjects, onCreated }: ScoreFormProps) => {
         </label>
 
         <label className="block">
-          <span className="mb-2 block text-sm font-medium text-gray-700">Term</span>
+          <span className="mb-2 block text-sm font-medium text-slate-300">Term</span>
           <input
             value={term}
             onChange={(event) => setTerm(event.target.value)}
-            className="w-full rounded-2xl border border-gray-300 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+            className="w-full rounded-2xl border border-slate-700 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
             placeholder="Term 1"
           />
         </label>
 
         <label className="block">
-          <span className="mb-2 block text-sm font-medium text-gray-700">Score</span>
+          <span className="mb-2 block text-sm font-medium text-slate-300">Score</span>
           <input
             type="number"
             min="0"
@@ -255,18 +255,18 @@ const ScoreForm = ({ subjects, onCreated }: ScoreFormProps) => {
             step="0.01"
             value={score}
             onChange={(event) => setScore(event.target.value)}
-            className="w-full rounded-2xl border border-gray-300 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+            className="w-full rounded-2xl border border-slate-700 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
             placeholder="76.5"
           />
         </label>
 
         <label className="block md:col-span-2">
-          <span className="mb-2 block text-sm font-medium text-gray-700">Feedback</span>
+          <span className="mb-2 block text-sm font-medium text-slate-300">Feedback</span>
           <textarea
             value={feedback}
             onChange={(event) => setFeedback(event.target.value)}
             rows={4}
-            className="w-full rounded-2xl border border-gray-300 px-4 py-3 text-sm text-gray-900 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
+            className="w-full rounded-2xl border border-slate-700 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
             placeholder="Optional comments for the learner."
           />
         </label>
@@ -291,19 +291,19 @@ const ScoreForm = ({ subjects, onCreated }: ScoreFormProps) => {
         size="xl"
       >
         <div className="space-y-4">
-          <div className="rounded-2xl border border-gray-300 px-4 py-3">
+          <div className="rounded-2xl border border-slate-700 px-4 py-3">
             <div className="flex items-center gap-2">
-              <Search size={16} className="text-gray-400" />
+              <Search size={16} className="text-slate-500" />
               <input
                 value={studentQuery}
                 onChange={(event) => setStudentQuery(event.target.value)}
-                className="w-full border-0 p-0 text-sm text-gray-900 outline-none placeholder:text-gray-400"
+                className="w-full border-0 p-0 text-sm text-slate-100 outline-none placeholder:text-slate-500"
                 placeholder="Search by name, registration number, or email"
               />
             </div>
           </div>
 
-          <div className="max-h-[26rem] overflow-y-auto rounded-2xl border border-gray-200">
+          <div className="max-h-[26rem] overflow-y-auto rounded-2xl border border-slate-700">
             {filteredStudents.map((student) => {
               const isActive = student.id === studentId;
               return (
@@ -311,21 +311,21 @@ const ScoreForm = ({ subjects, onCreated }: ScoreFormProps) => {
                   key={student.id}
                   type="button"
                   onClick={() => selectStudent(student)}
-                  className={`flex w-full items-start justify-between border-b border-gray-100 px-4 py-4 text-left transition last:border-b-0 ${
-                    isActive ? 'bg-emerald-50' : 'bg-white hover:bg-gray-50'
+                  className={`flex w-full items-start justify-between border-b border-slate-800 px-4 py-4 text-left transition last:border-b-0 ${
+                    isActive ? 'bg-emerald-50' : 'bg-slate-900 hover:bg-slate-800'
                   }`}
                 >
                   <div>
-                    <div className="text-sm font-semibold text-gray-900">{student.name ?? 'Unnamed Student'}</div>
-                    <div className="mt-1 text-xs text-gray-500">
+                    <div className="text-sm font-semibold text-slate-100">{student.name ?? 'Unnamed Student'}</div>
+                    <div className="mt-1 text-xs text-slate-500">
                       {student.registration_number}
                       {student.email ? ` • ${student.email}` : ''}
                     </div>
                     {student.subjects.length > 0 ? (
-                      <div className="mt-2 text-xs text-gray-600">{student.subjects.join(', ')}</div>
+                      <div className="mt-2 text-xs text-slate-400">{student.subjects.join(', ')}</div>
                     ) : null}
                   </div>
-                  <span className={`text-xs font-semibold ${isActive ? 'text-emerald-700' : 'text-gray-400'}`}>
+                  <span className={`text-xs font-semibold ${isActive ? 'text-emerald-700' : 'text-slate-500'}`}>
                     {isActive ? 'Selected' : 'Choose'}
                   </span>
                 </button>
@@ -333,7 +333,7 @@ const ScoreForm = ({ subjects, onCreated }: ScoreFormProps) => {
             })}
 
             {filteredStudents.length === 0 ? (
-              <div className="px-4 py-8 text-center text-sm text-gray-500">No students match that search.</div>
+              <div className="px-4 py-8 text-center text-sm text-slate-500">No students match that search.</div>
             ) : null}
           </div>
         </div>

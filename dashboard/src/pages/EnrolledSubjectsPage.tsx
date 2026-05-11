@@ -111,9 +111,9 @@ export default function EnrolledSubjectsPage() {
   );
 
   const statusConfig = {
-    active: { color: 'bg-green-50 border-green-200', text: 'text-green-700', badge: 'bg-green-100' },
-    completed: { color: 'bg-blue-50 border-blue-200', text: 'text-blue-700', badge: 'bg-blue-100' },
-    pending: { color: 'bg-yellow-50 border-yellow-200', text: 'text-yellow-700', badge: 'bg-yellow-100' },
+    active: { color: 'bg-green-500/10 border-green-500/30', text: 'text-green-300', badge: 'bg-green-500/15' },
+    completed: { color: 'bg-blue-500/10 border-blue-500/30', text: 'text-blue-300', badge: 'bg-blue-500/15' },
+    pending: { color: 'bg-amber-500/10 border-amber-500/30', text: 'text-amber-300', badge: 'bg-amber-500/15' },
   };
 
   if (loading) {
@@ -129,36 +129,36 @@ export default function EnrolledSubjectsPage() {
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="text-3xl font-bold text-slate-100 flex items-center gap-2">
             <BookOpen size={32} className="text-blue-500" />
             My Courses & Subjects
           </h1>
-          <p className="text-gray-600 mt-2">
+          <p className="text-slate-400 mt-2">
             View all courses you're currently enrolled in
           </p>
         </div>
 
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-          <div className="bg-white rounded-lg shadow p-4">
-            <p className="text-gray-600 text-sm">Total Courses</p>
-            <p className="text-2xl font-bold text-gray-900">{courses.length}</p>
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-4">
+            <p className="text-slate-400 text-sm">Total Courses</p>
+            <p className="text-2xl font-bold text-slate-100">{courses.length}</p>
           </div>
-          <div className="bg-green-50 rounded-lg shadow p-4">
-            <p className="text-green-700 text-sm">Active</p>
-            <p className="text-2xl font-bold text-green-700">
+          <div className="bg-green-500/10 rounded-lg shadow p-4">
+            <p className="text-green-300 text-sm">Active</p>
+            <p className="text-2xl font-bold text-green-300">
               {courses.filter((c) => c.status === 'active').length}
             </p>
           </div>
-          <div className="bg-blue-50 rounded-lg shadow p-4">
-            <p className="text-blue-700 text-sm">Completed</p>
-            <p className="text-2xl font-bold text-blue-700">
+          <div className="bg-blue-500/10 rounded-lg shadow p-4">
+            <p className="text-blue-300 text-sm">Completed</p>
+            <p className="text-2xl font-bold text-blue-300">
               {courses.filter((c) => c.status === 'completed').length}
             </p>
           </div>
-          <div className="bg-yellow-50 rounded-lg shadow p-4">
-            <p className="text-yellow-700 text-sm">Pending</p>
-            <p className="text-2xl font-bold text-yellow-700">
+          <div className="bg-amber-500/10 rounded-lg shadow p-4">
+            <p className="text-amber-300 text-sm">Pending</p>
+            <p className="text-2xl font-bold text-amber-300">
               {courses.filter((c) => c.status === 'pending').length}
             </p>
           </div>
@@ -173,7 +173,7 @@ export default function EnrolledSubjectsPage() {
               className={`px-4 py-2 rounded-lg font-medium transition ${
                 filter === f
                   ? 'bg-blue-600 text-white'
-                  : 'bg-white text-gray-700 border border-gray-300 hover:border-gray-400'
+                  : 'bg-slate-900 text-slate-300 border border-slate-700 hover:border-slate-600'
               }`}
             >
               {f.charAt(0).toUpperCase() + f.slice(1)} ({
@@ -185,7 +185,7 @@ export default function EnrolledSubjectsPage() {
 
         {/* Error */}
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700">
+          <div className="mb-6 p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2 text-red-300">
             <AlertCircle size={20} />
             {error}
           </div>
@@ -193,10 +193,10 @@ export default function EnrolledSubjectsPage() {
 
         {/* Courses Grid */}
         {filteredCourses.length === 0 ? (
-          <div className="bg-white rounded-lg shadow p-12 text-center">
-            <BookOpen size={48} className="mx-auto text-gray-300 mb-4" />
-            <p className="text-gray-500 text-lg">No courses found</p>
-            <p className="text-gray-400">
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-12 text-center">
+            <BookOpen size={48} className="mx-auto text-slate-500 mb-4" />
+            <p className="text-slate-500 text-lg">No courses found</p>
+            <p className="text-slate-500">
               You are not enrolled in any {filter !== 'all' ? filter : ''} courses yet
             </p>
           </div>
@@ -213,10 +213,10 @@ export default function EnrolledSubjectsPage() {
                     {/* Header with Status */}
                     <div className="flex items-start justify-between mb-3">
                       <div className="flex-1">
-                        <h3 className="text-lg font-bold text-gray-900">
+                        <h3 className="text-lg font-bold text-slate-100">
                           {course.course_name}
                         </h3>
-                        <p className="text-sm text-gray-600 mt-1">
+                        <p className="text-sm text-slate-400 mt-1">
                           {course.course_code}
                         </p>
                       </div>
@@ -228,26 +228,26 @@ export default function EnrolledSubjectsPage() {
                     </div>
 
                     {/* Description */}
-                    <p className="text-gray-700 text-sm mb-4">
+                    <p className="text-slate-300 text-sm mb-4">
                       {course.description}
                     </p>
 
                     {/* Meta Information */}
-                    <div className="space-y-2 mb-4 pb-4 border-t border-gray-200 pt-4">
-                      <div className="flex items-center gap-2 text-gray-700 text-sm">
+                    <div className="space-y-2 mb-4 pb-4 border-t border-slate-700 pt-4">
+                      <div className="flex items-center gap-2 text-slate-300 text-sm">
                         <User size={16} className="flex-shrink-0" />
                         <span className="font-medium">Trainer:</span>
                         <span>{course.trainer_name}</span>
                       </div>
 
-                      <div className="flex items-center gap-2 text-gray-700 text-sm">
+                      <div className="flex items-center gap-2 text-slate-300 text-sm">
                         <Calendar size={16} className="flex-shrink-0" />
                         <span className="font-medium">Term:</span>
                         <span>{course.term}</span>
                       </div>
 
                       {course.students_count && (
-                        <div className="flex items-center gap-2 text-gray-700 text-sm">
+                        <div className="flex items-center gap-2 text-slate-300 text-sm">
                           <Users size={16} className="flex-shrink-0" />
                           <span className="font-medium">Class Size:</span>
                           <span>{course.students_count} students</span>
@@ -255,7 +255,7 @@ export default function EnrolledSubjectsPage() {
                       )}
 
                       {course.credits && (
-                        <div className="flex items-center gap-2 text-gray-700 text-sm">
+                        <div className="flex items-center gap-2 text-slate-300 text-sm">
                           <BookOpen size={16} className="flex-shrink-0" />
                           <span className="font-medium">Credits:</span>
                           <span>{course.credits}</span>
@@ -267,7 +267,7 @@ export default function EnrolledSubjectsPage() {
                     <button className={`w-full py-2 px-4 rounded-lg font-medium transition flex items-center justify-center gap-2 ${
                       course.status === 'active'
                         ? 'bg-blue-600 text-white hover:bg-blue-700'
-                        : 'bg-gray-300 text-gray-700 hover:bg-gray-400'
+                        : 'bg-slate-600 text-slate-300 hover:bg-slate-600'
                     }`}>
                       View Details
                       <ChevronRight size={18} />
@@ -281,20 +281,20 @@ export default function EnrolledSubjectsPage() {
 
         {/* Statistics */}
         {courses.length > 0 && (
-          <div className="mt-8 bg-white rounded-lg shadow-md p-6">
-            <h2 className="text-xl font-bold text-gray-900 mb-4">
+          <div className="mt-8 bg-slate-900 border border-slate-800 rounded-lg shadow-md p-6">
+            <h2 className="text-xl font-bold text-slate-100 mb-4">
               Course Statistics
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div>
-                <p className="text-gray-600 text-sm mb-2">Total Credits</p>
-                <p className="text-3xl font-bold text-blue-600">
+                <p className="text-slate-400 text-sm mb-2">Total Credits</p>
+                <p className="text-3xl font-bold text-blue-400">
                   {courses.reduce((sum, c) => sum + (c.credits || 0), 0)}
                 </p>
               </div>
               <div>
-                <p className="text-gray-600 text-sm mb-2">Average Class Size</p>
-                <p className="text-3xl font-bold text-green-600">
+                <p className="text-slate-400 text-sm mb-2">Average Class Size</p>
+                <p className="text-3xl font-bold text-green-400">
                   {Math.round(
                     courses.reduce((sum, c) => sum + (c.students_count || 0), 0) /
                       courses.length
@@ -302,8 +302,8 @@ export default function EnrolledSubjectsPage() {
                 </p>
               </div>
               <div>
-                <p className="text-gray-600 text-sm mb-2">Workload</p>
-                <p className="text-3xl font-bold text-purple-600">
+                <p className="text-slate-400 text-sm mb-2">Workload</p>
+                <p className="text-3xl font-bold text-purple-400">
                   {courses.filter((c) => c.status === 'active').length} Active
                 </p>
               </div>

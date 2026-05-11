@@ -46,7 +46,7 @@ const StudentNotificationsPage = () => {
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
-        <div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-slate-700"></div>
+        <div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-700 border-t-slate-700"></div>
       </div>
     );
   }
@@ -55,7 +55,7 @@ const StudentNotificationsPage = () => {
     <div className="space-y-8">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-4xl font-bold text-slate-900">Notifications</h1>
+          <h1 className="text-4xl font-bold text-slate-100">Notifications</h1>
           <p className="mt-2 text-slate-600">Stay up to date with new scores, alerts, and school announcements.</p>
         </div>
         <div className="rounded-3xl bg-slate-900 px-6 py-4 text-white shadow-sm">
@@ -64,13 +64,13 @@ const StudentNotificationsPage = () => {
         </div>
       </div>
 
-      {error ? <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">{error}</div> : null}
+      {error ? <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-red-300">{error}</div> : null}
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <section className="rounded-3xl border border-slate-700 bg-slate-900 border border-slate-800 p-6 shadow-sm">
           <div className="mb-6 flex items-center gap-3">
             <BellRing className="h-6 w-6 text-slate-700" />
-            <h2 className="text-2xl font-semibold text-slate-900">My Alerts</h2>
+            <h2 className="text-2xl font-semibold text-slate-100">My Alerts</h2>
           </div>
 
           <div className="space-y-4">
@@ -78,12 +78,12 @@ const StudentNotificationsPage = () => {
               <article
                 key={notification.id}
                 className={`rounded-2xl border p-4 ${
-                  notification.read ? 'border-slate-200 bg-slate-50' : 'border-amber-200 bg-amber-50'
+                  notification.read ? 'border-slate-700 bg-slate-800' : 'border-amber-500/30 bg-amber-500/10'
                 }`}
               >
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div>
-                    <h3 className="font-semibold text-slate-900">{notification.title}</h3>
+                    <h3 className="font-semibold text-slate-100">{notification.title}</h3>
                     <p className="mt-2 text-sm text-slate-700">{notification.message}</p>
                     <p className="mt-3 text-xs uppercase tracking-wide text-slate-500">
                       {notification.created_at ? new Date(notification.created_at).toLocaleString() : 'Unknown time'}
@@ -98,7 +98,7 @@ const StudentNotificationsPage = () => {
                       Mark as read
                     </button>
                   ) : (
-                    <span className="inline-flex items-center gap-2 rounded-2xl bg-white px-4 py-2 text-sm font-medium text-slate-600">
+                    <span className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2 text-sm font-medium text-slate-600">
                       <Bell className="h-4 w-4" />
                       Read
                     </span>
@@ -115,25 +115,25 @@ const StudentNotificationsPage = () => {
           ) : null}
         </section>
 
-        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <section className="rounded-3xl border border-slate-700 bg-slate-900 border border-slate-800 p-6 shadow-sm">
           <div className="mb-6 flex items-center gap-3">
             <Megaphone className="h-6 w-6 text-slate-700" />
-            <h2 className="text-2xl font-semibold text-slate-900">Announcements</h2>
+            <h2 className="text-2xl font-semibold text-slate-100">Announcements</h2>
           </div>
 
           <div className="space-y-4">
             {announcements.map((announcement) => (
-              <article key={announcement.id} className="rounded-2xl border border-slate-200 p-4">
+              <article key={announcement.id} className="rounded-2xl border border-slate-700 p-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <h3 className="font-semibold text-slate-900">{announcement.title}</h3>
+                    <h3 className="font-semibold text-slate-100">{announcement.title}</h3>
                     <p className="mt-2 text-sm text-slate-700">{announcement.message}</p>
                     <p className="mt-3 text-xs uppercase tracking-wide text-slate-500">
                       {announcement.created_at ? new Date(announcement.created_at).toLocaleString() : 'Unknown time'}
                     </p>
                   </div>
                   {announcement.is_important ? (
-                    <span className="rounded-full bg-red-100 px-3 py-1 text-xs font-semibold text-red-700">Important</span>
+                    <span className="rounded-full bg-red-500/15 px-3 py-1 text-xs font-semibold text-red-300">Important</span>
                   ) : null}
                 </div>
               </article>

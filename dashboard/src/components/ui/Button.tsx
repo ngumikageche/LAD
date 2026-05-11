@@ -1,4 +1,5 @@
 import React from 'react';
+import theme from '../../theme/theme';
 
 interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
@@ -10,13 +11,13 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantClasses = {
   primary:
-    'bg-indigo-600 text-white hover:bg-indigo-700 focus:ring-indigo-500 disabled:bg-indigo-400',
+    `${theme.accent.primary} focus:ring-teal-400 disabled:bg-teal-500/50`,
   secondary:
-    'bg-gray-200 text-gray-900 hover:bg-gray-300 focus:ring-gray-500 disabled:bg-gray-100',
+    'bg-slate-800 text-slate-200 border border-slate-700 hover:bg-slate-700 focus:ring-slate-500 disabled:bg-slate-800/60',
   danger:
-    'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500 disabled:bg-red-400',
+    'bg-red-500 text-white hover:bg-red-400 focus:ring-red-400 disabled:bg-red-500/50',
   ghost:
-    'bg-transparent text-gray-700 hover:bg-gray-100 focus:ring-gray-500 disabled:text-gray-400',
+    'bg-transparent text-slate-300 hover:bg-slate-800 focus:ring-slate-500 disabled:text-slate-600',
 };
 
 const sizeClasses = {
@@ -41,8 +42,8 @@ export const Button: React.FC<ButtonProps> = ({
       className={`
         inline-flex items-center justify-center gap-2
         font-medium rounded-lg
-        transition-colors
-        focus:outline-none focus:ring-2 focus:ring-offset-2
+        transition-all duration-200
+        focus:outline-none focus:ring-2 focus:ring-offset-0
         disabled:cursor-not-allowed
         ${variantClasses[variant]}
         ${sizeClasses[size]}

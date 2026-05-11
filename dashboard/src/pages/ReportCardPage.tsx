@@ -59,7 +59,7 @@ export default function ReportCardPage() {
 
   if (error) return (
     <div className="flex items-center justify-center min-h-screen">
-      <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700">
+      <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2 text-red-300">
         <AlertCircle size={20} />{error}
       </div>
     </div>
@@ -72,7 +72,7 @@ export default function ReportCardPage() {
     : 0;
 
   return (
-    <div className="min-h-screen bg-gray-200 p-6 print:bg-white print:p-0">
+    <div className="min-h-screen bg-blue-950 p-6 print:bg-slate-900 print:p-0">
       {/* Toolbar — hidden on print */}
       <div className="max-w-3xl mx-auto mb-4 flex gap-3 print:hidden">
         <button
@@ -83,7 +83,7 @@ export default function ReportCardPage() {
         </button>
         <button
           onClick={handlePrint}
-          className="flex items-center gap-2 px-5 py-2 bg-gray-700 text-white rounded-lg hover:bg-gray-800 transition font-medium"
+          className="flex items-center gap-2 px-5 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition font-medium"
         >
           <Download size={18} /> Download PDF
         </button>
@@ -92,39 +92,39 @@ export default function ReportCardPage() {
       {/* A4 Card */}
       <div
         ref={printRef}
-        className="max-w-3xl mx-auto bg-white shadow-lg print:shadow-none print:max-w-none"
+        className="max-w-3xl mx-auto bg-slate-900 shadow-lg print:shadow-none print:max-w-none"
         style={{ minHeight: '297mm', padding: '20mm' }}
       >
         {/* Header */}
-        <div className="text-center border-b-2 border-gray-800 pb-4 mb-6">
-          <h1 className="text-2xl font-bold text-gray-900 uppercase tracking-wide">{data.school.name}</h1>
-          <p className="text-sm text-gray-600">{data.school.location}</p>
-          <h2 className="text-lg font-bold text-gray-800 mt-2 uppercase">Student Report Card</h2>
+        <div className="text-center border-b-2 border-slate-700 pb-4 mb-6">
+          <h1 className="text-2xl font-bold text-slate-100 uppercase tracking-wide">{data.school.name}</h1>
+          <p className="text-sm text-slate-400">{data.school.location}</p>
+          <h2 className="text-lg font-bold text-slate-200 mt-2 uppercase">Student Report Card</h2>
           {data.term.name && (
-            <p className="text-sm text-gray-600">{data.term.name}</p>
+            <p className="text-sm text-slate-400">{data.term.name}</p>
           )}
         </div>
 
         {/* Student Info */}
-        <div className="grid grid-cols-3 gap-4 mb-6 p-3 bg-gray-50 border border-gray-200 rounded">
+        <div className="grid grid-cols-3 gap-4 mb-6 p-3 bg-slate-800 border border-slate-700 rounded">
           <div>
-            <span className="text-xs text-gray-500 uppercase">Name</span>
-            <p className="font-semibold text-gray-900">{data.student.name}</p>
+            <span className="text-xs text-slate-500 uppercase">Name</span>
+            <p className="font-semibold text-slate-100">{data.student.name}</p>
           </div>
           <div>
-            <span className="text-xs text-gray-500 uppercase">Reg. No.</span>
-            <p className="font-semibold text-gray-900">{data.student.registration_number}</p>
+            <span className="text-xs text-slate-500 uppercase">Reg. No.</span>
+            <p className="font-semibold text-slate-100">{data.student.registration_number}</p>
           </div>
           <div>
-            <span className="text-xs text-gray-500 uppercase">Course</span>
-            <p className="font-semibold text-gray-900">{data.student.course ?? '—'}</p>
+            <span className="text-xs text-slate-500 uppercase">Course</span>
+            <p className="font-semibold text-slate-100">{data.student.course ?? '—'}</p>
           </div>
         </div>
 
         {/* Subjects Table */}
         <table className="w-full mb-6 text-sm border-collapse">
           <thead>
-            <tr className="bg-gray-800 text-white">
+            <tr className="bg-slate-800 text-white">
               <th className="px-3 py-2 text-left">Subject</th>
               <th className="px-3 py-2 text-left">Assessment</th>
               <th className="px-3 py-2 text-center">Marks</th>
@@ -136,12 +136,12 @@ export default function ReportCardPage() {
           <tbody>
             {data.subjects.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-3 py-4 text-center text-gray-400">No scores recorded for this term</td>
+                <td colSpan={6} className="px-3 py-4 text-center text-slate-500">No scores recorded for this term</td>
               </tr>
             ) : data.subjects.map((row, i) => (
-              <tr key={i} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
-                <td className="px-3 py-2 font-medium text-gray-900">{row.subject_name}</td>
-                <td className="px-3 py-2 text-gray-600">{row.assessment_name ?? '—'}</td>
+              <tr key={i} className={i % 2 === 0 ? 'bg-slate-900' : 'bg-slate-800'}>
+                <td className="px-3 py-2 font-medium text-slate-100">{row.subject_name}</td>
+                <td className="px-3 py-2 text-slate-400">{row.assessment_name ?? '—'}</td>
                 <td className="px-3 py-2 text-center">
                   {row.marks_obtained}{row.total_marks ? `/${row.total_marks}` : ''}
                 </td>
@@ -149,10 +149,10 @@ export default function ReportCardPage() {
                 <td className="px-3 py-2 text-center font-bold">{row.grade ?? '—'}</td>
                 <td className="px-3 py-2 text-center">
                   {row.is_passed === true
-                    ? <span className="px-2 py-0.5 bg-green-100 text-green-800 rounded text-xs font-medium">Pass</span>
+                    ? <span className="px-2 py-0.5 bg-green-500/15 text-green-300 rounded text-xs font-medium">Pass</span>
                     : row.is_passed === false
-                      ? <span className="px-2 py-0.5 bg-red-100 text-red-800 rounded text-xs font-medium">Fail</span>
-                      : <span className="text-gray-400">—</span>}
+                      ? <span className="px-2 py-0.5 bg-red-500/15 text-red-300 rounded text-xs font-medium">Fail</span>
+                      : <span className="text-slate-500">—</span>}
                 </td>
               </tr>
             ))}
@@ -160,13 +160,13 @@ export default function ReportCardPage() {
         </table>
 
         {/* Attendance */}
-        <div className="mb-6 p-3 border border-gray-200 rounded">
-          <h3 className="font-semibold text-gray-800 mb-2">Attendance Summary</h3>
+        <div className="mb-6 p-3 border border-slate-700 rounded">
+          <h3 className="font-semibold text-slate-200 mb-2">Attendance Summary</h3>
           <div className="flex gap-6 text-sm">
             <span>Total Days: <strong>{data.attendance.total}</strong></span>
-            <span className="text-green-700">Present: <strong>{data.attendance.present}</strong></span>
-            <span className="text-red-700">Absent: <strong>{data.attendance.absent}</strong></span>
-            <span className="text-amber-700">Late: <strong>{data.attendance.late}</strong></span>
+            <span className="text-green-300">Present: <strong>{data.attendance.present}</strong></span>
+            <span className="text-red-300">Absent: <strong>{data.attendance.absent}</strong></span>
+            <span className="text-amber-300">Late: <strong>{data.attendance.late}</strong></span>
             <span>Attendance: <strong>{attPct}%</strong></span>
           </div>
         </div>
@@ -174,28 +174,28 @@ export default function ReportCardPage() {
         {/* Remarks */}
         <div className="grid grid-cols-2 gap-6 mb-10">
           <div>
-            <p className="text-xs text-gray-500 uppercase mb-1">Class Teacher Remarks</p>
-            <div className="border-b border-gray-400 h-8" />
+            <p className="text-xs text-slate-500 uppercase mb-1">Class Teacher Remarks</p>
+            <div className="border-b border-slate-600 h-8" />
           </div>
           <div>
-            <p className="text-xs text-gray-500 uppercase mb-1">Principal Remarks</p>
-            <div className="border-b border-gray-400 h-8" />
+            <p className="text-xs text-slate-500 uppercase mb-1">Principal Remarks</p>
+            <div className="border-b border-slate-600 h-8" />
           </div>
         </div>
 
         {/* Signatures */}
         <div className="grid grid-cols-2 gap-6 mt-8">
           <div>
-            <div className="border-b border-gray-400 mb-1" />
-            <p className="text-xs text-gray-500">Class Teacher / Date</p>
+            <div className="border-b border-slate-600 mb-1" />
+            <p className="text-xs text-slate-500">Class Teacher / Date</p>
           </div>
           <div>
-            <div className="border-b border-gray-400 mb-1" />
-            <p className="text-xs text-gray-500">Principal / Date</p>
+            <div className="border-b border-slate-600 mb-1" />
+            <p className="text-xs text-slate-500">Principal / Date</p>
           </div>
         </div>
 
-        <p className="text-xs text-gray-400 text-right mt-6">
+        <p className="text-xs text-slate-500 text-right mt-6">
           Generated: {new Date(data.generated_at).toLocaleString()}
         </p>
       </div>

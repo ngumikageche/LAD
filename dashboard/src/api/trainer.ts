@@ -254,10 +254,11 @@ export const trainerScoresAPI = {
 };
 
 export const trainerReportsAPI = {
-  async generateSubjectReport(subjectId: string): Promise<SubjectReport> {
-    const response = await apiClient.get(
-      `/trainers/reports/subject/${subjectId}`
-    );
+  async generateSubjectReport(subjectId: string, template?: 'class-summary' | 'performance-trends' | 'at-risk'): Promise<SubjectReport> {
+    const url = template 
+      ? `/trainers/reports/subject/${subjectId}?template=${template}`
+      : `/trainers/reports/subject/${subjectId}`;
+    const response = await apiClient.get(url);
     return response.data;
   },
 

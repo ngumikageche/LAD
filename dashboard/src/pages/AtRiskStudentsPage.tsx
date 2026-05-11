@@ -86,7 +86,7 @@ export default function AtRiskStudentsPage() {
       case 'improving':
         return <TrendingDown size={20} className="text-green-500 rotate-180" />;
       default:
-        return <div className="w-5 h-5 text-gray-400">↔</div>;
+        return <div className="w-5 h-5 text-slate-500">↔</div>;
     }
   };
 
@@ -103,11 +103,11 @@ export default function AtRiskStudentsPage() {
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 flex items-center gap-2">
+          <h1 className="text-3xl font-bold text-slate-100 flex items-center gap-2">
             <AlertTriangle size={32} className="text-red-500" />
             Students At Risk
           </h1>
-          <p className="text-gray-600 mt-2">
+          <p className="text-slate-400 mt-2">
             Monitor and support students showing signs of academic struggle
           </p>
         </div>
@@ -140,10 +140,10 @@ export default function AtRiskStudentsPage() {
         </div>
 
         {/* Filters */}
-        <div className="bg-white rounded-lg shadow p-6 mb-8">
+        <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6 mb-8">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
+              <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-1">
                 <Filter size={16} />
                 Filter by Severity
               </label>
@@ -152,7 +152,7 @@ export default function AtRiskStudentsPage() {
                 onChange={(e) =>
                   setFilterSeverity(e.target.value as typeof filterSeverity)
                 }
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
               >
                 <option value="all">All Severity Levels</option>
                 <option value="critical">Critical</option>
@@ -162,14 +162,14 @@ export default function AtRiskStudentsPage() {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-1">
+              <label className="block text-sm font-medium text-slate-300 mb-2 flex items-center gap-1">
                 <BookOpen size={16} />
                 Filter by Subject
               </label>
               <select
                 value={filterSubject}
                 onChange={(e) => setFilterSubject(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
+                className="w-full px-4 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-transparent"
               >
                 <option value="all">All Subjects</option>
                 {subjects.map((subject) => (
@@ -192,10 +192,10 @@ export default function AtRiskStudentsPage() {
 
         {/* Students List */}
         {filteredStudents.length === 0 ? (
-          <div className="bg-white rounded-lg shadow p-12 text-center">
-            <AlertTriangle size={48} className="mx-auto text-gray-300 mb-4" />
-            <p className="text-gray-500 text-lg">No at-risk students found</p>
-            <p className="text-gray-400">All your students are performing well!</p>
+          <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-12 text-center">
+            <AlertTriangle size={48} className="mx-auto text-slate-500 mb-4" />
+            <p className="text-slate-500 text-lg">No at-risk students found</p>
+            <p className="text-slate-500">All your students are performing well!</p>
           </div>
         ) : (
           <div className="space-y-4">
@@ -210,10 +210,10 @@ export default function AtRiskStudentsPage() {
                     {/* Header Row */}
                     <div className="flex items-start justify-between mb-4">
                       <div className="flex-1">
-                        <h3 className="text-lg font-bold text-gray-900">
+                        <h3 className="text-lg font-bold text-slate-100">
                           {student.student_name}
                         </h3>
-                        <p className="text-sm text-gray-600">ID: {student.student_id}</p>
+                        <p className="text-sm text-slate-400">ID: {student.student_id}</p>
                       </div>
                       <div className="text-right">
                         <span
@@ -225,34 +225,34 @@ export default function AtRiskStudentsPage() {
                     </div>
 
                     {/* Performance Info */}
-                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4 pb-4 border-t border-gray-300">
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4 pb-4 border-t border-slate-700">
                       <div className="pt-4">
-                        <p className="text-sm text-gray-600">Current Average</p>
-                        <p className="text-2xl font-bold text-gray-900">
+                        <p className="text-sm text-slate-400">Current Average</p>
+                        <p className="text-2xl font-bold text-slate-100">
                           {student.current_avg.toFixed(1)}%
                         </p>
                       </div>
 
                       <div className="pt-4">
-                        <p className="text-sm text-gray-600">Trend</p>
+                        <p className="text-sm text-slate-400">Trend</p>
                         <div className="flex items-center gap-2 mt-2">
                           {getTrendIcon(student.trend)}
-                          <span className="font-medium text-gray-900 capitalize">
+                          <span className="font-medium text-slate-100 capitalize">
                             {student.trend}
                           </span>
                         </div>
                       </div>
 
                       <div className="pt-4">
-                        <p className="text-sm text-gray-600">Weak Subjects</p>
-                        <p className="font-medium text-gray-900">
+                        <p className="text-sm text-slate-400">Weak Subjects</p>
+                        <p className="font-medium text-slate-100">
                           {student.weak_subjects.length}
                         </p>
                       </div>
 
                       <div className="pt-4">
-                        <p className="text-sm text-gray-600">Recent Scores</p>
-                        <p className="text-sm font-mono text-gray-900">
+                        <p className="text-sm text-slate-400">Recent Scores</p>
+                        <p className="text-sm font-mono text-slate-100">
                           {student.recent_scores.slice(0, 3).join(', ')}
                         </p>
                       </div>
@@ -260,14 +260,14 @@ export default function AtRiskStudentsPage() {
 
                     {/* Weak Subjects Tags */}
                     <div className="mb-4">
-                      <p className="text-sm font-medium text-gray-700 mb-2">
+                      <p className="text-sm font-medium text-slate-300 mb-2">
                         Subjects Needing Support:
                       </p>
                       <div className="flex flex-wrap gap-2">
                         {student.weak_subjects.map((subject, idx) => (
                           <span
                             key={idx}
-                            className="inline-block px-3 py-1 bg-white text-gray-700 rounded-full text-sm border border-gray-300"
+                            className="inline-block px-3 py-1 bg-slate-900 text-slate-300 rounded-full text-sm border border-slate-700"
                           >
                             {subject}
                           </span>
@@ -276,7 +276,7 @@ export default function AtRiskStudentsPage() {
                     </div>
 
                     {/* Action Buttons */}
-                    <div className="flex gap-3 pt-4 border-t border-gray-300">
+                    <div className="flex gap-3 pt-4 border-t border-slate-700">
                       <button className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium flex items-center justify-center gap-2">
                         <MessageSquare size={18} />
                         Send Message
@@ -297,8 +297,8 @@ export default function AtRiskStudentsPage() {
         )}
 
         {/* Recommendations */}
-        <div className="mt-8 bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-bold text-gray-900 mb-4">📋 Recommended Actions</h2>
+        <div className="mt-8 bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
+          <h2 className="text-lg font-bold text-slate-100 mb-4">📋 Recommended Actions</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="p-4 bg-red-50 rounded-lg border border-red-200">
               <p className="font-semibold text-red-900 mb-2">For Critical Students:</p>

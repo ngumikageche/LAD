@@ -63,11 +63,11 @@ export const RadioGroup: React.FC<RadioGroupProps> = ({
               className={`${sizeClasses[size]} accent-indigo-600 mt-1 cursor-pointer`}
             />
             <div className="flex flex-col gap-1">
-              <span className={`font-medium text-gray-900 ${textSizeClasses[size]}`}>
+              <span className={`font-medium text-slate-100 ${textSizeClasses[size]}`}>
                 {option.label}
               </span>
               {option.description && (
-                <span className="text-sm text-gray-600">
+                <span className="text-sm text-slate-400">
                   {option.description}
                 </span>
               )}
@@ -77,7 +77,7 @@ export const RadioGroup: React.FC<RadioGroupProps> = ({
       </div>
 
       {helperText && !error && (
-        <p className="mt-2 text-sm text-gray-600">{helperText}</p>
+        <p className="mt-2 text-sm text-slate-400">{helperText}</p>
       )}
 
       {error && (
@@ -120,11 +120,11 @@ export const Radio: React.FC<SingleRadioProps> = ({
         className={`${sizeClasses[size]} accent-indigo-600 mt-1 cursor-pointer`}
       />
       <div className="flex flex-col gap-1">
-        <span className={`font-medium text-gray-900 ${textSizeClasses[size]}`}>
+        <span className={`font-medium text-slate-100 ${textSizeClasses[size]}`}>
           {label}
         </span>
         {description && (
-          <span className="text-sm text-gray-600">{description}</span>
+          <span className="text-sm text-slate-400">{description}</span>
         )}
       </div>
     </label>

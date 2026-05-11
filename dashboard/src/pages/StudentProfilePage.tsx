@@ -81,7 +81,7 @@ const StudentProfilePage = () => {
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
-        <div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-slate-700"></div>
+        <div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-700 border-t-slate-700"></div>
       </div>
     );
   }
@@ -89,37 +89,37 @@ const StudentProfilePage = () => {
   return (
     <div className="space-y-8">
       <div>
-        <h1 className="text-4xl font-bold text-slate-900">My Profile</h1>
+        <h1 className="text-4xl font-bold text-slate-100">My Profile</h1>
         <p className="mt-2 text-slate-600">Manage your contact details and account security.</p>
       </div>
 
-      {error ? <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">{error}</div> : null}
+      {error ? <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-red-300">{error}</div> : null}
       {successMessage ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-emerald-700">{successMessage}</div> : null}
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <section className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+        <section className="rounded-3xl border border-slate-700 bg-slate-900 border border-slate-800 p-8 shadow-sm">
           <div className="mb-6 flex items-center gap-4">
             <div className="rounded-3xl bg-slate-100 p-4 text-slate-700">
               <UserCircle2 className="h-8 w-8" />
             </div>
             <div>
-              <h2 className="text-2xl font-semibold text-slate-900">{profile?.name || 'Student'}</h2>
+              <h2 className="text-2xl font-semibold text-slate-100">{profile?.name || 'Student'}</h2>
               <p className="text-slate-600">Registration: {profile?.registration_number}</p>
             </div>
           </div>
 
           <div className="mb-8 grid gap-4 md:grid-cols-3">
-            <div className="rounded-2xl bg-slate-50 p-4">
+            <div className="rounded-2xl bg-slate-800 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Course</p>
-              <p className="mt-2 font-medium text-slate-800">{profile?.course?.name || 'Not assigned'}</p>
+              <p className="mt-2 font-medium text-slate-200">{profile?.course?.name || 'Not assigned'}</p>
             </div>
-            <div className="rounded-2xl bg-slate-50 p-4">
+            <div className="rounded-2xl bg-slate-800 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Enrollment Year</p>
-              <p className="mt-2 font-medium text-slate-800">{profile?.enrollment_year ?? 'N/A'}</p>
+              <p className="mt-2 font-medium text-slate-200">{profile?.enrollment_year ?? 'N/A'}</p>
             </div>
-            <div className="rounded-2xl bg-slate-50 p-4">
+            <div className="rounded-2xl bg-slate-800 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">CBET Level</p>
-              <p className="mt-2 font-medium text-slate-800">{profile?.course?.cbet_level || 'N/A'}</p>
+              <p className="mt-2 font-medium text-slate-200">{profile?.course?.cbet_level || 'N/A'}</p>
             </div>
           </div>
 
@@ -163,13 +163,13 @@ const StudentProfilePage = () => {
           </form>
         </section>
 
-        <section className="rounded-3xl border border-slate-200 bg-white p-8 shadow-sm">
+        <section className="rounded-3xl border border-slate-700 bg-slate-900 border border-slate-800 p-8 shadow-sm">
           <div className="mb-6 flex items-center gap-3">
-            <div className="rounded-3xl bg-amber-50 p-4 text-amber-700">
+            <div className="rounded-3xl bg-amber-500/10 p-4 text-amber-300">
               <KeyRound className="h-6 w-6" />
             </div>
             <div>
-              <h2 className="text-2xl font-semibold text-slate-900">Change Password</h2>
+              <h2 className="text-2xl font-semibold text-slate-100">Change Password</h2>
               <p className="text-slate-600">Use a strong password with at least 8 characters.</p>
             </div>
           </div>
