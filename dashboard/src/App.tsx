@@ -27,7 +27,6 @@ import AdminDashboard from './pages/AdminDashboard';
 import AdminSystemAnalyticsPage from './pages/AdminSystemAnalyticsPage';
 import AdminScoreManagementPage from './pages/AdminScoreManagementPage';
 import DocumentsPage from './pages/DocumentsPage';
-import DocumentsPage from './pages/DocumentsPage';
 import AdminNotificationsPage from './pages/AdminNotificationsPage';
 import ReportCardPage from './pages/ReportCardPage';
 import AttendanceReportPage from './pages/AttendanceReportPage';
@@ -38,8 +37,11 @@ import TrainerAttendancePage from './pages/TrainerAttendancePage';
 import AdminExamResultsPage from './pages/AdminExamResultsPage';
 import AdminFeeCollectionPage from './pages/AdminFeeCollectionPage';
 import AdminEnrolmentPage from './pages/AdminEnrolmentPage';
+import AdminAttendancePage from './pages/AdminAttendancePage';
+import TrainerAttendanceSessionPage from './pages/TrainerAttendanceSessionPage';
+import StudentAttendanceCheckInPage from './pages/StudentAttendanceCheckInPage';
 import { AuthProvider, useAuth } from './auth/AuthContext';
-import ProtectedRoute, { UserTypeRoute } from './auth/ProtectedRoute';
+import ProtectedRoute, { UserTypeRoute, PermissionRoute } from './auth/ProtectedRoute';
 
 const DashboardRedirect = () => {
   const { user } = useAuth();
@@ -73,6 +75,8 @@ function App() {
                 <Route path="/student/report-card" element={<ReportCardPage />} />
                 <Route path="/student/attendance-report" element={<AttendanceReportPage />} />
                 <Route path="/student/fee-statement" element={<FeeStatementPage />} />
+                <Route path="/student/attendance/checkin" element={<StudentAttendanceCheckInPage />} />
+                <Route path="/student/documents" element={<DocumentsPage />} />
               </Route>
               <Route element={<UserTypeRoute allowedTypes={['trainer']} />}>
                 <Route path="/trainer-hub" element={<TrainerDashboardPage />} />
@@ -82,6 +86,11 @@ function App() {
                 <Route path="/trainer/class-performance" element={<ClassPerformancePage />} />
                 <Route path="/trainer/syllabus" element={<SyllabusCoveragePage />} />
                 <Route path="/trainer/attendance" element={<TrainerAttendancePage />} />
+                <Route path="/trainer/documents" element={<DocumentsPage />} />
+              </Route>
+              {/* Attendance session management: trainer OR admin, never student */}
+              <Route element={<PermissionRoute permissionKey="attendance.create" deniedTypes={['student']} />}>
+                <Route path="/trainer/attendance-session" element={<TrainerAttendanceSessionPage />} />
               </Route>
               <Route element={<UserTypeRoute allowedTypes={['admin']} />}>
                 <Route path="/admin/dashboard" element={<AdminDashboard />} />
@@ -92,6 +101,7 @@ function App() {
                 <Route path="/admin/reports/exam-results" element={<AdminExamResultsPage />} />
                 <Route path="/admin/reports/fees" element={<AdminFeeCollectionPage />} />
                 <Route path="/admin/reports/enrolment" element={<AdminEnrolmentPage />} />
+                <Route path="/admin/attendance" element={<AdminAttendancePage />} />
                 <Route path="/users" element={<UsersPage />} />
                 <Route path="/roles" element={<RolesPage />} />
                 <Route path="/institutions" element={<InstitutionsPage />} />

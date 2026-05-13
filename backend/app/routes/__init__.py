@@ -38,7 +38,8 @@ from .admin_reports_v2 import bp as admin_reports_v2_bp
 from .advanced_analytics import bp as advanced_analytics_bp
 from .advanced_reports import bp as advanced_reports_bp
 from .documents import bp as documents_bp
-from .documents import bp as documents_bp
+from .attendance import bp as attendance_bp
+from .permissions import trainer_or_admin_required  # re-exported for convenience
 
 __all__ = [
 	"auth_bp",
@@ -79,4 +80,5 @@ __all__ = [
 	"advanced_analytics_bp",
 	"advanced_reports_bp",
 	"documents_bp",
+	"attendance_bp",
 ]

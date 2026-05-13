@@ -75,6 +75,50 @@ def trainer_required(permission_key: str | None = None):
     return decorator
 
 
+def trainer_or_admin_required(permission_key: str | None = None):
+    """
+    Allows access to trainers and admins only.
+    Students are explicitly blocked regardless of permissions.
+    When a trainer calls the endpoint, g.current_trainer is set.
+    When an admin calls it, g.current_trainer is None.
+    """
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            user, error, status = get_current_user()
+            if error:
+                return error, status
+
+            # Hard block: students can never access session management
+            if _is_student(user) and not _is_trainer(user) and not _is_admin(user):
+                return {"error": "Access denied: students cannot manage attendance sessions"}, 403
+
+            is_admin = _is_admin(user)
+            is_trainer = _is_trainer(user)
+
+            if not is_admin and not is_trainer:
+                return {"error": "Trainer or admin access required"}, 403
+
+            # Permission check — admins always pass (wildcard), trainers need the key
+            if permission_key and not _has_permission(user, permission_key):
+                return {"error": "Permission denied"}, 403
+
+            g.current_user = user
+            g.current_trainer = None
+
+            if is_trainer:
+                trainer = db.session.query(Trainer).filter(Trainer.user_id == user.id).first()
+                if not trainer and not is_admin:
+                    return {"error": "Trainer profile not found"}, 404
+                g.current_trainer = trainer
+
+            return func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
+
+
 def _is_admin(user: User) -> bool:
     role_name = (user.role.role_name if user.role else "") or ""
     return role_name.lower() == "admin" or (user.role and user.role.permissions.get("*") is True)

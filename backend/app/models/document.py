@@ -22,5 +22,9 @@ class Document(BaseModel):
     uploaded_by: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True
     )
+    subject_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("subjects.id"), nullable=True, index=True
+    )
 
     uploader = relationship("User", foreign_keys=[uploaded_by])
+    subject = relationship("Subject", foreign_keys=[subject_id])

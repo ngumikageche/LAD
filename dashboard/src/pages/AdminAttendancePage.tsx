@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Users, CheckCircle, XCircle, Clock, ChevronDown, ChevronUp, MapPin, RefreshCw } from 'lucide-react';
+import { Users, RefreshCw, AlertCircle, ChevronDown, ChevronUp, CheckCircle, XCircle, Clock, MapPin } from 'lucide-react';
 import { apiRequest } from '../api/client';
 
-interface SessionSummary {
+interface SessionRow {
   id: string;
+  trainer_name: string | null;
   subject_name: string | null;
   session_code: string;
   status: string;
@@ -24,15 +25,7 @@ interface AttendanceRecord {
 }
 
 interface SessionDetail {
-  session: {
-    id: string;
-    session_code: string;
-    subject_name: string | null;
-    status: string;
-    started_at: string;
-    expires_at: string;
-    allowed_radius_meters: number;
-  };
+  session: { id: string; session_code: string; subject_name: string | null; status: string; started_at: string; expires_at: string; allowed_radius_meters: number };
   records: AttendanceRecord[];
 }
 
@@ -55,22 +48,23 @@ const RECORD_LABEL: Record<string, string> = {
   failed_not_enrolled: 'Not Enrolled',
 };
 
-export default function TrainerAttendancePage() {
-  const [sessions, setSessions] = useState<SessionSummary[]>([]);
+export default function AdminAttendancePage() {
+  const [sessions, setSessions] = useState<SessionRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [detail, setDetail] = useState<Record<string, SessionDetail>>({});
   const [detailLoading, setDetailLoading] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
 
   const load = async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiRequest<SessionSummary[]>('/api/v1/trainer/attendance/sessions');
+      const data = await apiRequest<SessionRow[]>('/api/v1/attendance/admin/overview');
       setSessions(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load sessions');
+      setError(err instanceof Error ? err.message : 'Failed to load attendance data');
     } finally {
       setLoading(false);
     }
@@ -84,14 +78,24 @@ export default function TrainerAttendancePage() {
     if (detail[id]) return;
     setDetailLoading(id);
     try {
-      const data = await apiRequest<SessionDetail>(`/api/v1/trainer/attendance/sessions/${id}/records`);
+      const data = await apiRequest<SessionDetail>(`/api/v1/attendance/sessions/${id}/records`);
       setDetail(prev => ({ ...prev, [id]: data }));
     } catch {
-      // silently fail — records just won't show
+      // silent
     } finally {
       setDetailLoading(null);
     }
   };
+
+  const filtered = sessions.filter(s =>
+    !search ||
+    s.trainer_name?.toLowerCase().includes(search.toLowerCase()) ||
+    s.subject_name?.toLowerCase().includes(search.toLowerCase()) ||
+    s.session_code.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const totalCheckins = sessions.reduce((a, s) => a + s.total_checkins, 0);
+  const activeSessions = sessions.filter(s => s.status === 'active').length;
 
   if (loading) return (
     <div className="flex items-center justify-center py-24">
@@ -103,8 +107,8 @@ export default function TrainerAttendancePage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-200">Student Attendance</h1>
-          <p className="text-sm text-slate-500 mt-1">All QR attendance sessions you have run</p>
+          <h1 className="text-2xl font-bold text-slate-200">Attendance Overview</h1>
+          <p className="text-sm text-slate-500 mt-1">All QR attendance sessions across all trainers</p>
         </div>
         <button onClick={load} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium">
           <RefreshCw size={15} /> Refresh
@@ -112,35 +116,58 @@ export default function TrainerAttendancePage() {
       </div>
 
       {error && (
-        <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg text-red-300 text-sm">{error}</div>
+        <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2 text-red-300 text-sm">
+          <AlertCircle size={16} />{error}
+        </div>
       )}
 
-      {sessions.length === 0 && !error && (
+      {/* Summary */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+        {[
+          { label: 'Total Sessions', value: sessions.length, color: 'text-slate-100' },
+          { label: 'Active Now', value: activeSessions, color: 'text-green-400' },
+          { label: 'Total Check-ins', value: totalCheckins, color: 'text-blue-400' },
+        ].map(({ label, value, color }) => (
+          <div key={label} className="bg-slate-900 border border-slate-800 rounded-xl p-4 text-center">
+            <p className="text-xs text-slate-500 mb-1">{label}</p>
+            <p className={`text-2xl font-bold ${color}`}>{value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Search */}
+      <input
+        type="text"
+        placeholder="Search by trainer, subject or session code..."
+        value={search}
+        onChange={e => setSearch(e.target.value)}
+        className="w-full max-w-md px-4 py-2 bg-slate-900 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+      />
+
+      {filtered.length === 0 && !error && (
         <div className="p-12 text-center bg-slate-900 border border-slate-800 rounded-xl">
           <Users size={40} className="mx-auto text-slate-600 mb-3" />
-          <p className="text-slate-400">No attendance sessions yet. Start one from the Take Attendance page.</p>
+          <p className="text-slate-400">No attendance sessions found.</p>
         </div>
       )}
 
       <div className="space-y-3">
-        {sessions.map(s => (
+        {filtered.map(s => (
           <div key={s.id} className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-            {/* Session header row */}
             <button
               onClick={() => toggleSession(s.id)}
               className="w-full flex items-center justify-between px-6 py-4 hover:bg-slate-800/50 transition text-left"
             >
-              <div className="flex items-center gap-4 min-w-0">
-                <div className="min-w-0">
-                  <p className="font-semibold text-slate-100 truncate">
-                    {s.subject_name ?? 'Unknown Subject'}
-                  </p>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    Code: <span className="font-mono text-slate-400">{s.session_code}</span>
-                    {' · '}
-                    {new Date(s.started_at).toLocaleDateString()} {new Date(s.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </p>
-                </div>
+              <div className="min-w-0">
+                <p className="font-semibold text-slate-100 truncate">
+                  {s.subject_name ?? 'Unknown Subject'}
+                </p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  <span className="text-slate-400">{s.trainer_name ?? 'Unknown Trainer'}</span>
+                  {' · '}Code: <span className="font-mono text-slate-400">{s.session_code}</span>
+                  {' · '}
+                  {new Date(s.started_at).toLocaleDateString()} {new Date(s.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </p>
               </div>
               <div className="flex items-center gap-4 shrink-0 ml-4">
                 <div className="text-center hidden sm:block">
@@ -158,7 +185,6 @@ export default function TrainerAttendancePage() {
               </div>
             </button>
 
-            {/* Expanded records */}
             {expanded === s.id && (
               <div className="border-t border-slate-800">
                 {detailLoading === s.id ? (
@@ -167,7 +193,7 @@ export default function TrainerAttendancePage() {
                   </div>
                 ) : detail[s.id] ? (
                   detail[s.id].records.length === 0 ? (
-                    <p className="text-center text-slate-500 py-8 text-sm">No check-ins recorded for this session.</p>
+                    <p className="text-center text-slate-500 py-8 text-sm">No check-ins for this session.</p>
                   ) : (
                     <div className="overflow-x-auto">
                       <table className="w-full text-sm">
@@ -186,7 +212,8 @@ export default function TrainerAttendancePage() {
                               <td className="px-6 py-3 text-slate-200 font-medium">{r.student_name ?? '—'}</td>
                               <td className="px-6 py-3 text-slate-400 font-mono text-xs">{r.registration_number ?? '—'}</td>
                               <td className="px-6 py-3">
-                                <span className={`px-2 py-1 rounded-full text-xs font-semibold ${RECORD_BADGE[r.status] ?? 'bg-slate-700 text-slate-300'}`}>
+                                <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${RECORD_BADGE[r.status] ?? 'bg-slate-700 text-slate-300'}`}>
+                                  {r.status === 'success' ? <CheckCircle size={11} /> : <XCircle size={11} />}
                                   {RECORD_LABEL[r.status] ?? r.status}
                                 </span>
                               </td>
@@ -194,18 +221,16 @@ export default function TrainerAttendancePage() {
                                 {new Date(r.checked_in_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                               </td>
                               <td className="px-6 py-3 text-slate-400 text-xs">
-                                {r.distance_from_trainer != null ? `${r.distance_from_trainer.toFixed(0)}m` : '—'}
+                                {r.distance_from_trainer != null ? <span className="flex items-center gap-1"><MapPin size={11} />{r.distance_from_trainer.toFixed(0)}m</span> : '—'}
                               </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
-                      {/* Footer summary */}
                       <div className="px-6 py-3 bg-slate-800/50 flex gap-6 text-xs text-slate-400">
-                        <span className="flex items-center gap-1"><CheckCircle size={13} className="text-green-400" /> {detail[s.id].records.filter(r => r.status === 'success').length} successful</span>
-                        <span className="flex items-center gap-1"><XCircle size={13} className="text-red-400" /> {detail[s.id].records.filter(r => r.status !== 'success').length} failed</span>
-                        <span className="flex items-center gap-1"><MapPin size={13} className="text-yellow-400" /> {s.allowed_radius_meters}m radius</span>
-                        <span className="flex items-center gap-1"><Clock size={13} /> Ended {new Date(s.expires_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                        <span className="flex items-center gap-1"><CheckCircle size={13} className="text-green-400" />{detail[s.id].records.filter(r => r.status === 'success').length} successful</span>
+                        <span className="flex items-center gap-1"><XCircle size={13} className="text-red-400" />{detail[s.id].records.filter(r => r.status !== 'success').length} failed</span>
+                        <span className="flex items-center gap-1"><Clock size={13} />Ended {new Date(s.expires_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                       </div>
                     </div>
                   )

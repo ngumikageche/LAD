@@ -16,3 +16,4 @@ class Module(BaseModel):
     attendance = relationship("Attendance", back_populates="module")
     dashboard_metrics = relationship("DashboardMetric", back_populates="module")
     subjects = relationship("Subject", back_populates="module")
+    attendance_sessions = relationship("AttendanceSession", back_populates="module")

@@ -4,6 +4,7 @@ import {
   Shield, Building2, School, KeyRound, UserCog, MessageSquare, TrendingUp,
   BarChart3, Bell, ClipboardList, CalendarCheck, Receipt, GraduationCap,
   BookOpen, UserCheck, ChevronDown, ChevronRight, Settings, LayoutDashboard,
+  QrCode, ScanLine,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useAuth } from '../../auth/AuthContext';
@@ -35,6 +36,7 @@ const studentGroups: NavGroup[] = [
     items: [
       { name: 'My Scores',         icon: FileText,        path: '/student/scores',            color: 'text-blue-300'   },
       { name: 'My Subjects',       icon: Book,            path: '/student/subjects',          color: 'text-teal-300'},
+      { name: 'Documents',         icon: BookOpen,        path: '/student/documents',         color: 'text-indigo-300' },
     ],
   },
   {
@@ -43,6 +45,12 @@ const studentGroups: NavGroup[] = [
       { name: 'Report Card',       icon: ClipboardList,   path: '/student/report-card',       color: 'text-blue-300'   },
       { name: 'Attendance',        icon: CalendarCheck,   path: '/student/attendance-report', color: 'text-green-400'  },
       { name: 'Fee Statement',     icon: Receipt,         path: '/student/fee-statement',     color: 'text-amber-400' },
+    ],
+  },
+  {
+    label: 'Attendance',
+    items: [
+      { name: 'Check In',          icon: ScanLine,        path: '/student/attendance/checkin', color: 'text-teal-300' },
     ],
   },
 ];
@@ -59,6 +67,7 @@ const trainerGroups: NavGroup[] = [
     items: [
       { name: 'Student Profile',   icon: TrendingUp,      path: '/trainer/student-profile',   color: 'text-teal-300' },
       { name: 'Provide Feedback',  icon: MessageSquare,   path: '/trainer/feedback',          color: 'text-amber-400'   },
+      { name: 'Documents',         icon: BookOpen,        path: '/trainer/documents',         color: 'text-indigo-300' },
     ],
   },
   {
@@ -68,6 +77,12 @@ const trainerGroups: NavGroup[] = [
       { name: 'Class Performance', icon: BarChart3,       path: '/trainer/class-performance', color: 'text-teal-300'   },
       { name: 'Syllabus Coverage', icon: BookOpen,        path: '/trainer/syllabus',          color: 'text-green-400'  },
       { name: 'My Attendance',     icon: UserCheck,       path: '/trainer/attendance',        color: 'text-amber-400'  },
+    ],
+  },
+  {
+    label: 'Attendance',
+    items: [
+      { name: 'Take Attendance',   icon: QrCode,          path: '/trainer/attendance-session', color: 'text-teal-300' },
     ],
   },
 ];
@@ -115,6 +130,13 @@ const adminGroups: NavGroup[] = [
       { name: 'Fee Collection',    icon: Receipt,         path: '/admin/reports/fees',         color: 'text-green-400'  },
       { name: 'Enrolment',         icon: ClipboardList,   path: '/admin/reports/enrolment',    color: 'text-amber-400' },
       { name: 'All Reports',       icon: FileText,        path: '/reports',                    color: 'text-teal-300' },
+    ],
+  },
+  {
+    label: 'Attendance',
+    items: [
+      { name: 'Take Attendance',   icon: QrCode,          path: '/trainer/attendance-session', color: 'text-teal-300' },
+      { name: 'Attendance Report', icon: CalendarCheck,   path: '/admin/attendance',           color: 'text-green-400' },
     ],
   },
 ];

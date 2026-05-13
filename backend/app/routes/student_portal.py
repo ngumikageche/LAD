@@ -39,6 +39,91 @@ def _parse_pagination() -> tuple[int, int]:
     return page, per_page
 
 
+@bp.get("/documents")
+@student_required()
+def get_student_documents():
+    """Documents shared with subjects the student is enrolled in, plus system-wide broadcasts."""
+    from ..models.document import Document
+    from ..models.student_subject import StudentSubject
+    from sqlalchemy import or_
+    student = g.current_student
+    subject_ids = [
+        row.subject_id
+        for row in db.session.query(StudentSubject.subject_id)
+        .filter(StudentSubject.student_id == student.id)
+        .all()
+    ]
+    # subject-specific docs the student is enrolled in + null-subject docs (admin broadcasts)
+    filters = [Document.subject_id.is_(None)]
+    if subject_ids:
+        filters.append(Document.subject_id.in_(subject_ids))
+    docs = (
+        db.session.query(Document)
+        .filter(Document.deleted_at.is_(None), or_(*filters))
+        .order_by(Document.created_at.desc())
+        .all()
+    )
+    return [
+        {
+            "id": str(d.id),
+            "title": d.title,
+            "description": d.description,
+            "file_name": d.file_name,
+            "file_url": d.file_url,
+            "file_type": d.file_type,
+            "file_size": d.file_size,
+            "uploader_name": d.uploader.name if d.uploader else None,
+            "subject_name": d.subject.name if d.subject else "All Students",
+            "created_at": d.created_at.isoformat() if d.created_at else None,
+        }
+        for d in docs
+    ], 200
+
+
+@bp.get("/attendance")
+@student_required()
+def get_student_attendance():
+    """Student's own QR attendance check-in history."""
+    from ..models.attendance_session import AttendanceRecord, AttendanceSession
+    from ..models.subject import Subject
+    from sqlalchemy.orm import joinedload
+    student = g.current_student
+    records = (
+        db.session.query(AttendanceRecord)
+        .options(joinedload(AttendanceRecord.session))
+        .filter(AttendanceRecord.student_id == student.id)
+        .order_by(AttendanceRecord.checked_in_at.desc())
+        .limit(200)
+        .all()
+    )
+    result = []
+    for r in records:
+        subject_name = None
+        if r.session and r.session.subject_id:
+            subj = db.session.get(Subject, r.session.subject_id)
+            subject_name = subj.name if subj else None
+        result.append({
+            "id": str(r.id),
+            "session_id": str(r.attendance_session_id),
+            "session_code": r.session.session_code if r.session else None,
+            "subject_name": subject_name,
+            "status": r.status,
+            "checked_in_at": r.checked_in_at.isoformat(),
+            "distance_from_trainer": r.distance_from_trainer,
+        })
+    total = len(result)
+    successful = sum(1 for r in result if r["status"] == "success")
+    return {
+        "records": result,
+        "summary": {
+            "total": total,
+            "successful": successful,
+            "failed": total - successful,
+            "attendance_rate": round(successful / total * 100, 1) if total else 0,
+        },
+    }, 200
+
+
 @bp.get("/dashboard")
 @student_required()
 def get_dashboard():

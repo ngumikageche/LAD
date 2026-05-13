@@ -32,8 +32,8 @@ export const apiRequest = async <T>(path: string, options: RequestOptions = {}):
   });
 
   if (!response.ok) {
-    const data = await response.json() as ApiError;
-    const error = data?.error ?? 'Request failed';
+    const data = await response.json() as ApiError & { message?: string; success?: boolean };
+    const error = data?.error ?? data?.message ?? 'Request failed';
     throw new Error(error);
   }
 

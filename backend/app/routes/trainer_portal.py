@@ -41,6 +41,131 @@ def handle_http_exception(error: HTTPException):
     return {"error": error.description}, error.code
 
 
+@bp.get("/courses")
+@trainer_required("attendance.read")
+def list_assigned_courses():
+    """Return courses this trainer is assigned to, for attendance session creation."""
+    from ..models.trainer_course import TrainerCourse
+    from ..models.course import Course
+    rows = (
+        db.session.query(Course)
+        .join(TrainerCourse, TrainerCourse.course_id == Course.id)
+        .filter(TrainerCourse.trainer_id == g.current_trainer.id)
+        .order_by(Course.name.asc())
+        .all()
+    )
+    return [{"id": str(c.id), "name": c.name, "cbet_level": c.cbet_level} for c in rows], 200
+
+
+@bp.get("/assigned-subjects")
+@trainer_required("attendance.read")
+def list_assigned_subjects():
+    """Return subjects this trainer is assigned to, with module and course context."""
+    from ..models.trainer_subject import TrainerSubject
+    from ..models.subject import Subject
+    from ..models.module import Module
+    from ..models.course import Course
+    rows = (
+        db.session.query(Subject, Module, Course)
+        .join(TrainerSubject, TrainerSubject.subject_id == Subject.id)
+        .join(Module, Module.id == Subject.module_id)
+        .join(Course, Course.id == Module.course_id)
+        .filter(TrainerSubject.trainer_id == g.current_trainer.id)
+        .order_by(Subject.name.asc())
+        .all()
+    )
+    return [
+        {
+            "id": str(s.id),
+            "name": s.name,
+            "module_id": str(m.id),
+            "module_name": m.name,
+            "course_id": str(c.id),
+            "course_name": c.name,
+            "cbet_level": c.cbet_level,
+        }
+        for s, m, c in rows
+    ], 200
+
+
+@bp.get("/attendance/sessions")
+@trainer_required("attendance.read")
+def list_trainer_sessions():
+    """All attendance sessions created by this trainer, newest first."""
+    from ..models.attendance_session import AttendanceSession
+    from ..models.subject import Subject
+    sessions = (
+        db.session.query(AttendanceSession)
+        .filter(AttendanceSession.trainer_id == g.current_trainer.id)
+        .order_by(AttendanceSession.started_at.desc())
+        .limit(100)
+        .all()
+    )
+    result = []
+    for s in sessions:
+        subject_name = None
+        if s.subject_id:
+            subj = db.session.get(Subject, s.subject_id)
+            subject_name = subj.name if subj else None
+        result.append({
+            "id": str(s.id),
+            "subject_id": str(s.subject_id) if s.subject_id else None,
+            "subject_name": subject_name,
+            "session_code": s.session_code,
+            "status": s.status,
+            "started_at": s.started_at.isoformat(),
+            "expires_at": s.expires_at.isoformat(),
+            "allowed_radius_meters": s.allowed_radius_meters,
+            "total_checkins": len([r for r in s.records if r.status == "success"]),
+            "total_submissions": len(s.records),
+        })
+    return result, 200
+
+
+@bp.get("/attendance/sessions/<session_id>/records")
+@trainer_required("attendance.read")
+def get_trainer_session_records(session_id: str):
+    """Full attendance records for a session with student details."""
+    import uuid as _uuid
+    from ..models.attendance_session import AttendanceSession, AttendanceRecord
+    from sqlalchemy.orm import joinedload
+    session = db.session.query(AttendanceSession).filter_by(
+        id=_uuid.UUID(session_id),
+        trainer_id=g.current_trainer.id
+    ).first()
+    if not session:
+        return {"error": "Session not found"}, 404
+    records = (
+        db.session.query(AttendanceRecord)
+        .options(joinedload(AttendanceRecord.student).joinedload(Student.user))
+        .filter(AttendanceRecord.attendance_session_id == session.id)
+        .order_by(AttendanceRecord.checked_in_at.asc())
+        .all()
+    )
+    return {
+        "session": {
+            "id": str(session.id),
+            "session_code": session.session_code,
+            "subject_name": session.subject.name if session.subject else None,
+            "status": session.status,
+            "started_at": session.started_at.isoformat(),
+            "expires_at": session.expires_at.isoformat(),
+            "allowed_radius_meters": session.allowed_radius_meters,
+        },
+        "records": [
+            {
+                "id": str(r.id),
+                "student_name": r.student.user.name if r.student and r.student.user else None,
+                "registration_number": r.student.registration_number if r.student else None,
+                "status": r.status,
+                "checked_in_at": r.checked_in_at.isoformat(),
+                "distance_from_trainer": r.distance_from_trainer,
+            }
+            for r in records
+        ],
+    }, 200
+
+
 @bp.get("/dashboard")
 @trainer_required("scores.read")
 def get_dashboard():

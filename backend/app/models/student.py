@@ -30,3 +30,4 @@ class Student(BaseModel):
     attendance = relationship("Attendance", back_populates="student")
     student_subjects = relationship("StudentSubject", back_populates="student")
     alerts = relationship("Alert", back_populates="student")
+    attendance_records = relationship("AttendanceRecord", back_populates="student")

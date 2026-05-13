@@ -30,6 +30,7 @@ from .course_subject import CourseSubject
 from .document import Document
 from .module import Module
 from .competency import Competency
+from .attendance_session import AttendanceSession, AttendanceRecord, AttendanceTokenHistory
 
 __all__ = [
 	"Course",
@@ -61,4 +62,7 @@ __all__ = [
 	"Document",
 	"Module",
 	"Competency",
+	"AttendanceSession",
+	"AttendanceRecord",
+	"AttendanceTokenHistory",
 ]

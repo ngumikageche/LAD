@@ -73,6 +73,8 @@ const emptyForm: UserFormState = {
   institution_id: '',
 };
 
+const inputCls = 'mt-1 block w-full rounded-md bg-slate-800 border border-slate-700 px-3 py-2 text-slate-200 placeholder:text-slate-500 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm';
+
 const UsersPage = () => {
   const { token, user } = useAuth();
   const [users, setUsers] = useState<UserItem[]>([]);
@@ -416,7 +418,7 @@ const UsersPage = () => {
           <input
             type="text"
             placeholder="Search by name, email, phone..."
-            className="w-full max-w-md px-4 py-2.5 rounded-lg border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+            className="w-full max-w-md px-4 py-2.5 rounded-lg bg-slate-800 border border-slate-700 text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
           />
@@ -500,7 +502,7 @@ const UsersPage = () => {
                     required
                     value={formState.name}
                     onChange={(event) => setFormState({ ...formState, name: event.target.value })}
-                    className="mt-1 block w-full rounded-md border border-slate-700 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    className={inputCls}
                   />
                 </div>
                 <div>
@@ -510,7 +512,7 @@ const UsersPage = () => {
                     required
                     value={formState.email}
                     onChange={(event) => setFormState({ ...formState, email: event.target.value })}
-                    className="mt-1 block w-full rounded-md border border-slate-700 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    className={inputCls}
                   />
                 </div>
                 <div>
@@ -519,7 +521,7 @@ const UsersPage = () => {
                     type="text"
                     value={formState.phone}
                     onChange={(event) => setFormState({ ...formState, phone: event.target.value })}
-                    className="mt-1 block w-full rounded-md border border-slate-700 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    className={inputCls}
                   />
                 </div>
                 <div>
@@ -529,7 +531,7 @@ const UsersPage = () => {
                     required={!formState.id}
                     value={formState.password}
                     onChange={(event) => setFormState({ ...formState, password: event.target.value })}
-                    className="mt-1 block w-full rounded-md border border-slate-700 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    className={inputCls}
                   />
                   {formState.id ? (
                     <p className="mt-1 text-xs text-slate-500">Leave blank to keep current password.</p>
@@ -541,7 +543,7 @@ const UsersPage = () => {
                     required
                     value={formState.role_id}
                     onChange={(event) => setFormState({ ...formState, role_id: event.target.value })}
-                    className="mt-1 block w-full rounded-md border border-slate-700 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    className={inputCls}
                   >
                     <option value="">Select role</option>
                     {roles.map((role) => (
@@ -556,7 +558,7 @@ const UsersPage = () => {
                   <select
                     value={formState.institution_id}
                     onChange={(event) => setFormState({ ...formState, institution_id: event.target.value })}
-                    className="mt-1 block w-full rounded-md border border-slate-700 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    className={inputCls}
                   >
                     <option value="">No institution</option>
                     {institutions.map((institution) => (
@@ -571,7 +573,7 @@ const UsersPage = () => {
                   <select
                     value={userType}
                     onChange={(event) => setUserType(event.target.value as UserType)}
-                    className="mt-1 block w-full rounded-md border border-slate-700 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                    className={inputCls}
                   >
                     <option value="none">Not assigned</option>
                     {canWriteStudents ? <option value="student">Student</option> : null}
@@ -586,7 +588,7 @@ const UsersPage = () => {
                         required
                         value={studentCourseId}
                         onChange={(event) => setStudentCourseId(event.target.value)}
-                        className="mt-1 block w-full rounded-md border border-slate-700 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        className={inputCls}
                       >
                         <option value="">Select course</option>
                         {courses.map((course) => (
@@ -603,7 +605,7 @@ const UsersPage = () => {
                         required
                         value={enrollmentYear}
                         onChange={(event) => setEnrollmentYear(event.target.value)}
-                        className="mt-1 block w-full rounded-md border border-slate-700 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        className={inputCls}
                       />
                       <p className="mt-1 text-xs text-slate-500">
                         Registration number will be generated automatically.
@@ -619,7 +621,7 @@ const UsersPage = () => {
                         required
                         value={trainerDepartmentId}
                         onChange={(event) => setTrainerDepartmentId(event.target.value)}
-                        className="mt-1 block w-full rounded-md border border-slate-700 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        className={inputCls}
                       >
                         <option value="">Select department</option>
                         {departments.map((dept) => (
@@ -635,7 +637,7 @@ const UsersPage = () => {
                         type="text"
                         value={trainerSpecialization}
                         onChange={(event) => setTrainerSpecialization(event.target.value)}
-                        className="mt-1 block w-full rounded-md border border-slate-700 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+                        className={inputCls}
                       />
                     </div>
                   </>

@@ -1,4 +1,12 @@
-// Predefined roles with ideal permissions
+import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { Plus, X } from 'lucide-react';
+import { apiRequest } from '../api/client';
+import { useAuth } from '../auth/AuthContext';
+import { useTableControls } from '../hooks/useTableControls';
+import { TableFooter, SortableTh } from '../components/ui/TableControls';
+
+// ── Predefined role templates ─────────────────────────────────────────────────
+
 export const PREDEFINED_ROLES: Array<{
   role_name: string;
   category: string;
@@ -18,9 +26,13 @@ export const PREDEFINED_ROLES: Array<{
       'students_view_own_subjects': true,
       'student_subjects.read': true,
       'student_subjects.create': false,
-      'student_subjects.update': false,
       'student_subjects.delete': false,
-      // Add more as needed
+      'scores.read': true,
+      'announcements.read': true,
+      'notifications.read': true,
+      'documents.read': true,
+      'attendance.read': true,
+      'analytics.read': true,
     },
   },
   {
@@ -31,7 +43,21 @@ export const PREDEFINED_ROLES: Array<{
       'trainers.update': true,
       'students.read': true,
       'subjects.read': true,
-      // Add more as needed
+      'scores.read': true,
+      'scores.create': true,
+      'scores.update': true,
+      'modules.read': true,
+      'announcements.read': true,
+      'announcements.create': true,
+      'notifications.read': true,
+      'documents.read': true,
+      'documents.create': true,
+      'documents.delete': true,
+      'attendance.create': true,
+      'attendance.read': true,
+      'attendance.write': true,
+      'analytics.read': true,
+      'trainer_subjects.read': true,
     },
   },
   {
@@ -43,17 +69,109 @@ export const PREDEFINED_ROLES: Array<{
       'courses.read': true,
       'courses.update': true,
       'students.read': true,
+      'trainers.read': true,
       'subjects.read': true,
-      // Add more as needed
+      'modules.read': true,
+      'scores.read': true,
+      'analytics.read': true,
+      'announcements.read': true,
+      'announcements.create': true,
+      'notifications.read': true,
+      'notifications.create': true,
+      'documents.read': true,
+      'attendance.read': true,
     },
   },
 ];
-import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Plus, X } from 'lucide-react';
-import { apiRequest } from '../api/client';
-import { useAuth } from '../auth/AuthContext';
-import { useTableControls } from '../hooks/useTableControls';
-import { TableFooter, SortableTh } from '../components/ui/TableControls';
+
+// ── Permission definitions grouped by tab ────────────────────────────────────
+
+type PermDef = { key: string; label: string };
+
+const PERMISSION_TABS: Array<{ label: string; permissions: PermDef[] }> = [
+  {
+    label: 'People',
+    permissions: [
+      { key: 'users.create',    label: 'Create Users' },
+      { key: 'users.read',      label: 'Read Users' },
+      { key: 'users.update',    label: 'Update Users' },
+      { key: 'users.delete',    label: 'Delete Users' },
+      { key: 'roles.create',    label: 'Create Roles' },
+      { key: 'roles.read',      label: 'Read Roles' },
+      { key: 'roles.update',    label: 'Update Roles' },
+      { key: 'students.create', label: 'Create Students' },
+      { key: 'students.read',   label: 'Read Students' },
+      { key: 'students.update', label: 'Update Students' },
+      { key: 'students.delete', label: 'Delete Students' },
+      { key: 'trainers.create', label: 'Create Trainers' },
+      { key: 'trainers.read',   label: 'Read Trainers' },
+      { key: 'trainers.update', label: 'Update Trainers' },
+      { key: 'trainers.delete', label: 'Delete Trainers' },
+    ],
+  },
+  {
+    label: 'Institution',
+    permissions: [
+      { key: 'institutions.create', label: 'Create Institutions' },
+      { key: 'institutions.read',   label: 'Read Institutions' },
+      { key: 'institutions.update', label: 'Update Institutions' },
+      { key: 'institutions.delete', label: 'Delete Institutions' },
+      { key: 'departments.create',  label: 'Create Departments' },
+      { key: 'departments.read',    label: 'Read Departments' },
+      { key: 'departments.update',  label: 'Update Departments' },
+      { key: 'departments.delete',  label: 'Delete Departments' },
+      { key: 'courses.create',      label: 'Create Courses' },
+      { key: 'courses.read',        label: 'Read Courses' },
+      { key: 'courses.update',      label: 'Update Courses' },
+      { key: 'courses.delete',      label: 'Delete Courses' },
+      { key: 'modules.create',      label: 'Create Modules' },
+      { key: 'modules.read',        label: 'Read Modules' },
+      { key: 'modules.update',      label: 'Update Modules' },
+      { key: 'modules.delete',      label: 'Delete Modules' },
+      { key: 'subjects.create',     label: 'Create Subjects' },
+      { key: 'subjects.read',       label: 'Read Subjects' },
+      { key: 'subjects.update',     label: 'Update Subjects' },
+      { key: 'subjects.delete',     label: 'Delete Subjects' },
+    ],
+  },
+  {
+    label: 'Academics',
+    permissions: [
+      { key: 'scores.create',              label: 'Create Scores' },
+      { key: 'scores.read',                label: 'Read Scores' },
+      { key: 'scores.update',              label: 'Update Scores' },
+      { key: 'student_subjects.create',    label: 'Assign Student Subjects' },
+      { key: 'student_subjects.read',      label: 'Read Student Subjects' },
+      { key: 'student_subjects.delete',    label: 'Remove Student Subjects' },
+      { key: 'trainer_subjects.read',      label: 'Read Trainer Subjects' },
+      { key: 'analytics.read',             label: 'Read Analytics' },
+    ],
+  },
+  {
+    label: 'Attendance',
+    permissions: [
+      { key: 'attendance.create', label: 'Create Sessions' },
+      { key: 'attendance.read',   label: 'Read Attendance' },
+      { key: 'attendance.write',  label: 'Manage Sessions (End/Regenerate)' },
+    ],
+  },
+  {
+    label: 'Content',
+    permissions: [
+      { key: 'documents.create',       label: 'Upload Documents' },
+      { key: 'documents.read',         label: 'Read Documents' },
+      { key: 'documents.delete',       label: 'Delete Documents' },
+      { key: 'announcements.create',   label: 'Create Announcements' },
+      { key: 'announcements.read',     label: 'Read Announcements' },
+      { key: 'notifications.create',   label: 'Create Notifications' },
+      { key: 'notifications.read',     label: 'Read Notifications' },
+      { key: 'notifications.update',   label: 'Update Notifications' },
+      { key: 'notifications.delete',   label: 'Delete Notifications' },
+    ],
+  },
+];
+
+// ── Types ─────────────────────────────────────────────────────────────────────
 
 type Role = {
   id: string;
@@ -64,45 +182,55 @@ type Role = {
 type RoleForm = {
   id?: string;
   role_name: string;
-  permissions: string;
 };
 
-type PermissionDefinition = {
-  key: string;
-  label: string;
-};
+const emptyForm: RoleForm = { role_name: '' };
 
-const ENTITY_LABELS: Record<string, string> = {
-  users: 'Users',
-  roles: 'Roles',
-  institutions: 'Institutions',
-  departments: 'Departments',
-  courses: 'Courses',
-  students: 'Students',
-  trainers: 'Trainers',
-  notifications: 'Notifications',
-  student_subjects: 'Student Subjects',
-  students_view_own_subjects: 'View Own Subjects', // Custom right for students to see only their allocated subjects
-};
+const inputCls = 'block w-full rounded-lg bg-slate-800 border border-slate-700 px-3 py-2 text-slate-200 placeholder:text-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent';
 
-const CRUD_LABELS: Record<string, string> = {
-  create: 'Create',
-  read: 'Read',
-  update: 'Update',
-  delete: 'Delete',
-};
+// ── Permission tab panel ──────────────────────────────────────────────────────
 
-const PERMISSIONS: PermissionDefinition[] = Object.entries(ENTITY_LABELS).flatMap(([entity, label]) => {
-  return Object.entries(CRUD_LABELS).map(([action, actionLabel]) => ({
-    key: `${entity}.${action}`,
-    label: `${actionLabel} ${label}`,
-  }));
-});
+function PermissionPanel({
+  permissions,
+  map,
+  onChange,
+  isWildcard,
+}: {
+  permissions: PermDef[];
+  map: Record<string, boolean>;
+  onChange: (key: string) => void;
+  isWildcard: boolean;
+}) {
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+      {permissions.map((p) => (
+        <label
+          key={p.key}
+          className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${
+            isWildcard
+              ? 'border-teal-500/30 bg-teal-500/10'
+              : map[p.key]
+              ? 'border-indigo-500/40 bg-indigo-500/10'
+              : 'border-slate-700 bg-slate-800/50 hover:border-slate-600'
+          }`}
+        >
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded accent-indigo-500 shrink-0"
+            checked={isWildcard || Boolean(map[p.key])}
+            disabled={isWildcard}
+            onChange={() => onChange(p.key)}
+          />
+          <span className={`text-sm ${isWildcard ? 'text-teal-300' : map[p.key] ? 'text-indigo-200' : 'text-slate-400'}`}>
+            {p.label}
+          </span>
+        </label>
+      ))}
+    </div>
+  );
+}
 
-const emptyForm: RoleForm = {
-  role_name: '',
-  permissions: '',
-};
+// ── Main page ─────────────────────────────────────────────────────────────────
 
 const RolesPage = () => {
   const { token, user } = useAuth();
@@ -114,6 +242,9 @@ const RolesPage = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formState, setFormState] = useState<RoleForm>(emptyForm);
   const [permissionMap, setPermissionMap] = useState<Record<string, boolean>>({});
+  const [activeTab, setActiveTab] = useState(0);
+
+  const isWildcard = Boolean(permissionMap['*']);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -122,22 +253,17 @@ const RolesPage = () => {
       const data = await apiRequest<Role[]>('/roles', { token });
       setRoles(data);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to load roles';
-      setError(message);
+      setError(err instanceof Error ? err.message : 'Failed to load roles');
     } finally {
       setIsLoading(false);
     }
   };
 
-  useEffect(() => {
-    if (token) {
-      loadData();
-    }
-  }, [token]);
+  useEffect(() => { if (token) loadData(); }, [token]);
 
   const filtered = useMemo(() => {
-    const search = searchTerm.toLowerCase();
-    return roles.filter((item) => item.role_name.toLowerCase().includes(search));
+    const q = searchTerm.toLowerCase();
+    return roles.filter((r) => r.role_name.toLowerCase().includes(q));
   }, [roles, searchTerm]);
 
   const tc = useTableControls(filtered);
@@ -145,17 +271,14 @@ const RolesPage = () => {
   const openCreate = () => {
     setFormState(emptyForm);
     setPermissionMap({});
+    setActiveTab(0);
     setIsModalOpen(true);
   };
 
   const openEdit = (item: Role) => {
-    const map = item.permissions ?? {};
-    setFormState({
-      id: item.id,
-      role_name: item.role_name,
-      permissions: JSON.stringify(map, null, 2),
-    });
-    setPermissionMap(map);
+    setFormState({ id: item.id, role_name: item.role_name });
+    setPermissionMap(item.permissions ?? {});
+    setActiveTab(0);
     setIsModalOpen(true);
   };
 
@@ -163,60 +286,51 @@ const RolesPage = () => {
     setIsModalOpen(false);
     setFormState(emptyForm);
     setPermissionMap({});
+    setError(null);
   };
 
-  const handlePermissionToggle = (key: string) => {
+  const togglePermission = (key: string) => {
     const next = { ...permissionMap, [key]: !permissionMap[key] };
+    // Remove false entries to keep the object clean
+    if (!next[key]) delete next[key];
     setPermissionMap(next);
-    setFormState({ ...formState, permissions: JSON.stringify(next, null, 2) });
   };
+
+  const toggleWildcard = () => {
+    if (isWildcard) {
+      const next = { ...permissionMap };
+      delete next['*'];
+      setPermissionMap(next);
+    } else {
+      setPermissionMap({ '*': true });
+    }
+  };
+
+  // Count enabled permissions per tab
+  const tabCounts = PERMISSION_TABS.map((tab) =>
+    isWildcard
+      ? tab.permissions.length
+      : tab.permissions.filter((p) => permissionMap[p.key]).length
+  );
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsSubmitting(true);
     setError(null);
-
-    let permissions: Record<string, boolean> = {};
-    if (formState.permissions.trim()) {
-      try {
-        const parsed = JSON.parse(formState.permissions);
-        if (typeof parsed !== 'object' || Array.isArray(parsed) || parsed === null) {
-          throw new Error('Permissions must be a JSON object.');
-        }
-        permissions = parsed as Record<string, boolean>;
-        setPermissionMap(permissions);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Invalid permissions JSON';
-        setError(message);
-        setIsSubmitting(false);
-        return;
-      }
-    }
-
     const payload = {
       role_name: formState.role_name.trim(),
-      permissions,
+      permissions: permissionMap,
     };
-
     try {
       if (formState.id) {
-        await apiRequest(`/roles/${formState.id}`, {
-          method: 'PUT',
-          token,
-          body: payload,
-        });
+        await apiRequest(`/roles/${formState.id}`, { method: 'PUT', token, body: payload });
       } else {
-        await apiRequest('/roles', {
-          method: 'POST',
-          token,
-          body: payload,
-        });
+        await apiRequest('/roles', { method: 'POST', token, body: payload });
       }
       closeModal();
       await loadData();
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to save role';
-      setError(message);
+      setError(err instanceof Error ? err.message : 'Failed to save role');
     } finally {
       setIsSubmitting(false);
     }
@@ -224,7 +338,7 @@ const RolesPage = () => {
 
   if (!user?.permissions?.['roles.read'] && !user?.permissions?.['*']) {
     return (
-      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+      <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-300">
         You do not have permission to view roles.
       </div>
     );
@@ -235,33 +349,33 @@ const RolesPage = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-slate-200">Roles</h1>
-          <p className="text-sm text-slate-500">Create roles and permissions.</p>
+          <p className="text-sm text-slate-500">Manage roles and their permissions.</p>
         </div>
-        {user?.permissions?.['roles.create'] || user?.permissions?.['*'] ? (
+        {(user?.permissions?.['roles.create'] || user?.permissions?.['*']) && (
           <button
             onClick={openCreate}
-            className="flex items-center px-4 py-2.5 text-sm font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
+            className="flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
           >
-            <Plus className="w-4 h-4 mr-2 text-white" />
-            Add Role
+            <Plus className="w-4 h-4" /> Add Role
           </button>
-        ) : null}
+        )}
       </div>
 
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-lg border border-slate-800 overflow-hidden">
-        <div className="p-6 border-b border-slate-700">
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-lg overflow-hidden">
+        <div className="p-5 border-b border-slate-800">
           <input
             type="text"
             placeholder="Search by role name..."
-            className="w-full max-w-md px-4 py-2.5 rounded-lg border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+            className={inputCls + ' max-w-sm'}
             value={searchTerm}
-            onChange={(event) => setSearchTerm(event.target.value)}
+            onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
+
         {isLoading ? (
           <div className="p-6 text-sm text-slate-400">Loading roles...</div>
         ) : error ? (
-          <div className="p-6 text-sm text-red-600">{error}</div>
+          <div className="p-6 text-sm text-red-400">{error}</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left">
@@ -273,28 +387,41 @@ const RolesPage = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800">
-                {tc.paged.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-800 transition-colors">
-                    <td className="px-6 py-4 font-medium text-slate-100">{item.role_name}</td>
-                    <td className="px-6 py-4 text-slate-400">
-                      {Object.keys(item.permissions ?? {}).length ? (
-                        <span className="text-xs text-slate-500">Custom permissions</span>
-                      ) : (
-                        <span className="text-xs text-slate-500">No permissions</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 text-slate-400">
-                      {user?.permissions?.['roles.update'] || user?.permissions?.['*'] ? (
-                        <button
-                          className="text-indigo-600 hover:text-indigo-700 text-sm font-medium"
-                          onClick={() => openEdit(item)}
-                        >
-                          Edit
-                        </button>
-                      ) : null}
-                    </td>
+                {tc.paged.map((item) => {
+                  const isAdmin = item.permissions?.['*'] === true;
+                  const count = Object.values(item.permissions ?? {}).filter(Boolean).length;
+                  return (
+                    <tr key={item.id} className="hover:bg-slate-800/60 transition-colors">
+                      <td className="px-6 py-4 font-medium text-slate-100">{item.role_name}</td>
+                      <td className="px-6 py-4">
+                        {isAdmin ? (
+                          <span className="px-2 py-1 rounded-full text-xs font-semibold bg-teal-500/15 text-teal-300 border border-teal-500/30">
+                            Full Access (Wildcard)
+                          </span>
+                        ) : count > 0 ? (
+                          <span className="text-xs text-slate-400">{count} permission{count !== 1 ? 's' : ''}</span>
+                        ) : (
+                          <span className="text-xs text-slate-600">No permissions</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">
+                        {(user?.permissions?.['roles.update'] || user?.permissions?.['*']) && (
+                          <button
+                            className="text-indigo-400 hover:text-indigo-300 text-sm font-medium transition-colors"
+                            onClick={() => openEdit(item)}
+                          >
+                            Edit
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {tc.paged.length === 0 && (
+                  <tr>
+                    <td colSpan={3} className="px-6 py-10 text-center text-slate-500 text-sm">No roles found.</td>
                   </tr>
-                ))}
+                )}
               </tbody>
             </table>
           </div>
@@ -302,75 +429,119 @@ const RolesPage = () => {
         <TableFooter page={tc.page} totalPages={tc.totalPages} total={tc.total} pageSize={tc.pageSize} onPage={tc.setPage} />
       </div>
 
-      {isModalOpen ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4 overflow-y-auto">
-          <div className="w-full max-w-2xl rounded-2xl bg-slate-900 border border-slate-800 p-4 sm:p-8 shadow-xl mx-auto flex flex-col">
-            <div className="flex items-center justify-between mb-4 sm:mb-6">
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-200">
+      {/* ── Modal ── */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 overflow-y-auto">
+          <div className="w-full max-w-2xl rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl my-4">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800">
+              <h2 className="text-xl font-bold text-slate-100">
                 {formState.id ? 'Update Role' : 'Create Role'}
               </h2>
-              <button onClick={closeModal} className="p-2 rounded-full hover:bg-slate-800">
-                <X className="text-slate-400" />
+              <button onClick={closeModal} className="p-2 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition">
+                <X size={18} />
               </button>
             </div>
-            <form className="space-y-3 sm:space-y-4" onSubmit={handleSubmit}>
-              <div>
-                <label className="block text-sm font-medium text-slate-300">Role name</label>
-                <input
-                  type="text"
-                  required
-                  value={formState.role_name}
-                  onChange={(event) => setFormState({ ...formState, role_name: event.target.value })}
-                  className="mt-1 block w-full rounded-md border border-slate-700 px-3 py-2 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-sm"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-300">Permissions (JSON)</label>
-                <textarea
-                  rows={4}
-                  value={formState.permissions}
-                  onChange={(event) => setFormState({ ...formState, permissions: event.target.value })}
-                  className="mt-1 block w-full rounded-md border border-slate-700 px-3 py-2 font-mono text-xs shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
-                  placeholder='{"students.read": true}'
-                />
-              </div>
-              <div>
-                <p className="text-sm font-medium text-slate-300">Quick permissions</p>
-                <div className="mt-3 grid gap-2 grid-cols-1 sm:grid-cols-2 md:grid-cols-3">
-                  {PERMISSIONS.map((permission) => (
-                    <label key={permission.key} className="flex items-center gap-2 text-sm text-slate-400">
-                      <input
-                        type="checkbox"
-                        className="h-4 w-4 text-indigo-600 border-slate-700 rounded"
-                        checked={Boolean(permissionMap[permission.key])}
-                        onChange={() => handlePermissionToggle(permission.key)}
-                      />
-                      {permission.label}
-                    </label>
-                  ))}
+
+            <form onSubmit={handleSubmit}>
+              <div className="px-6 py-5 space-y-5">
+                {/* Role name */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-300 mb-1.5">Role name</label>
+                  <input
+                    type="text"
+                    required
+                    value={formState.role_name}
+                    onChange={(e) => setFormState({ ...formState, role_name: e.target.value })}
+                    className={inputCls}
+                    placeholder="e.g. Trainer, Student, Manager"
+                  />
                 </div>
+
+                {/* Wildcard toggle */}
+                <label className={`flex items-center gap-3 px-4 py-3 rounded-xl border cursor-pointer transition-colors ${
+                  isWildcard ? 'border-teal-500/40 bg-teal-500/10' : 'border-slate-700 hover:border-slate-600'
+                }`}>
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 rounded accent-teal-500"
+                    checked={isWildcard}
+                    onChange={toggleWildcard}
+                  />
+                  <div>
+                    <p className={`text-sm font-semibold ${isWildcard ? 'text-teal-300' : 'text-slate-300'}`}>
+                      Full Access (Wildcard)
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Grants all permissions — use only for Admin roles
+                    </p>
+                  </div>
+                </label>
+
+                {/* Permission tabs */}
+                <div>
+                  <p className="text-sm font-medium text-slate-300 mb-3">Permissions</p>
+
+                  {/* Tab bar */}
+                  <div className="flex gap-1 border-b border-slate-800 mb-4 overflow-x-auto">
+                    {PERMISSION_TABS.map((tab, i) => (
+                      <button
+                        key={tab.label}
+                        type="button"
+                        onClick={() => setActiveTab(i)}
+                        className={`px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px ${
+                          activeTab === i
+                            ? 'border-indigo-500 text-indigo-300'
+                            : 'border-transparent text-slate-500 hover:text-slate-300'
+                        }`}
+                      >
+                        {tab.label}
+                        {tabCounts[i] > 0 && (
+                          <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-xs font-bold ${
+                            isWildcard ? 'bg-teal-500/20 text-teal-400' : 'bg-indigo-500/20 text-indigo-400'
+                          }`}>
+                            {tabCounts[i]}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Active tab content */}
+                  <PermissionPanel
+                    permissions={PERMISSION_TABS[activeTab].permissions}
+                    map={permissionMap}
+                    onChange={togglePermission}
+                    isWildcard={isWildcard}
+                  />
+                </div>
+
+                {error && (
+                  <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-3 py-2">{error}</p>
+                )}
               </div>
-              {error ? <p className="text-sm text-red-600">{error}</p> : null}
-              <div className="flex flex-col sm:flex-row justify-end gap-2 sm:gap-3 pt-4">
+
+              {/* Footer */}
+              <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-800">
                 <button
                   type="button"
                   onClick={closeModal}
-                  className="px-4 py-2 text-sm font-medium text-slate-300 bg-slate-800 rounded-md hover:bg-slate-700 w-full sm:w-auto"
+                  className="px-4 py-2 text-sm font-medium text-slate-300 bg-slate-800 rounded-lg hover:bg-slate-700 transition"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:opacity-70 w-full sm:w-auto"
+                  className="px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-60 transition"
                 >
-                  {isSubmitting ? 'Saving...' : 'Save role'}
+                  {isSubmitting ? 'Saving...' : 'Save Role'}
                 </button>
               </div>
             </form>
           </div>
         </div>
-      ) : null}
+      )}
     </div>
   );
 };

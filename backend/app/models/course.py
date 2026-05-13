@@ -26,6 +26,7 @@ class Course(BaseModel):
     trainers = relationship("TrainerCourse", back_populates="course")
     subjects = relationship("CourseSubject", back_populates="course")
     modules = relationship("Module", back_populates="course")
+    attendance_sessions = relationship("AttendanceSession", back_populates="course")
 
 
 

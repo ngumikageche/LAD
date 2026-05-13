@@ -19,3 +19,4 @@ class Subject(BaseModel):
     course_subjects = relationship("CourseSubject", back_populates="subject")
     scores = relationship("Score", back_populates="subject")
     lesson_plans = relationship("LessonPlan", back_populates="subject")
+    attendance_sessions = relationship("AttendanceSession", back_populates="subject")
