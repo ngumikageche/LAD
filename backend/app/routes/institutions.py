@@ -12,6 +12,24 @@ from .permissions import log_view, require_permission
 
 bp = Blueprint("institutions", __name__, url_prefix="/institutions")
 
+# In-memory seed types — extended by types already in the DB
+_SEED_TYPES: list[str] = [
+    "University",
+    "College",
+    "TVET",
+    "Secondary School",
+    "Primary School",
+    "Training Centre",
+    "Polytechnic",
+]
+
+
+def _get_all_types() -> list[str]:
+    db_types = [
+        row[0] for row in db.session.query(Institution.type).distinct().all() if row[0]
+    ]
+    return sorted(dict.fromkeys(_SEED_TYPES + db_types))
+
 
 def _parse_uuid(value: str | None, field: str) -> uuid.UUID:
     if not value:
@@ -31,6 +49,46 @@ def _institution_payload(institution: Institution) -> dict:
         "created_at": institution.created_at.isoformat() if institution.created_at else None,
     }
 
+
+# ── Types endpoints (must be before /<institution_id>) ────────────────────────
+
+@bp.get("/types")
+def list_institution_types():
+    _, error, status = require_permission("institutions.read")
+    if error:
+        return error, status
+    return {"types": _get_all_types()}, 200
+
+
+@bp.post("/types")
+def add_institution_type():
+    _, error, status = require_permission("institutions.create")
+    if error:
+        return error, status
+    payload = request.get_json(silent=True) or {}
+    name = payload.get("name", "").strip()
+    if not name:
+        return {"error": "'name' is required"}, 400
+    if name not in _SEED_TYPES:
+        _SEED_TYPES.append(name)
+    return {"types": _get_all_types()}, 201
+
+
+@bp.delete("/types/<path:type_name>")
+def delete_institution_type(type_name: str):
+    _, error, status = require_permission("institutions.delete")
+    if error:
+        return error, status
+    name = type_name.strip()
+    in_use = db.session.query(Institution).filter(Institution.type == name).first()
+    if in_use:
+        return {"error": f"Type '{name}' is in use and cannot be deleted"}, 409
+    if name in _SEED_TYPES:
+        _SEED_TYPES.remove(name)
+    return {"types": _get_all_types()}, 200
+
+
+# ── Institution CRUD ──────────────────────────────────────────────────────────
 
 @bp.post("")
 def create_institution():
@@ -55,7 +113,6 @@ def create_institution():
         type=institution_type.strip(),
         location=location.strip(),
     )
-
     db.session.add(institution)
     try:
         db.session.commit()
@@ -71,10 +128,9 @@ def list_institutions():
     user, error, status = require_permission("institutions.read")
     if error:
         return error, status
-
     institutions = db.session.query(Institution).order_by(Institution.name.asc()).all()
     log_view(user, "institutions", metadata={"scope": "list"})
-    return [_institution_payload(institution) for institution in institutions], 200
+    return [_institution_payload(i) for i in institutions], 200
 
 
 @bp.get("/<institution_id>")
@@ -110,7 +166,6 @@ def update_institution(institution_id: str):
         return {"error": "Institution not found"}, 404
 
     payload = request.get_json(silent=True) or {}
-
     name = payload.get("name")
     institution_type = payload.get("type")
     location = payload.get("location")

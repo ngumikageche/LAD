@@ -66,6 +66,7 @@ def create_app() -> Flask:
         admin_reports_v2_bp,
         advanced_analytics_bp,
         advanced_reports_bp,
+        documents_bp,
     )
 
     # Register blueprints
@@ -111,6 +112,7 @@ def create_app() -> Flask:
     app.register_blueprint(admin_reports_v2_bp)
     app.register_blueprint(advanced_analytics_bp)
     app.register_blueprint(advanced_reports_bp)
+    app.register_blueprint(documents_bp)
 
     @app.get("/")
     def health_check():

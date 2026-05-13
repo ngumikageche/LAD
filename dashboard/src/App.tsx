@@ -26,6 +26,8 @@ import StudentNotificationsPage from './pages/StudentNotificationsPage';
 import AdminDashboard from './pages/AdminDashboard';
 import AdminSystemAnalyticsPage from './pages/AdminSystemAnalyticsPage';
 import AdminScoreManagementPage from './pages/AdminScoreManagementPage';
+import DocumentsPage from './pages/DocumentsPage';
+import DocumentsPage from './pages/DocumentsPage';
 import AdminNotificationsPage from './pages/AdminNotificationsPage';
 import ReportCardPage from './pages/ReportCardPage';
 import AttendanceReportPage from './pages/AttendanceReportPage';
@@ -85,6 +87,7 @@ function App() {
                 <Route path="/admin/dashboard" element={<AdminDashboard />} />
                 <Route path="/admin/analytics" element={<AdminSystemAnalyticsPage />} />
                 <Route path="/admin/scores" element={<AdminScoreManagementPage />} />
+                <Route path="/admin/documents" element={<DocumentsPage />} />
                 <Route path="/admin/notifications" element={<AdminNotificationsPage />} />
                 <Route path="/admin/reports/exam-results" element={<AdminExamResultsPage />} />
                 <Route path="/admin/reports/fees" element={<AdminFeeCollectionPage />} />

@@ -104,6 +104,7 @@ const adminGroups: NavGroup[] = [
     label: 'Academics',
     items: [
       { name: 'Score Management',  icon: FileText,        path: '/admin/scores',               color: 'text-red-400'    },
+      { name: 'Documents',          icon: BookOpen,        path: '/admin/documents',            color: 'text-teal-300'   },
       { name: 'Progress',          icon: BarChart,        path: '/progress',                   color: 'text-green-400'},
     ],
   },

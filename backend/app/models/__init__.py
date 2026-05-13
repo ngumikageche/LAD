@@ -27,6 +27,9 @@ from .staff_attendance import StaffAttendance
 from .portfolio_evidence import PortfolioEvidence
 from .competency_record import CompetencyRecord
 from .course_subject import CourseSubject
+from .document import Document
+from .module import Module
+from .competency import Competency
 
 __all__ = [
 	"Course",
@@ -55,4 +58,7 @@ __all__ = [
 	"Attendance",
 	"LessonPlan",
 	"StaffAttendance",
+	"Document",
+	"Module",
+	"Competency",
 ]
