@@ -26,6 +26,7 @@ def _parse_uuid(value: str | None, field: str) -> uuid.UUID:
 def _department_payload(department: Department) -> dict:
     return {
         "id": str(department.id),
+        "code": department.code,
         "institution_id": str(department.institution_id),
         "name": department.name,
         "created_at": department.created_at.isoformat() if department.created_at else None,

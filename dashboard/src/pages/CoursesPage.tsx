@@ -12,6 +12,7 @@ type Department = {
 
 type Course = {
   id: string;
+  code?: string;
   name: string;
   cbet_level: string;
   department_id: string;
@@ -197,6 +198,7 @@ const CoursesPage = () => {
             <table className="w-full text-left">
               <thead className="bg-slate-800 border-b border-slate-700">
                 <tr>
+                  <SortableTh label="ID" sortKey="code" sort={tc.sort} onSort={tc.setSort} />
                   <SortableTh label="Name" sortKey="name" sort={tc.sort} onSort={tc.setSort} />
                   <SortableTh label="CBET Level" sortKey="cbet_level" sort={tc.sort} onSort={tc.setSort} />
                   <SortableTh label="Department" sortKey="department" sort={tc.sort} onSort={tc.setSort} />
@@ -206,6 +208,7 @@ const CoursesPage = () => {
               <tbody className="divide-y divide-slate-800">
                 {tc.paged.map((item) => (
                   <tr key={item.id} className="hover:bg-slate-800 transition-colors">
+                    <td className="px-6 py-4"><span className="font-mono text-xs bg-slate-700 text-indigo-300 px-2 py-0.5 rounded">{item.code ?? '—'}</span></td>
                     <td className="px-6 py-4 font-medium text-slate-100">{item.name}</td>
                     <td className="px-6 py-4 text-slate-400">{item.cbet_level}</td>
                     <td className="px-6 py-4 text-slate-400">

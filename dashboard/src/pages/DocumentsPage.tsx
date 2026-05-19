@@ -144,10 +144,16 @@ function UploadModal({ token, isAdmin, onClose, onUploaded }: {
   const [file, setFile] = useState<File | null>(null);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [subjectId, setSubjectId] = useState('');
-  const [target, setTarget] = useState<'subject' | 'everyone' | ''>('subject');
+  const [target, setTarget] = useState<'subject' | 'student' | 'everyone' | ''>('subject');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<string | null>(null);
+
+  // single-student fields
+  const [studentSearch, setStudentSearch] = useState('');
+  const [studentOptions, setStudentOptions] = useState<StudentOption[]>([]);
+  const [selectedStudent, setSelectedStudent] = useState<StudentOption | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
 
   useEffect(() => {
     fetch(`${API}/documents/subjects`, { headers: { Authorization: `Bearer ${token}` } })
@@ -156,13 +162,32 @@ function UploadModal({ token, isAdmin, onClose, onUploaded }: {
       .catch(() => {});
   }, [token]);
 
+  useEffect(() => {
+    if (target !== 'student') return;
+    if (!studentSearch.trim()) { setStudentOptions([]); return; }
+    const tid = setTimeout(async () => {
+      setSearchLoading(true);
+      try {
+        const r = await fetch(`${API}/documents/students?q=${encodeURIComponent(studentSearch)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const d = await r.json();
+        setStudentOptions(Array.isArray(d) ? d : []);
+      } catch {} finally { setSearchLoading(false); }
+    }, 300);
+    return () => clearTimeout(tid);
+  }, [studentSearch, target, token]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file || !title.trim()) return;
 
-    // Trainer must pick a subject
-    if (!isAdmin && !subjectId) {
+    if (!isAdmin && target !== 'student' && !subjectId) {
       setError('Please select a subject to send this document to.');
+      return;
+    }
+    if (target === 'student' && !selectedStudent) {
+      setError('Please select a student.');
       return;
     }
 
@@ -172,8 +197,14 @@ function UploadModal({ token, isAdmin, onClose, onUploaded }: {
     fd.append('title', title.trim());
     fd.append('description', description.trim());
     fd.append('file', file);
-    if (subjectId) fd.append('subject_id', subjectId);
-    if (isAdmin) fd.append('target', target);
+    if (subjectId && target !== 'student') fd.append('subject_id', subjectId);
+
+    if (target === 'student') {
+      // Upload first (no auto-send), then send-student
+      fd.append('target', '');
+    } else if (isAdmin) {
+      fd.append('target', target);
+    }
 
     try {
       const r = await fetch(`${API}/documents`, {
@@ -182,13 +213,26 @@ function UploadModal({ token, isAdmin, onClose, onUploaded }: {
         body: fd,
       });
       const d = await r.json();
-      if (r.ok) {
+      if (!r.ok) { setError(d.error ?? 'Upload failed'); return; }
+
+      // If single student, send separately
+      if (target === 'student' && selectedStudent) {
+        const sr = await fetch(`${API}/documents/${d.id}/send-student`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ student_id: selectedStudent.code ?? selectedStudent.registration_number }),
+        });
+        const sd = await sr.json();
+        if (sr.ok) {
+          setResult(`Uploaded and sent to ${selectedStudent.name ?? selectedStudent.registration_number}.`);
+        } else {
+          setResult(`Uploaded but could not send: ${sd.error ?? 'unknown error'}`);
+        }
+      } else {
         const sent: number = d.notifications_sent ?? 0;
         setResult(sent > 0 ? `Uploaded and sent to ${sent} student(s).` : 'Uploaded successfully.');
-        onUploaded();
-      } else {
-        setError(d.error ?? 'Upload failed');
       }
+      onUploaded();
     } catch {
       setError('Network error');
     } finally {
@@ -196,9 +240,20 @@ function UploadModal({ token, isAdmin, onClose, onUploaded }: {
     }
   };
 
+  const uploadTargets = isAdmin
+    ? (['subject', 'student', 'everyone', ''] as const)
+    : (['subject', 'student'] as const);
+
+  const targetLabel: Record<string, string> = {
+    subject: 'Subject students',
+    student: 'Single student',
+    everyone: 'Everyone',
+    '': 'No one (save only)',
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-xl">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 overflow-y-auto">
+      <div className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 p-6 shadow-xl my-auto">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
             <Upload size={18} className="text-indigo-400" /> Upload Document
@@ -237,8 +292,28 @@ function UploadModal({ token, isAdmin, onClose, onUploaded }: {
               />
             </div>
 
-            {/* Subject picker — always shown for trainer, shown for admin when target=subject */}
-            {(!isAdmin || target === 'subject') && (
+            {/* Send To — admin sees all options, trainer sees subject + student */}
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">Send To</label>
+              <div className="flex flex-wrap gap-3">
+                {uploadTargets.map(t => (
+                  <label key={t} className="flex items-center gap-2 cursor-pointer">
+                    <input type="radio" name="upload-target" value={t} checked={target === t}
+                      onChange={() => { setTarget(t); setSelectedStudent(null); setStudentSearch(''); setSubjectId(''); }}
+                      className="accent-indigo-500" />
+                    <span className="text-sm text-slate-300">{targetLabel[t]}</span>
+                  </label>
+                ))}
+              </div>
+              {target === 'everyone' && (
+                <p className="text-xs text-amber-400 mt-1 flex items-center gap-1">
+                  <Users size={12} /> This will notify all students on the system.
+                </p>
+              )}
+            </div>
+
+            {/* Subject picker */}
+            {(target === 'subject') && (
               <div>
                 <label className="block text-sm font-medium text-slate-300 mb-1">
                   Subject {!isAdmin && <span className="text-red-400">*</span>}
@@ -253,26 +328,62 @@ function UploadModal({ token, isAdmin, onClose, onUploaded }: {
               </div>
             )}
 
-            {/* Admin-only: target selector */}
-            {isAdmin && (
-              <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">Send To</label>
-                <div className="flex gap-3">
-                  {(['subject', 'everyone', ''] as const).map(t => (
-                    <label key={t} className="flex items-center gap-2 cursor-pointer">
-                      <input type="radio" name="target" value={t} checked={target === t} onChange={() => setTarget(t)}
-                        className="accent-indigo-500" />
-                      <span className="text-sm text-slate-300">
-                        {t === 'subject' ? 'Subject students' : t === 'everyone' ? 'Everyone' : 'No one (save only)'}
+            {/* Single student picker */}
+            {target === 'student' && (
+              <div className="space-y-2">
+                <label className="block text-sm font-medium text-slate-300">
+                  Student <span className="text-red-400">*</span>
+                </label>
+                {selectedStudent ? (
+                  <div className="flex items-center justify-between p-3 bg-indigo-500/10 border border-indigo-500/30 rounded-lg">
+                    <div>
+                      <span className="font-mono text-xs bg-slate-700 text-indigo-300 px-2 py-0.5 rounded mr-2">
+                        {selectedStudent.code ?? '—'}
                       </span>
-                    </label>
-                  ))}
-                </div>
-                {target === 'everyone' && (
-                  <p className="text-xs text-amber-400 mt-1 flex items-center gap-1">
-                    <Users size={12} /> This will notify all students on the system.
-                  </p>
+                      <span className="text-sm text-slate-200">{selectedStudent.name}</span>
+                      <p className="text-xs text-slate-500 mt-0.5">{selectedStudent.registration_number}</p>
+                    </div>
+                    <button type="button" onClick={() => { setSelectedStudent(null); setStudentSearch(''); }}
+                      className="p-1 hover:bg-slate-700 rounded">
+                      <X size={14} className="text-slate-400" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="relative">
+                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                    <input
+                      type="text"
+                      placeholder="Search by name, STU001 or reg number..."
+                      value={studentSearch}
+                      onChange={e => setStudentSearch(e.target.value)}
+                      className="w-full pl-9 pr-4 py-2 text-sm bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    {(studentOptions.length > 0 || searchLoading) && (
+                      <div className="absolute z-10 w-full mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-xl max-h-44 overflow-y-auto">
+                        {searchLoading && <p className="px-4 py-2 text-xs text-slate-500">Searching...</p>}
+                        {studentOptions.map(s => (
+                          <button type="button" key={s.id}
+                            onClick={() => { setSelectedStudent(s); setStudentSearch(''); setStudentOptions([]); }}
+                            className="w-full text-left px-4 py-2.5 hover:bg-slate-700 transition flex items-center gap-3">
+                            <span className="font-mono text-xs bg-slate-700 text-indigo-300 px-2 py-0.5 rounded shrink-0">
+                              {s.code ?? '—'}
+                            </span>
+                            <div className="min-w-0">
+                              <p className="text-sm text-slate-200 truncate">{s.name}</p>
+                              <p className="text-xs text-slate-500">{s.registration_number}</p>
+                            </div>
+                          </button>
+                        ))}
+                        {!searchLoading && studentOptions.length === 0 && studentSearch && (
+                          <p className="px-4 py-2 text-xs text-slate-500">No students found.</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 )}
+                <p className="text-xs text-slate-500">
+                  This document will only be visible to this student.
+                </p>
               </div>
             )}
 
@@ -309,10 +420,15 @@ function UploadModal({ token, isAdmin, onClose, onUploaded }: {
                 className="px-4 py-2 text-sm text-slate-300 bg-slate-800 rounded-lg hover:bg-slate-700">
                 Cancel
               </button>
-              <button type="submit" disabled={uploading || !file || !title.trim()}
+              <button type="submit"
+                disabled={
+                  uploading || !file || !title.trim() ||
+                  (target === 'student' && !selectedStudent) ||
+                  (!isAdmin && target === 'subject' && !subjectId)
+                }
                 className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition">
                 <Upload size={14} />
-                {uploading ? 'Uploading...' : 'Upload & Send'}
+                {uploading ? 'Uploading...' : target === 'student' ? 'Upload & Send to Student' : 'Upload & Send'}
               </button>
             </div>
           </form>
@@ -322,7 +438,15 @@ function UploadModal({ token, isAdmin, onClose, onUploaded }: {
   );
 }
 
+
 // ── Send Modal (re-send existing doc) ────────────────────────────────────────
+
+interface StudentOption {
+  id: string;
+  code: string | null;
+  registration_number: string;
+  name: string | null;
+}
 
 function SendModal({ doc, token, isAdmin, onClose }: {
   doc: Doc;
@@ -332,10 +456,15 @@ function SendModal({ doc, token, isAdmin, onClose }: {
 }) {
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [subjectId, setSubjectId] = useState('');
-  const [target, setTarget] = useState<'subject' | 'everyone'>('subject');
+  const [target, setTarget] = useState<'subject' | 'everyone' | 'student'>('subject');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  const [studentSearch, setStudentSearch] = useState('');
+  const [studentOptions, setStudentOptions] = useState<StudentOption[]>([]);
+  const [selectedStudent, setSelectedStudent] = useState<StudentOption | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
 
   useEffect(() => {
     fetch(`${API}/documents/subjects`, { headers: { Authorization: `Bearer ${token}` } })
@@ -344,15 +473,38 @@ function SendModal({ doc, token, isAdmin, onClose }: {
       .catch(() => setLoading(false));
   }, [token]);
 
+  useEffect(() => {
+    if (target !== 'student') return;
+    if (!studentSearch.trim()) { setStudentOptions([]); return; }
+    const tid = setTimeout(async () => {
+      setSearchLoading(true);
+      try {
+        const r = await fetch(`${API}/documents/students?q=${encodeURIComponent(studentSearch)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const d = await r.json();
+        setStudentOptions(Array.isArray(d) ? d : []);
+      } catch {} finally { setSearchLoading(false); }
+    }, 300);
+    return () => clearTimeout(tid);
+  }, [studentSearch, target, token]);
+
   const handleSend = async () => {
     if (target === 'subject' && !subjectId) return;
+    if (target === 'student' && !selectedStudent) return;
     setSending(true);
     setResult(null);
     try {
-      const r = await fetch(`${API}/documents/${doc.id}/send`, {
+      const url = target === 'student'
+        ? `${API}/documents/${doc.id}/send-student`
+        : `${API}/documents/${doc.id}/send`;
+      const body = target === 'student'
+        ? { student_id: selectedStudent!.code ?? selectedStudent!.registration_number }
+        : { target, subject_id: subjectId || undefined };
+      const r = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ target, subject_id: subjectId || undefined }),
+        body: JSON.stringify(body),
       });
       const d = await r.json();
       setResult({ ok: r.ok, msg: r.ok ? d.message : (d.error ?? 'Failed to send') });
@@ -361,6 +513,16 @@ function SendModal({ doc, token, isAdmin, onClose }: {
     } finally {
       setSending(false);
     }
+  };
+
+  const targets = isAdmin
+    ? (['subject', 'student', 'everyone'] as const)
+    : (['subject', 'student'] as const);
+
+  const targetLabel: Record<string, string> = {
+    subject: 'Subject students',
+    student: 'Single student',
+    everyone: 'Everyone',
   };
 
   return (
@@ -380,30 +542,80 @@ function SendModal({ doc, token, isAdmin, onClose }: {
           <p className="text-xs text-slate-500 mt-0.5">{doc.file_name}</p>
         </div>
 
-        {isAdmin && (
-          <div className="mb-4">
-            <label className="block text-sm font-medium text-slate-300 mb-2">Send To</label>
-            <div className="flex gap-4">
-              {(['subject', 'everyone'] as const).map(t => (
-                <label key={t} className="flex items-center gap-2 cursor-pointer">
-                  <input type="radio" name="send-target" value={t} checked={target === t}
-                    onChange={() => setTarget(t)} className="accent-indigo-500" />
-                  <span className="text-sm text-slate-300">
-                    {t === 'subject' ? 'Subject students' : 'Everyone'}
-                  </span>
-                </label>
-              ))}
-            </div>
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-slate-300 mb-2">Send To</label>
+          <div className="flex flex-wrap gap-3">
+            {targets.map(t => (
+              <label key={t} className="flex items-center gap-2 cursor-pointer">
+                <input type="radio" name="send-target" value={t} checked={target === t}
+                  onChange={() => { setTarget(t); setResult(null); setSelectedStudent(null); setStudentSearch(''); }}
+                  className="accent-indigo-500" />
+                <span className="text-sm text-slate-300">{targetLabel[t]}</span>
+              </label>
+            ))}
           </div>
-        )}
+        </div>
 
-        {(target === 'subject') && (
+        {target === 'subject' && (
           <div className="mb-4">
             <label className="block text-sm font-medium text-slate-300 mb-1">Subject</label>
             {loading ? (
               <p className="text-sm text-slate-400">Loading subjects...</p>
             ) : (
               <SubjectSelect subjects={subjects} value={subjectId} onChange={setSubjectId} />
+            )}
+          </div>
+        )}
+
+        {target === 'student' && (
+          <div className="mb-4 space-y-2">
+            <label className="block text-sm font-medium text-slate-300">Student</label>
+            {selectedStudent ? (
+              <div className="flex items-center justify-between p-3 bg-indigo-500/10 border border-indigo-500/30 rounded-lg">
+                <div>
+                  <span className="font-mono text-xs bg-slate-700 text-indigo-300 px-2 py-0.5 rounded mr-2">
+                    {selectedStudent.code ?? '—'}
+                  </span>
+                  <span className="text-sm text-slate-200">{selectedStudent.name}</span>
+                  <p className="text-xs text-slate-500 mt-0.5">{selectedStudent.registration_number}</p>
+                </div>
+                <button onClick={() => { setSelectedStudent(null); setStudentSearch(''); }}
+                  className="p-1 hover:bg-slate-700 rounded">
+                  <X size={14} className="text-slate-400" />
+                </button>
+              </div>
+            ) : (
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                <input
+                  type="text"
+                  placeholder="Search by name, STU001 or reg number..."
+                  value={studentSearch}
+                  onChange={e => setStudentSearch(e.target.value)}
+                  className="w-full pl-9 pr-4 py-2 text-sm bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+                {(studentOptions.length > 0 || searchLoading) && (
+                  <div className="absolute z-10 w-full mt-1 bg-slate-800 border border-slate-700 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                    {searchLoading && <p className="px-4 py-2 text-xs text-slate-500">Searching...</p>}
+                    {studentOptions.map(s => (
+                      <button key={s.id}
+                        onClick={() => { setSelectedStudent(s); setStudentSearch(''); setStudentOptions([]); }}
+                        className="w-full text-left px-4 py-2.5 hover:bg-slate-700 transition flex items-center gap-3">
+                        <span className="font-mono text-xs bg-slate-700 text-indigo-300 px-2 py-0.5 rounded shrink-0">
+                          {s.code ?? '—'}
+                        </span>
+                        <div className="min-w-0">
+                          <p className="text-sm text-slate-200 truncate">{s.name}</p>
+                          <p className="text-xs text-slate-500">{s.registration_number}</p>
+                        </div>
+                      </button>
+                    ))}
+                    {!searchLoading && studentOptions.length === 0 && studentSearch && (
+                      <p className="px-4 py-2 text-xs text-slate-500">No students found.</p>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
           </div>
         )}
@@ -432,7 +644,11 @@ function SendModal({ doc, token, isAdmin, onClose }: {
           </button>
           {!result?.ok && (
             <button onClick={handleSend}
-              disabled={sending || (target === 'subject' && !subjectId)}
+              disabled={
+                sending ||
+                (target === 'subject' && !subjectId) ||
+                (target === 'student' && !selectedStudent)
+              }
               className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 disabled:opacity-50 transition">
               <Send size={14} />
               {sending ? 'Sending...' : 'Send'}
@@ -443,6 +659,7 @@ function SendModal({ doc, token, isAdmin, onClose }: {
     </div>
   );
 }
+
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 

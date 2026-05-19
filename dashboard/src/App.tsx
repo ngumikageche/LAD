@@ -27,6 +27,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import AdminSystemAnalyticsPage from './pages/AdminSystemAnalyticsPage';
 import AdminScoreManagementPage from './pages/AdminScoreManagementPage';
 import DocumentsPage from './pages/DocumentsPage';
+import BulkMarksUploadPage from './pages/BulkMarksUploadPage';
 import AdminNotificationsPage from './pages/AdminNotificationsPage';
 import ReportCardPage from './pages/ReportCardPage';
 import AttendanceReportPage from './pages/AttendanceReportPage';
@@ -34,6 +35,7 @@ import FeeStatementPage from './pages/FeeStatementPage';
 import ClassPerformancePage from './pages/ClassPerformancePage';
 import SyllabusCoveragePage from './pages/SyllabusCoveragePage';
 import TrainerAttendancePage from './pages/TrainerAttendancePage';
+import TrainerManualAttendancePage from './pages/TrainerManualAttendancePage';
 import AdminExamResultsPage from './pages/AdminExamResultsPage';
 import AdminFeeCollectionPage from './pages/AdminFeeCollectionPage';
 import AdminEnrolmentPage from './pages/AdminEnrolmentPage';
@@ -86,6 +88,7 @@ function App() {
                 <Route path="/trainer/class-performance" element={<ClassPerformancePage />} />
                 <Route path="/trainer/syllabus" element={<SyllabusCoveragePage />} />
                 <Route path="/trainer/attendance" element={<TrainerAttendancePage />} />
+                <Route path="/trainer/attendance/manual" element={<TrainerManualAttendancePage />} />
                 <Route path="/trainer/documents" element={<DocumentsPage />} />
               </Route>
               {/* Attendance session management: trainer OR admin, never student */}
@@ -96,12 +99,15 @@ function App() {
                 <Route path="/admin/dashboard" element={<AdminDashboard />} />
                 <Route path="/admin/analytics" element={<AdminSystemAnalyticsPage />} />
                 <Route path="/admin/scores" element={<AdminScoreManagementPage />} />
+                <Route path="/admin/scores/bulk-upload" element={<BulkMarksUploadPage />} />
+                <Route path="/admin/scores/bulk-upload" element={<BulkMarksUploadPage />} />
                 <Route path="/admin/documents" element={<DocumentsPage />} />
                 <Route path="/admin/notifications" element={<AdminNotificationsPage />} />
                 <Route path="/admin/reports/exam-results" element={<AdminExamResultsPage />} />
                 <Route path="/admin/reports/fees" element={<AdminFeeCollectionPage />} />
                 <Route path="/admin/reports/enrolment" element={<AdminEnrolmentPage />} />
                 <Route path="/admin/attendance" element={<AdminAttendancePage />} />
+                <Route path="/admin/attendance/manual" element={<TrainerManualAttendancePage />} />
                 <Route path="/users" element={<UsersPage />} />
                 <Route path="/roles" element={<RolesPage />} />
                 <Route path="/institutions" element={<InstitutionsPage />} />

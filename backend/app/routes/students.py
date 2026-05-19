@@ -74,6 +74,7 @@ def _generate_registration_number(enrollment_year: int) -> str:
 def _student_payload(student: Student) -> dict:
     return {
         "id": str(student.id),
+        "code": student.code,
         "user_id": str(student.user_id),
         "registration_number": student.registration_number,
         "course_id": str(student.course_id),

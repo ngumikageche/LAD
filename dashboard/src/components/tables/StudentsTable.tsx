@@ -7,6 +7,7 @@ import type { Course, Module } from '../../types/backend';
 // The /students endpoint returns students with an embedded user object
 interface StudentWithUser {
   id: string;
+  code?: string;
   user_id: string;
   registration_number: string;
   course_id: string;
@@ -72,7 +73,8 @@ const StudentsTable = () => {
       return (
         studentName(student).toLowerCase().includes(search) ||
         studentEmail(student).toLowerCase().includes(search) ||
-        student.registration_number.toLowerCase().includes(search)
+        student.registration_number.toLowerCase().includes(search) ||
+        (student.code ?? '').toLowerCase().includes(search)
       );
     });
   }, [searchTerm, students]);
@@ -111,6 +113,7 @@ const StudentsTable = () => {
         <table className="w-full text-left">
           <thead className="bg-slate-800 border-b border-slate-700">
             <tr>
+              <SortableTh label="ID" sortKey="code" sort={tc.sort} onSort={tc.setSort} />
               <SortableTh label="Name" sortKey="name" sort={tc.sort} onSort={tc.setSort} />
               <SortableTh label="Email" sortKey="email" sort={tc.sort} onSort={tc.setSort} />
               <SortableTh label="Reg No" sortKey="registration_number" sort={tc.sort} onSort={tc.setSort} />
@@ -121,6 +124,7 @@ const StudentsTable = () => {
           <tbody className="divide-y divide-slate-800">
             {tc.paged.map(student => (
               <tr key={student.id} className="hover:bg-slate-800 transition-colors">
+                <td className="px-6 py-4"><span className="font-mono text-xs bg-slate-700 text-indigo-300 px-2 py-0.5 rounded">{student.code ?? '—'}</span></td>
                 <td className="px-6 py-4 font-medium text-slate-100">{studentName(student)}</td>
                 <td className="px-6 py-4 text-slate-400">{studentEmail(student)}</td>
                 <td className="px-6 py-4 text-slate-400">{student.registration_number}</td>
@@ -177,6 +181,7 @@ const StudentsTable = () => {
               <div className="space-y-3">
                 <div><span className="font-medium">Name:</span> {studentName(viewStudent)}</div>
                 <div><span className="font-medium">Email:</span> {studentEmail(viewStudent)}</div>
+                <div><span className="font-medium">Student ID:</span> <span className="font-mono text-indigo-300">{viewStudent.code ?? '—'}</span></div>
                 <div><span className="font-medium">Reg No:</span> {viewStudent.registration_number}</div>
                 <div><span className="font-medium">Enrollment Year:</span> {viewStudent.enrollment_year}</div>
                 <div><span className="font-medium">Course:</span> {viewCourse}</div>

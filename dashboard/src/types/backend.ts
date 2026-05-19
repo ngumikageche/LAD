@@ -22,6 +22,7 @@ export type { RolePermission };
 
 export interface Institution {
   id: string;
+  code?: string;
   name: string;
   type: string;
   location: string;
@@ -32,6 +33,7 @@ export type { Institution };
 
 export interface Department {
   id: string;
+  code?: string;
   institution_id: string;
   name: string;
 }
@@ -40,6 +42,7 @@ export type { Department };
 
 export interface Course {
   id: string;
+  code?: string;
   department_id: string;
   name: string;
   cbet_level: string;
@@ -49,6 +52,7 @@ export type { Course };
 
 export interface Subject {
   id: string;
+  code?: string;
   module_id: string;
   name: string;
   description?: string;
@@ -69,6 +73,7 @@ export type { StudentSubject };
 
 export interface Module {
   id: string;
+  code?: string;
   course_id: string;
   name: string;
   description?: string;
@@ -89,6 +94,7 @@ export type { Competency };
 
 export interface Student {
   id: string;
+  code?: string;
   user_id: string;
   registration_number: string;
   course_id: string;
@@ -99,6 +105,7 @@ export type { Student };
 
 export interface Trainer {
   id: string;
+  code?: string;
   user_id: string;
   department_id: string;
   specialization?: string;

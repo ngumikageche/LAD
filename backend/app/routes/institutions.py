@@ -43,6 +43,7 @@ def _parse_uuid(value: str | None, field: str) -> uuid.UUID:
 def _institution_payload(institution: Institution) -> dict:
     return {
         "id": str(institution.id),
+        "code": institution.code,
         "name": institution.name,
         "type": institution.type,
         "location": institution.location,

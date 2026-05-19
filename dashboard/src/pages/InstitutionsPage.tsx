@@ -7,6 +7,7 @@ import { TableFooter, SortableTh } from '../components/ui/TableControls';
 
 type Institution = {
   id: string;
+  code?: string;
   name: string;
   type: string;
   location: string;
@@ -303,6 +304,7 @@ const InstitutionsPage = () => {
             <table className="w-full text-left">
               <thead className="bg-slate-800 border-b border-slate-700">
                 <tr>
+                  <SortableTh label="ID" sortKey="code" sort={tc.sort} onSort={tc.setSort} />
                   <SortableTh label="Name" sortKey="name" sort={tc.sort} onSort={tc.setSort} />
                   <SortableTh label="Type" sortKey="type" sort={tc.sort} onSort={tc.setSort} />
                   <SortableTh label="Location" sortKey="location" sort={tc.sort} onSort={tc.setSort} />
@@ -312,6 +314,7 @@ const InstitutionsPage = () => {
               <tbody className="divide-y divide-slate-800">
                 {tc.paged.map((item) => (
                   <tr key={item.id} className="hover:bg-slate-800/60 transition-colors">
+                    <td className="px-6 py-4"><span className="font-mono text-xs bg-slate-700 text-indigo-300 px-2 py-0.5 rounded">{item.code ?? '—'}</span></td>
                     <td className="px-6 py-4 font-medium text-slate-100">{item.name}</td>
                     <td className="px-6 py-4">
                       <span className="px-2.5 py-1 rounded-full text-xs font-medium bg-blue-500/15 text-blue-300 border border-blue-500/30">

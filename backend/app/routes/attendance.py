@@ -151,6 +151,18 @@ def create_session():
         return {"error": f"Failed to create session: {str(e)}"}, 500
 
 
+@bp.get("/sessions/my")
+@trainer_or_admin_required("attendance.read")
+def get_my_sessions():
+    """Get all sessions for the current trainer (or all sessions for admin)."""
+    trainer = g.current_trainer
+    q = db.session.query(AttendanceSession)
+    if trainer:
+        q = q.filter_by(trainer_id=trainer.id)
+    sessions = q.order_by(AttendanceSession.started_at.desc()).limit(100).all()
+    return [_session_payload(s) for s in sessions], 200
+
+
 @bp.get("/sessions/<session_id>")
 @trainer_or_admin_required("attendance.read")
 def get_session(session_id: str):
@@ -475,6 +487,369 @@ def admin_attendance_overview():
             "total_submissions": len(s.records),
         })
     return result, 200
+
+
+@bp.get("/admin/analytics")
+@admin_required()
+def admin_attendance_analytics():
+    """Aggregated analytics for admin charts."""
+    from ..models.subject import Subject
+    from sqlalchemy import func, cast, Date
+    from datetime import datetime, timedelta
+
+    # Daily check-ins for last 30 days
+    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+    daily_rows = (
+        db.session.query(
+            cast(AttendanceRecord.checked_in_at, Date).label("day"),
+            func.count(AttendanceRecord.id).label("total"),
+            func.sum(
+                db.case((AttendanceRecord.status == "success", 1), else_=0)
+            ).label("successful"),
+        )
+        .filter(AttendanceRecord.checked_in_at >= thirty_days_ago)
+        .group_by(cast(AttendanceRecord.checked_in_at, Date))
+        .order_by(cast(AttendanceRecord.checked_in_at, Date))
+        .all()
+    )
+    daily = [
+        {"date": str(r.day), "total": r.total, "successful": int(r.successful or 0)}
+        for r in daily_rows
+    ]
+
+    # Check-in status breakdown (all time)
+    status_rows = (
+        db.session.query(AttendanceRecord.status, func.count(AttendanceRecord.id))
+        .group_by(AttendanceRecord.status)
+        .all()
+    )
+    status_breakdown = [{"status": s, "count": c} for s, c in status_rows]
+
+    # Top 10 subjects by check-ins
+    subject_rows = (
+        db.session.query(
+            AttendanceSession.subject_id,
+            func.count(AttendanceRecord.id).label("checkins"),
+        )
+        .join(AttendanceRecord, AttendanceRecord.attendance_session_id == AttendanceSession.id)
+        .filter(AttendanceRecord.status == "success")
+        .group_by(AttendanceSession.subject_id)
+        .order_by(func.count(AttendanceRecord.id).desc())
+        .limit(10)
+        .all()
+    )
+    by_subject = []
+    for sid, count in subject_rows:
+        name = "Unknown"
+        if sid:
+            subj = db.session.get(Subject, sid)
+            name = subj.name if subj else str(sid)[:8]
+        by_subject.append({"subject": name, "checkins": count})
+
+    # Top 10 trainers by sessions run
+    trainer_rows = (
+        db.session.query(
+            AttendanceSession.trainer_id,
+            func.count(AttendanceSession.id).label("sessions"),
+            func.sum(
+                db.case((AttendanceRecord.status == "success", 1), else_=0)
+            ).label("checkins"),
+        )
+        .outerjoin(AttendanceRecord, AttendanceRecord.attendance_session_id == AttendanceSession.id)
+        .group_by(AttendanceSession.trainer_id)
+        .order_by(func.count(AttendanceSession.id).desc())
+        .limit(10)
+        .all()
+    )
+    by_trainer = []
+    for tid, sessions_count, checkins in trainer_rows:
+        name = "Unknown"
+        if tid:
+            t = db.session.get(Trainer, tid)
+            name = t.user.name if t and t.user else str(tid)[:8]
+        by_trainer.append({"trainer": name, "sessions": sessions_count, "checkins": int(checkins or 0)})
+
+    # Overall summary
+    total_sessions = db.session.query(func.count(AttendanceSession.id)).scalar() or 0
+    total_checkins = db.session.query(func.count(AttendanceRecord.id)).filter(AttendanceRecord.status == "success").scalar() or 0
+    active_sessions = db.session.query(func.count(AttendanceSession.id)).filter(AttendanceSession.status == "active").scalar() or 0
+    manual_checkins = db.session.query(func.count(AttendanceRecord.id)).filter(AttendanceRecord.status == "manual").scalar() or 0
+
+    return {
+        "summary": {
+            "total_sessions": total_sessions,
+            "total_checkins": total_checkins,
+            "active_sessions": active_sessions,
+            "manual_checkins": manual_checkins,
+        },
+        "daily": daily,
+        "status_breakdown": status_breakdown,
+        "by_subject": by_subject,
+        "by_trainer": by_trainer,
+    }, 200
+
+
+@bp.get("/trainer/analytics")
+@trainer_or_admin_required("attendance.read")
+def trainer_attendance_analytics():
+    """Aggregated analytics for trainer charts."""
+    from sqlalchemy import func, cast, Date
+    from datetime import datetime, timedelta
+
+    trainer = g.current_trainer
+    if not trainer:
+        return {"error": "Trainer profile not found"}, 404
+
+    # Per-session summary (last 20 sessions)
+    sessions = (
+        db.session.query(AttendanceSession)
+        .filter_by(trainer_id=trainer.id)
+        .order_by(AttendanceSession.started_at.desc())
+        .limit(20)
+        .all()
+    )
+
+    per_session = []
+    for s in sessions:
+        from ..models.subject import Subject
+        subject_name = "Unknown"
+        if s.subject_id:
+            subj = db.session.get(Subject, s.subject_id)
+            subject_name = subj.name[:20] if subj else "Unknown"
+        successful = sum(1 for r in s.records if r.status in ("success", "manual"))
+        failed = sum(1 for r in s.records if r.status not in ("success", "manual"))
+        per_session.append({
+            "label": f"{subject_name} ({s.started_at.strftime('%d/%m')})",
+            "present": successful,
+            "failed": failed,
+            "date": s.started_at.strftime("%d %b"),
+        })
+    per_session.reverse()  # chronological order
+
+    # Daily check-ins last 30 days for this trainer
+    thirty_days_ago = datetime.utcnow() - timedelta(days=30)
+    daily_rows = (
+        db.session.query(
+            cast(AttendanceRecord.checked_in_at, Date).label("day"),
+            func.count(AttendanceRecord.id).label("checkins"),
+        )
+        .join(AttendanceSession, AttendanceRecord.attendance_session_id == AttendanceSession.id)
+        .filter(
+            AttendanceSession.trainer_id == trainer.id,
+            AttendanceRecord.checked_in_at >= thirty_days_ago,
+            AttendanceRecord.status.in_(["success", "manual"]),
+        )
+        .group_by(cast(AttendanceRecord.checked_in_at, Date))
+        .order_by(cast(AttendanceRecord.checked_in_at, Date))
+        .all()
+    )
+    daily = [{"date": str(r.day), "checkins": r.checkins} for r in daily_rows]
+
+    # Status breakdown for this trainer
+    status_rows = (
+        db.session.query(AttendanceRecord.status, func.count(AttendanceRecord.id))
+        .join(AttendanceSession, AttendanceRecord.attendance_session_id == AttendanceSession.id)
+        .filter(AttendanceSession.trainer_id == trainer.id)
+        .group_by(AttendanceRecord.status)
+        .all()
+    )
+    status_breakdown = [{"status": s, "count": c} for s, c in status_rows]
+
+    total_sessions = len(sessions)
+    total_checkins = sum(p["present"] for p in per_session)
+
+    return {
+        "summary": {
+            "total_sessions": total_sessions,
+            "total_checkins": total_checkins,
+        },
+        "per_session": per_session,
+        "daily": daily,
+        "status_breakdown": status_breakdown,
+    }, 200
+    """Admin view: all sessions across all trainers with student counts."""
+    from ..models.subject import Subject
+    from ..models.user import User as UserModel
+    from sqlalchemy.orm import joinedload
+
+    sessions = (
+        db.session.query(AttendanceSession)
+        .options(joinedload(AttendanceSession.trainer).joinedload(Trainer.user))
+        .order_by(AttendanceSession.started_at.desc())
+        .limit(200)
+        .all()
+    )
+    result = []
+    for s in sessions:
+        subject_name = None
+        if s.subject_id:
+            subj = db.session.get(Subject, s.subject_id)
+            subject_name = subj.name if subj else None
+        trainer_name = s.trainer.user.name if s.trainer and s.trainer.user else None
+        successful = sum(1 for r in s.records if r.status == "success")
+        result.append({
+            "id": str(s.id),
+            "trainer_name": trainer_name,
+            "subject_name": subject_name,
+            "session_code": s.session_code,
+            "status": s.status,
+            "started_at": s.started_at.isoformat(),
+            "expires_at": s.expires_at.isoformat(),
+            "allowed_radius_meters": s.allowed_radius_meters,
+            "total_checkins": successful,
+            "total_submissions": len(s.records),
+        })
+    return result, 200
+
+
+# ============================================================================
+# MANUAL ATTENDANCE (trainer marks students without QR/GPS)
+# ============================================================================
+
+@bp.post("/sessions/<session_id>/manual-checkin")
+@trainer_or_admin_required("attendance.create")
+def manual_checkin(session_id: str):
+    """
+    Trainer manually marks one or more students as present.
+    Accepts: { "students": ["STU001", "STU002", ...] }  (codes or reg numbers)
+    or:      { "student_id": "STU001" }  (single)
+    """
+    try:
+        session = db.session.query(AttendanceSession).filter_by(
+            id=uuid_lib.UUID(session_id)
+        ).first()
+        if not session:
+            return {"error": "Session not found"}, 404
+        if session.status == "ended":
+            return {"error": "Session has ended"}, 409
+    except ValueError:
+        return {"error": "Invalid session ID"}, 400
+
+    data = request.get_json(silent=True) or {}
+    # Accept single or list
+    raw = data.get("students") or ([data["student_id"]] if data.get("student_id") else [])
+    if not raw:
+        return {"error": "Provide 'students' list or 'student_id'"}, 400
+
+    results = []
+    for key in raw:
+        key = str(key).strip()
+        student = (
+            db.session.query(Student).filter_by(code=key).first()
+            or db.session.query(Student).filter_by(registration_number=key).first()
+        )
+        if not student:
+            results.append({"key": key, "status": "error", "message": "Student not found"})
+            continue
+
+        existing = db.session.query(AttendanceRecord).filter_by(
+            attendance_session_id=session.id, student_id=student.id
+        ).first()
+        if existing:
+            results.append({"key": key, "status": "duplicate", "message": "Already marked"})
+            continue
+
+        record = AttendanceRecord(
+            attendance_session_id=session.id,
+            student_id=student.id,
+            latitude=session.latitude,
+            longitude=session.longitude,
+            ip_address="manual",
+            status="manual",
+            distance_from_trainer=0.0,
+        )
+        db.session.add(record)
+        results.append({"key": key, "status": "ok", "student_name": student.user.name if student.user else key})
+
+    db.session.commit()
+    ok = sum(1 for r in results if r["status"] == "ok")
+    return {"marked": ok, "results": results}, 200
+
+
+@bp.post("/sessions/<session_id>/manual-remove")
+@trainer_or_admin_required("attendance.create")
+def manual_remove(session_id: str):
+    """Remove a manual attendance record (undo)."""
+    try:
+        session_uuid = uuid_lib.UUID(session_id)
+    except ValueError:
+        return {"error": "Invalid session ID"}, 400
+
+    data = request.get_json(silent=True) or {}
+    key = str(data.get("student_id", "")).strip()
+    if not key:
+        return {"error": "student_id required"}, 400
+
+    student = (
+        db.session.query(Student).filter_by(code=key).first()
+        or db.session.query(Student).filter_by(registration_number=key).first()
+    )
+    if not student:
+        return {"error": "Student not found"}, 404
+
+    record = db.session.query(AttendanceRecord).filter_by(
+        attendance_session_id=session_uuid, student_id=student.id
+    ).first()
+    if not record:
+        return {"error": "No attendance record found"}, 404
+
+    db.session.delete(record)
+    db.session.commit()
+    return {"status": "removed"}, 200
+
+
+@bp.post("/manual-session")
+@trainer_or_admin_required("attendance.create")
+def create_manual_session():
+    """
+    Create a lightweight manual-only attendance session (no GPS/QR required).
+    Body: { "subject_id": "...", "course_id": "...", "module_id": "...", "date": "2026-06-01" }
+    """
+    data = request.get_json(silent=True) or {}
+    subject_id = data.get("subject_id")
+    course_id = data.get("course_id")
+    module_id = data.get("module_id")
+
+    if not any([subject_id, course_id, module_id]):
+        return {"error": "subject_id, course_id, or module_id required"}, 400
+
+    if g.current_trainer:
+        trainer_id = g.current_trainer.id
+    else:
+        tid = data.get("trainer_id")
+        if not tid:
+            return {"error": "trainer_id required"}, 400
+        try:
+            trainer_id = uuid_lib.UUID(tid)
+        except ValueError:
+            return {"error": "Invalid trainer_id"}, 400
+
+    import secrets
+    from datetime import datetime, timedelta
+    secret_key = current_app.config.get("SECRET_KEY", "default-secret")
+    session_code = secrets.token_hex(3).upper()
+    token = secrets.token_urlsafe(32)
+    now = datetime.utcnow()
+
+    session = AttendanceSession(
+        trainer_id=trainer_id,
+        subject_id=uuid_lib.UUID(subject_id) if subject_id else None,
+        course_id=uuid_lib.UUID(course_id) if course_id else None,
+        module_id=uuid_lib.UUID(module_id) if module_id else None,
+        current_token=token,
+        session_code=session_code,
+        qr_seed=token,
+        latitude=0.0,
+        longitude=0.0,
+        allowed_radius_meters=0,
+        started_at=now,
+        expires_at=now + timedelta(hours=24),
+        status="active",
+        regeneration_interval=86400,
+    )
+    db.session.add(session)
+    db.session.commit()
+    return {"session": _session_payload(session)}, 201
 
 
 # ============================================================================

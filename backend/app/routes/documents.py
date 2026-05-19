@@ -316,6 +316,78 @@ def send_document(doc_id: str):
     return {"message": f"Document sent to {sent} student(s)", "sent": sent}, 200
 
 
+# ── Send to single student ────────────────────────────────────────────────────
+
+@bp.post("/<doc_id>/send-student")
+def send_document_to_student(doc_id: str):
+    """Send a document to a single student by code (STU001) or registration_number."""
+    user, error, status = require_permission("documents.create")
+    if error:
+        return error, status
+
+    try:
+        uid = uuid.UUID(doc_id)
+    except ValueError:
+        return {"error": "Invalid document id"}, 400
+
+    doc = db.session.get(Document, uid)
+    if not doc or doc.deleted_at:
+        return {"error": "Document not found"}, 404
+
+    payload = request.get_json(silent=True) or {}
+    key = str(payload.get("student_id", "")).strip()
+    if not key:
+        return {"error": "student_id (code or registration_number) is required"}, 400
+
+    student = (
+        db.session.query(Student).filter_by(code=key).first()
+        or db.session.query(Student).filter_by(registration_number=key).first()
+    )
+    if not student:
+        return {"error": f"Student '{key}' not found"}, 404
+    if not student.user_id:
+        return {"error": "Student has no linked user account"}, 400
+
+    subject_name = doc.subject.name if doc.subject_id and doc.subject else None
+    sent = _notify_students([student.user_id], doc, subject_name)
+    db.session.commit()
+    student_name = student.user.name if student.user else key
+    return {"message": f"Document sent to {student_name}", "sent": sent}, 200
+
+
+# ── Students search (for single-student send picker) ──────────────────────────
+
+@bp.get("/students")
+def search_students():
+    """Search students by name, code, or registration_number."""
+    user, error, status = require_permission("documents.create")
+    if error:
+        return error, status
+
+    from sqlalchemy import or_
+    from ..models.user import User as UserModel
+    q = request.args.get("q", "").strip()
+    query = db.session.query(Student).join(UserModel, UserModel.id == Student.user_id)
+    if q:
+        query = query.filter(
+            or_(
+                Student.code.ilike(f"%{q}%"),
+                Student.registration_number.ilike(f"%{q}%"),
+                UserModel.name.ilike(f"%{q}%"),
+            )
+        )
+    rows = query.order_by(UserModel.name.asc()).limit(20).all()
+    return [
+        {
+            "id": str(s.id),
+            "code": s.code,
+            "registration_number": s.registration_number,
+            "name": s.user.name if s.user else None,
+        }
+        for s in rows
+    ], 200
+
+
 # ── Subjects list (for frontend picker) ──────────────────────────────────────
 
 @bp.get("/subjects")

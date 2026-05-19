@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy import ForeignKey, Integer, String, event
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -11,7 +11,8 @@ from .base import BaseModel
 
 class Assessment(BaseModel):
     __tablename__ = "assessments"
-    recorded_at: Mapped[str] = mapped_column(String(100), nullable=True)  # Timestamp or datetime string
+    code: Mapped[str | None] = mapped_column(String(16), unique=True, nullable=True, index=True)
+    recorded_at: Mapped[str] = mapped_column(String(100), nullable=True)
 
     course_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("courses.id"), nullable=True, index=True
@@ -39,3 +40,10 @@ class Assessment(BaseModel):
     module = relationship("Module", back_populates="assessments")
     competency = relationship("Competency", back_populates="assessments")
     scores = relationship("Score", back_populates="assessment")
+
+
+@event.listens_for(Assessment, "before_insert")
+def _set_assessment_code(mapper, connection, target):
+    if not target.code:
+        from ..utils.code_gen import generate_code
+        target.code = generate_code("ASM", Assessment)

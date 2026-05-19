@@ -45,6 +45,7 @@ def _parse_uuid(value: str | None, field: str) -> uuid.UUID:
 def _trainer_payload(trainer: Trainer) -> dict:
     return {
         "id": str(trainer.id),
+        "code": trainer.code,
         "user_id": str(trainer.user_id),
         "department_id": str(trainer.department_id),
         "specialization": trainer.specialization,
@@ -63,6 +64,7 @@ def _trainer_payload(trainer: Trainer) -> dict:
 def _course_payload(course: Course) -> dict:
     return {
         "id": str(course.id),
+        "code": course.code,
         "department_id": str(course.department_id),
         "name": course.name,
         "cbet_level": course.cbet_level,
@@ -73,6 +75,7 @@ def _course_payload(course: Course) -> dict:
 def _student_payload(student: Student) -> dict:
     return {
         "id": str(student.id),
+        "code": student.code,
         "user_id": str(student.user_id),
         "registration_number": student.registration_number,
         "course_id": str(student.course_id),

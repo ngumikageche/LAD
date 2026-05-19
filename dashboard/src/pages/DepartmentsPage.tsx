@@ -12,6 +12,7 @@ type Institution = {
 
 type Department = {
   id: string;
+  code?: string;
   name: string;
   institution_id: string;
   created_at: string | null;
@@ -187,6 +188,7 @@ const DepartmentsPage = () => {
             <table className="w-full text-left">
               <thead className="bg-slate-800 border-b border-slate-700">
                 <tr>
+                  <SortableTh label="ID" sortKey="code" sort={tc.sort} onSort={tc.setSort} />
                   <SortableTh label="Name" sortKey="name" sort={tc.sort} onSort={tc.setSort} />
                   <SortableTh label="Institution" sortKey="institution" sort={tc.sort} onSort={tc.setSort} />
                   <th className="px-6 py-4 text-xs font-bold text-slate-400 uppercase tracking-wider">Actions</th>
@@ -195,6 +197,7 @@ const DepartmentsPage = () => {
               <tbody className="divide-y divide-slate-800">
                 {tc.paged.map((item) => (
                   <tr key={item.id} className="hover:bg-slate-800 transition-colors">
+                    <td className="px-6 py-4"><span className="font-mono text-xs bg-slate-700 text-indigo-300 px-2 py-0.5 rounded">{item.code ?? '—'}</span></td>
                     <td className="px-6 py-4 font-medium text-slate-100">{item.name}</td>
                     <td className="px-6 py-4 text-slate-400">
                       {institutions.find((inst) => inst.id === item.institution_id)?.name ?? '—'}

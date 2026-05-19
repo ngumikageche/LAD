@@ -11,6 +11,7 @@ import { TableFooter, SortableTh } from '../components/ui/TableControls';
 
 type Subject = {
   id?: string;
+  code?: string;
   name: string;
   module_id: string;
   description?: string;
@@ -296,6 +297,7 @@ const SubjectsPage = () => {
           <table className="min-w-full divide-y divide-slate-800">
             <thead className="bg-slate-800 border-b border-slate-700">
               <tr>
+                <SortableTh label="ID" sortKey="code" sort={tc.sort} onSort={tc.setSort} />
                 <SortableTh label="Name" sortKey="name" sort={tc.sort} onSort={tc.setSort} />
                 <SortableTh label="Course" sortKey="course" sort={tc.sort} onSort={tc.setSort} />
                 <SortableTh label="Description" sortKey="description" sort={tc.sort} onSort={tc.setSort} />
@@ -305,11 +307,11 @@ const SubjectsPage = () => {
             <tbody className="bg-slate-900 divide-y divide-slate-800">
               {isLoading ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-4 text-center text-slate-500">Loading...</td>
+                  <td colSpan={5} className="px-6 py-4 text-center text-slate-500">Loading...</td>
                 </tr>
               ) : tc.paged.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-4 text-center text-slate-500">No subjects found.</td>
+                  <td colSpan={5} className="px-6 py-4 text-center text-slate-500">No subjects found.</td>
                 </tr>
               ) : (
                 tc.paged.map((item) => {
@@ -317,6 +319,7 @@ const SubjectsPage = () => {
                   const courseObj = moduleObj ? courses.find((c) => c.id === moduleObj.course_id) : undefined;
                   return (
                     <tr key={item.id}>
+                      <td className="px-6 py-4"><span className="font-mono text-xs bg-slate-700 text-indigo-300 px-2 py-0.5 rounded">{item.code ?? '—'}</span></td>
                       <td className="px-6 py-4 whitespace-nowrap">{item.name}</td>
                       <td className="px-6 py-4 whitespace-nowrap">{courseObj?.name ?? '-'}</td>
                       <td className="px-6 py-4 whitespace-nowrap">{item.description ?? '-'}</td>

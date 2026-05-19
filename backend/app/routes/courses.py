@@ -26,6 +26,7 @@ def _parse_uuid(value: str | None, field: str) -> uuid.UUID:
 def _course_payload(course: Course) -> dict:
     return {
         "id": str(course.id),
+        "code": course.code,
         "department_id": str(course.department_id),
         "name": course.name,
         "cbet_level": course.cbet_level,

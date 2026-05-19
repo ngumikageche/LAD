@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy import ForeignKey, Integer, String, event
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -12,6 +12,7 @@ from .base import BaseModel
 class Student(BaseModel):
     __tablename__ = "students"
 
+    code: Mapped[str | None] = mapped_column(String(16), unique=True, nullable=True, index=True)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id"), unique=True, nullable=True, index=True
     )
@@ -31,3 +32,11 @@ class Student(BaseModel):
     student_subjects = relationship("StudentSubject", back_populates="student")
     alerts = relationship("Alert", back_populates="student")
     attendance_records = relationship("AttendanceRecord", back_populates="student")
+
+
+@event.listens_for(Student, "before_insert")
+def _set_student_code(mapper, connection, target):
+    if not target.code:
+        from ..extensions import db
+        from ..utils.code_gen import generate_code
+        target.code = generate_code("STU", Student)

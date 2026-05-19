@@ -28,6 +28,7 @@ def _parse_uuid(value: str | None, field: str) -> uuid.UUID:
 def _subject_payload(subject: Subject) -> dict:
     return {
         "id": str(subject.id),
+        "code": subject.code,
         "module_id": str(subject.module_id),
         "name": subject.name,
         "description": subject.description,

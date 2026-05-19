@@ -1,10 +1,10 @@
 import { Link, useLocation } from 'react-router-dom';
 import {
-  Book, Home, Users, BarChart, FileText, ChevronsLeft, ChevronsRight,
+  Book, Home, Users, BarChart, FileText, ChevronsLeft, ChevronsRight, Upload,
   Shield, Building2, School, KeyRound, UserCog, MessageSquare, TrendingUp,
   BarChart3, Bell, ClipboardList, CalendarCheck, Receipt, GraduationCap,
   BookOpen, UserCheck, ChevronDown, ChevronRight, Settings, LayoutDashboard,
-  QrCode, ScanLine,
+  QrCode, ScanLine, PenLine,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useAuth } from '../../auth/AuthContext';
@@ -77,6 +77,7 @@ const trainerGroups: NavGroup[] = [
       { name: 'Class Performance', icon: BarChart3,       path: '/trainer/class-performance', color: 'text-teal-300'   },
       { name: 'Syllabus Coverage', icon: BookOpen,        path: '/trainer/syllabus',          color: 'text-green-400'  },
       { name: 'My Attendance',     icon: UserCheck,       path: '/trainer/attendance',        color: 'text-amber-400'  },
+      { name: 'Manual Attendance',  icon: PenLine,         path: '/trainer/attendance/manual', color: 'text-orange-400' },
     ],
   },
   {
@@ -119,6 +120,7 @@ const adminGroups: NavGroup[] = [
     label: 'Academics',
     items: [
       { name: 'Score Management',  icon: FileText,        path: '/admin/scores',               color: 'text-red-400'    },
+      { name: 'Bulk Upload Marks', icon: Upload,          path: '/admin/scores/bulk-upload',   color: 'text-amber-400'  },
       { name: 'Documents',          icon: BookOpen,        path: '/admin/documents',            color: 'text-teal-300'   },
       { name: 'Progress',          icon: BarChart,        path: '/progress',                   color: 'text-green-400'},
     ],
@@ -136,6 +138,7 @@ const adminGroups: NavGroup[] = [
     label: 'Attendance',
     items: [
       { name: 'Take Attendance',   icon: QrCode,          path: '/trainer/attendance-session', color: 'text-teal-300' },
+      { name: 'Manual Attendance',  icon: PenLine,         path: '/admin/attendance/manual',    color: 'text-orange-400' },
       { name: 'Attendance Report', icon: CalendarCheck,   path: '/admin/attendance',           color: 'text-green-400' },
     ],
   },

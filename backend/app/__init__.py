@@ -67,6 +67,7 @@ def create_app() -> Flask:
         advanced_analytics_bp,
         advanced_reports_bp,
         documents_bp,
+        bulk_marks_bp,
         attendance_bp,
     )
 
@@ -114,6 +115,7 @@ def create_app() -> Flask:
     app.register_blueprint(advanced_analytics_bp)
     app.register_blueprint(advanced_reports_bp)
     app.register_blueprint(documents_bp)
+    app.register_blueprint(bulk_marks_bp)
     
     # Attendance system
     app.register_blueprint(attendance_bp)
