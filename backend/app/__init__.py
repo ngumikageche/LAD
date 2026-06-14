@@ -63,12 +63,14 @@ def create_app() -> Flask:
         announcements_v1_bp,
         reports_bp,
         trainer_reports_bp,
+        student_reports_bp,
         admin_reports_v2_bp,
         advanced_analytics_bp,
         advanced_reports_bp,
         documents_bp,
         bulk_marks_bp,
         attendance_bp,
+        online_exams_bp,
     )
 
     # Register blueprints
@@ -111,11 +113,13 @@ def create_app() -> Flask:
     app.register_blueprint(announcements_v1_bp)
     app.register_blueprint(reports_bp)
     app.register_blueprint(trainer_reports_bp)
+    app.register_blueprint(student_reports_bp)
     app.register_blueprint(admin_reports_v2_bp)
     app.register_blueprint(advanced_analytics_bp)
     app.register_blueprint(advanced_reports_bp)
     app.register_blueprint(documents_bp)
     app.register_blueprint(bulk_marks_bp)
+    app.register_blueprint(online_exams_bp)
     
     # Attendance system
     app.register_blueprint(attendance_bp)

@@ -18,6 +18,8 @@ from ..models.trainer_subject import TrainerSubject
 from ..models.student_subject import StudentSubject
 from ..models.institution import Institution
 from .permissions import get_current_user, log_view, _is_admin, _is_trainer, _is_student
+from ..services.report_permissions import check_report_permission
+from ..services import report_queries
 
 bp = Blueprint("reports", __name__, url_prefix="/reports")
 
@@ -45,21 +47,7 @@ def _school_info(user) -> dict:
 
 def _can_access_student(user, student: Student) -> bool:
     """Return True if the requesting user may view this student's reports."""
-    if _is_admin(user):
-        return True
-    # Student viewing own record
-    if _is_student(user) and user.student and user.student.id == student.id:
-        return True
-    # Trainer viewing a student enrolled in one of their subjects
-    if _is_trainer(user) and user.trainer:
-        trainer_subject_ids = {
-            ts.subject_id for ts in user.trainer.trainer_subjects
-        }
-        student_subject_ids = {
-            ss.subject_id for ss in student.student_subjects
-        }
-        return bool(trainer_subject_ids & student_subject_ids)
-    return False
+    return check_report_permission(user, "student_term", student.id).canView
 
 
 # ─────────────────────────────────────────────────────────────
@@ -184,8 +172,9 @@ def attendance_report(student_id: str):
     if not student or student.deleted_at:
         return {"error": "Student not found"}, 404
 
-    if not _can_access_student(user, student):
-        return {"error": "Permission denied"}, 403
+    access = check_report_permission(user, "student_attendance", student.id)
+    if not access.canView:
+        return {"error": access.reason}, 403
 
     term_id_str = request.args.get("term_id")
     month_str = request.args.get("month")  # format: YYYY-MM
@@ -291,8 +280,9 @@ def fee_statement(student_id: str):
     if not student or student.deleted_at:
         return {"error": "Student not found"}, 404
 
-    if not _can_access_student(user, student):
-        return {"error": "Permission denied"}, 403
+    access = check_report_permission(user, "student_fees", student.id)
+    if not access.canView:
+        return {"error": access.reason}, 403
 
     term_id_str = request.args.get("term_id")
     term = None
@@ -330,3 +320,126 @@ def fee_statement(student_id: str):
         "note": "Fee management module not yet configured.",
         "generated_at": datetime.utcnow().isoformat(),
     }, 200
+
+
+@bp.get("/student/<student_id>/term/<term_id>")
+def student_term(student_id: str, term_id: str):
+    user, error, status = get_current_user()
+    if error:
+        return error, status
+    try:
+        return report_queries.student_term_report(user, student_id, term_id)
+    except ValueError:
+        return {"error": "Invalid student_id or term_id"}, 400
+
+
+@bp.get("/student/<student_id>/transcript")
+def transcript(student_id: str):
+    user, error, status = get_current_user()
+    if error:
+        return error, status
+    try:
+        return report_queries.student_transcript(user, student_id)
+    except ValueError:
+        return {"error": "Invalid student_id"}, 400
+
+
+@bp.get("/student/<student_id>/discipline")
+def discipline(student_id: str):
+    user, error, status = get_current_user()
+    if error:
+        return error, status
+    access = check_report_permission(user, "student_discipline", student_id)
+    if not access.canView:
+        return {"error": access.reason}, 403
+    return {
+        "student_id": student_id,
+        "incidents": [],
+        "actions": [],
+        "note": "No discipline/behaviour table exists in the current schema.",
+        "permissions": {"canPrint": access.canPrint, "canExport": access.canExport},
+        "generated_at": datetime.utcnow().isoformat(),
+    }, 200
+
+
+@bp.get("/class/<class_id>/performance")
+def class_performance_alias(class_id: str):
+    user, error, status = get_current_user()
+    if error:
+        return error, status
+    try:
+        return report_queries.class_performance_report(user, class_id, request.args.get("term_id"))
+    except ValueError:
+        return {"error": "Invalid class_id or term_id"}, 400
+
+
+@bp.get("/class/<class_id>/at-risk")
+def class_at_risk(class_id: str):
+    user, error, status = get_current_user()
+    if error:
+        return error, status
+    try:
+        threshold = float(request.args.get("threshold", 50))
+        return report_queries.at_risk_students_report(user, class_id, request.args.get("term_id"), threshold)
+    except ValueError:
+        return {"error": "Invalid class_id, term_id, or threshold"}, 400
+
+
+@bp.get("/teacher/<teacher_id>/attendance")
+def teacher_attendance_alias(teacher_id: str):
+    user, error, status = get_current_user()
+    if error:
+        return error, status
+    try:
+        return report_queries.teacher_attendance_report(
+            user,
+            teacher_id,
+            request.args.get("dateFrom") or request.args.get("date_from"),
+            request.args.get("dateTo") or request.args.get("date_to"),
+        )
+    except ValueError:
+        return {"error": "Invalid teacher_id or date filter"}, 400
+
+
+@bp.get("/teacher/<teacher_id>/appraisal")
+def teacher_appraisal(teacher_id: str):
+    user, error, status = get_current_user()
+    if error:
+        return error, status
+    access = check_report_permission(user, "teacher_appraisal", teacher_id)
+    if not access.canView:
+        return {"error": access.reason}, 403
+    return {
+        "teacher_id": teacher_id,
+        "items": [],
+        "note": "No appraisal/evaluation table exists in the current schema.",
+        "permissions": {"canPrint": access.canPrint, "canExport": access.canExport},
+        "generated_at": datetime.utcnow().isoformat(),
+    }, 200
+
+
+@bp.get("/admin/pass-rate")
+def admin_pass_rate_alias():
+    user, error, status = get_current_user()
+    if error:
+        return error, status
+    try:
+        return report_queries.school_pass_rate_report(user, request.args.get("term_id"))
+    except ValueError:
+        return {"error": "Invalid term_id"}, 400
+
+
+@bp.get("/admin/safeguarding")
+def admin_safeguarding():
+    user, error, status = get_current_user()
+    if error:
+        return error, status
+    return report_queries.empty_admin_stub(user, "admin_safeguarding", "Safeguarding Log")
+
+
+@bp.get("/admin/compliance")
+def admin_compliance():
+    user, error, status = get_current_user()
+    if error:
+        return error, status
+    return report_queries.empty_admin_stub(user, "admin_compliance", "Compliance")

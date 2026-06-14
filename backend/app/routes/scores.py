@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from flask import Blueprint, request
+from flask import Blueprint, request, send_from_directory
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import and_, func
 from sqlalchemy.orm import joinedload
@@ -16,8 +16,14 @@ from ..models.course import Course
 from ..models.notification import Notification
 from ..models.subject import Subject
 from .permissions import log_view, require_permission, get_current_user
+from ..services.score_evidence import EVIDENCE_UPLOAD_FOLDER
 
 bp = Blueprint('scores', __name__, url_prefix='/scores')
+
+
+@bp.get("/evidence/files/<path:filename>")
+def serve_score_evidence_file(filename: str):
+    return send_from_directory(EVIDENCE_UPLOAD_FOLDER, filename)
 
 
 def _parse_uuid(value: str | None, field: str) -> uuid.UUID:

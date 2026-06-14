@@ -11,6 +11,8 @@ from .term import Term
 from .enrollment import Enrollment
 from .assessment import Assessment
 from .score import Score
+from .score_evidence import ScoreEvidence
+from .online_exam import OnlineExam, OnlineExamSubmission
 from .announcement import Announcement, AnnouncementRead
 from .trainer_course import TrainerCourse
 from .subject import Subject
@@ -28,6 +30,7 @@ from .portfolio_evidence import PortfolioEvidence
 from .competency_record import CompetencyRecord
 from .course_subject import CourseSubject
 from .document import Document
+from .student_report import StudentReport
 from .module import Module
 from .competency import Competency
 from .attendance_session import AttendanceSession, AttendanceRecord, AttendanceTokenHistory
@@ -46,6 +49,9 @@ __all__ = [
 	"Enrollment",
 	"Assessment",
 	"Score",
+	"ScoreEvidence",
+	"OnlineExam",
+	"OnlineExamSubmission",
 	"Announcement",
 	"AnnouncementRead",
 	"TrainerCourse",
@@ -60,6 +66,7 @@ __all__ = [
 	"LessonPlan",
 	"StaffAttendance",
 	"Document",
+	"StudentReport",
 	"Module",
 	"Competency",
 	"AttendanceSession",

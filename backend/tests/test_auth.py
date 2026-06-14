@@ -32,7 +32,7 @@ def test_login_success_returns_token_and_user(client, app):
 
     resp = client.post(
         "/auth/login",
-        json={"email": "auth@example.com", "password": "S3cret!"},
+        json={"email": "auth@example.com", "password": "    "},
     )
 
     assert resp.status_code == 200

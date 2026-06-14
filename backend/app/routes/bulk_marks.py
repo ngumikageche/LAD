@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import csv
 import io
+import json
 import uuid
 
-from flask import Blueprint, request
+from flask import Blueprint, request, send_from_directory
 
 from ..extensions import db
 from ..models.assessment import Assessment
@@ -12,6 +13,7 @@ from ..models.course import Course
 from ..models.score import Score
 from ..models.student import Student
 from ..models.subject import Subject
+from ..services.score_evidence import EVIDENCE_UPLOAD_FOLDER, save_score_evidence_files, usable_score_evidence_files
 from .permissions import require_permission
 
 bp = Blueprint("bulk_marks", __name__, url_prefix="/scores/bulk-marks")
@@ -240,15 +242,29 @@ def commit_bulk():
     if error:
         return error, status
 
-    payload = request.get_json(silent=True) or {}
+    evidence_files = usable_score_evidence_files(request.files.getlist("exam_copies"))
+    if not evidence_files:
+        return {"error": "Upload at least one physical exam copy before committing marks"}, 400
+
+    if not (request.content_type and request.content_type.startswith("multipart/form-data")):
+        return {"error": "Use multipart/form-data and include exam_copies files"}, 400
+
+    try:
+        payload = {"rows": json.loads(request.form.get("rows", "[]"))}
+    except json.JSONDecodeError:
+        return {"error": "'rows' must be valid JSON"}, 400
+
     rows = payload.get("rows", [])
     if not rows:
         return {"error": "No rows provided"}, 400
 
+    batch_id = uuid.uuid4().hex
     inserted = 0
     updated = 0
     skipped = 0
     errors = []
+    assessment_ids = set()
+    subject_ids = set()
 
     for row in rows:
         if not row.get("valid"):
@@ -272,6 +288,7 @@ def commit_bulk():
         if not assessment:
             skipped += 1
             continue
+        assessment_ids.add(assessment_uuid)
 
         marks = float(row["marks_obtained"])
         grade = row.get("grade") or _grade(marks, assessment.total_marks)
@@ -284,6 +301,7 @@ def commit_bulk():
         if row.get("subject_id"):
             try:
                 subject_id = uuid.UUID(row["subject_id"])
+                subject_ids.add(subject_id)
             except (ValueError, TypeError):
                 pass
 
@@ -316,12 +334,26 @@ def commit_bulk():
             inserted += 1
 
     try:
+        save_score_evidence_files(
+            evidence_files,
+            uploaded_by=user.id,
+            batch_id=batch_id,
+            assessment_id=next(iter(assessment_ids)) if len(assessment_ids) == 1 else None,
+            subject_id=next(iter(subject_ids)) if len(subject_ids) == 1 else None,
+        )
         db.session.commit()
     except Exception as exc:
         db.session.rollback()
         return {"error": str(exc)}, 500
 
-    return {"inserted": inserted, "updated": updated, "skipped": skipped, "errors": errors}, 200
+    return {
+        "inserted": inserted,
+        "updated": updated,
+        "skipped": skipped,
+        "errors": errors,
+        "batch_id": batch_id,
+        "evidence_files": len(evidence_files),
+    }, 200
 
 
 # ── Template download ─────────────────────────────────────────────────────────
@@ -336,3 +368,8 @@ def download_template():
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment; filename=marks_upload_template.csv"},
     )
+
+
+@bp.get("/evidence/files/<path:filename>")
+def serve_evidence_file(filename: str):
+    return send_from_directory(EVIDENCE_UPLOAD_FOLDER, filename)

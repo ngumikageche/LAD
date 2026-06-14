@@ -3,10 +3,17 @@ from __future__ import annotations
 import uuid
 
 from flask import Blueprint, request
+from sqlalchemy import distinct
 from sqlalchemy.exc import IntegrityError
 
 from ..extensions import db
+from ..models.course import Course
+from ..models.module import Module
 from ..models.notification import Notification
+from ..models.role_permission import RolePermission
+from ..models.student import Student
+from ..models.student_subject import StudentSubject
+from ..models.subject import Subject
 from ..models.user import User
 from .permissions import log_view, require_permission
 
@@ -32,6 +39,63 @@ def _notification_payload(notification: Notification) -> dict:
         "is_read": notification.is_read,
         "created_at": notification.created_at.isoformat() if notification.created_at else None,
     }
+
+
+def _recipient_payload(user: User) -> dict:
+    return {
+        "id": str(user.id),
+        "name": user.name,
+        "email": user.email,
+        "phone": user.phone,
+        "role_name": user.role.role_name if user.role else None,
+    }
+
+
+def _bulk_recipient_query(filters: dict):
+    target = filters.get("target", "all")
+    query = db.session.query(User).filter(User.deleted_at.is_(None))
+
+    if target == "all":
+        return query
+
+    if target == "role":
+        role_name = filters.get("role_name")
+        if not role_name or not isinstance(role_name, str):
+            raise ValueError("'role_name' is required for role targeting")
+        return query.join(RolePermission).filter(RolePermission.role_name == role_name.strip())
+
+    if target in {"course", "module", "subject", "year"}:
+        query = query.join(Student, Student.user_id == User.id)
+
+    if target == "course":
+        course_id = _parse_uuid(filters.get("course_id"), "course_id")
+        if not db.session.get(Course, course_id):
+            raise ValueError("Invalid 'course_id'")
+        return query.filter(Student.course_id == course_id)
+
+    if target == "module":
+        module_id = _parse_uuid(filters.get("module_id"), "module_id")
+        if not db.session.get(Module, module_id):
+            raise ValueError("Invalid 'module_id'")
+        subject_ids = db.session.query(Subject.id).filter(Subject.module_id == module_id)
+        student_ids = db.session.query(distinct(StudentSubject.student_id)).filter(StudentSubject.subject_id.in_(subject_ids))
+        return query.filter(Student.id.in_(student_ids))
+
+    if target == "subject":
+        subject_id = _parse_uuid(filters.get("subject_id"), "subject_id")
+        if not db.session.get(Subject, subject_id):
+            raise ValueError("Invalid 'subject_id'")
+        student_ids = db.session.query(distinct(StudentSubject.student_id)).filter(StudentSubject.subject_id == subject_id)
+        return query.filter(Student.id.in_(student_ids))
+
+    if target == "year":
+        try:
+            year = int(filters.get("enrollment_year"))
+        except (TypeError, ValueError) as exc:
+            raise ValueError("'enrollment_year' must be a valid year") from exc
+        return query.filter(Student.enrollment_year == year)
+
+    raise ValueError("Invalid 'target'")
 
 
 @bp.post("")
@@ -72,6 +136,80 @@ def create_notification():
         return {"error": "Unable to create notification"}, 409
 
     return _notification_payload(notification), 201
+
+
+@bp.post("/bulk")
+def create_bulk_notifications():
+    user, error, status = require_permission("notifications.create")
+    if error:
+        return error, status
+
+    payload = request.get_json(silent=True) or {}
+    title = payload.get("title")
+    message = payload.get("message")
+    filters = payload.get("filters") or {}
+    sms_config = payload.get("sms_config") or {}
+
+    if not title or not isinstance(title, str):
+        return {"error": "'title' is required"}, 400
+    if not message or not isinstance(message, str):
+        return {"error": "'message' is required"}, 400
+    if not isinstance(filters, dict):
+        return {"error": "'filters' must be an object"}, 400
+    if not isinstance(sms_config, dict):
+        return {"error": "'sms_config' must be an object"}, 400
+
+    try:
+        recipient_query = _bulk_recipient_query(filters)
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+
+    recipient_ids = [row[0] for row in recipient_query.with_entities(User.id).distinct().all()]
+    if not recipient_ids:
+        return {"error": "No recipients match this target"}, 400
+
+    notifications = [
+        Notification(user_id=recipient_id, title=title.strip(), message=message.strip(), is_read=False)
+        for recipient_id in recipient_ids
+    ]
+    db.session.add_all(notifications)
+
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return {"error": "Unable to create bulk notifications"}, 409
+
+    sms_enabled = bool(sms_config.get("enabled"))
+    recipients = db.session.query(User).filter(User.id.in_(recipient_ids)).all()
+    phone_ready = [recipient for recipient in recipients if recipient.phone]
+
+    log_view(
+        user,
+        "notifications.bulk",
+        metadata={
+            "target": filters.get("target", "all"),
+            "recipient_count": len(recipient_ids),
+            "sms_enabled": sms_enabled,
+            "sms_provider": sms_config.get("provider"),
+        },
+    )
+
+    return {
+        "status": "created",
+        "notifications_sent": len(notifications),
+        "recipients": [_recipient_payload(recipient) for recipient in recipients[:25]],
+        "recipient_count": len(recipient_ids),
+        "sms": {
+            "enabled": sms_enabled,
+            "provider": sms_config.get("provider") or "manual",
+            "sender_id": sms_config.get("sender_id") or None,
+            "dry_run": bool(sms_config.get("dry_run", True)),
+            "phone_ready_count": len(phone_ready),
+            "skipped_no_phone_count": len(recipient_ids) - len(phone_ready),
+            "status": "preview" if sms_enabled else "disabled",
+        },
+    }, 201
 
 
 @bp.get("")

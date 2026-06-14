@@ -25,7 +25,7 @@ from ..services.trainer_portal import (
     trainer_dashboard,
     trainer_subject_report,
 )
-from .permissions import trainer_required
+from .permissions import trainer_or_admin_required, trainer_required
 
 
 bp = Blueprint("trainer_portal", __name__, url_prefix="/api/v1/trainer")
@@ -58,33 +58,49 @@ def list_assigned_courses():
 
 
 @bp.get("/assigned-subjects")
-@trainer_required("attendance.read")
+@trainer_or_admin_required("attendance.read")
 def list_assigned_subjects():
-    """Return subjects this trainer is assigned to, with module and course context."""
+    """Return assigned subjects with module/course context.
+
+    Trainers receive their own subjects. Admins receive all assigned trainer
+    subject pairs so they can create a session on behalf of a trainer.
+    """
     from ..models.trainer_subject import TrainerSubject
     from ..models.subject import Subject
     from ..models.module import Module
     from ..models.course import Course
+    from ..models.trainer import Trainer
+    from ..models.user import User
+
     rows = (
-        db.session.query(Subject, Module, Course)
+        db.session.query(Subject, Module, Course, Trainer, User, TrainerSubject)
         .join(TrainerSubject, TrainerSubject.subject_id == Subject.id)
+        .join(Trainer, Trainer.id == TrainerSubject.trainer_id)
+        .join(User, User.id == Trainer.user_id)
         .join(Module, Module.id == Subject.module_id)
         .join(Course, Course.id == Module.course_id)
-        .filter(TrainerSubject.trainer_id == g.current_trainer.id)
         .order_by(Subject.name.asc())
-        .all()
     )
+
+    if g.current_trainer:
+        rows = rows.filter(TrainerSubject.trainer_id == g.current_trainer.id)
+    elif request.args.get("trainer_id"):
+        rows = rows.filter(TrainerSubject.trainer_id == parse_uuid(request.args["trainer_id"], "trainer_id"))
+
     return [
         {
             "id": str(s.id),
+            "assignment_id": str(ts.id),
             "name": s.name,
+            "trainer_id": str(t.id),
+            "trainer_name": u.name,
             "module_id": str(m.id),
             "module_name": m.name,
             "course_id": str(c.id),
             "course_name": c.name,
             "cbet_level": c.cbet_level,
         }
-        for s, m, c in rows
+        for s, m, c, t, u, ts in rows.all()
     ], 200
 
 
@@ -348,9 +364,43 @@ def get_at_risk_students():
 @bp.post("/scores")
 @trainer_required("scores.create")
 def create_score():
-    payload = request.get_json(silent=True) or {}
+    from ..services.score_evidence import allowed_score_evidence, save_score_evidence_files, usable_score_evidence_files
+
+    evidence_files = usable_score_evidence_files(request.files.getlist("exam_copies"))
+    if not evidence_files:
+        return {"error": "Upload at least one physical exam copy before saving marks"}, 400
+    invalid_file = next((file.filename for file in evidence_files if not allowed_score_evidence(file.filename or "")), None)
+    if invalid_file:
+        return {"error": f"Exam copy file type not allowed: {invalid_file}"}, 400
+
+    if not (request.content_type and request.content_type.startswith("multipart/form-data")):
+        return {"error": "Use multipart/form-data and include exam_copies files"}, 400
+
+    payload = {
+        "student_id": request.form.get("student_id"),
+        "subject_id": request.form.get("subject_id"),
+        "term": request.form.get("term"),
+        "feedback": request.form.get("feedback") or None,
+    }
+    try:
+        payload["score"] = float(request.form.get("score", ""))
+    except (TypeError, ValueError):
+        payload["score"] = request.form.get("score")
+
     from ..services.trainer_portal import create_score as svc_create_score
     score = svc_create_score(g.current_trainer, payload)
+    try:
+        save_score_evidence_files(
+            evidence_files,
+            uploaded_by=g.current_user.id,
+            trainer_id=g.current_trainer.id,
+            score_id=score.id,
+            subject_id=score.subject_id,
+        )
+        db.session.commit()
+    except ValueError as exc:
+        db.session.rollback()
+        return {"error": str(exc)}, 400
     return score_payload(score), 201
 
 
