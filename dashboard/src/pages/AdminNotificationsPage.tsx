@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Bell, Plus, Edit2, Trash2, CheckCircle2, AlertCircle, Calendar } from 'lucide-react';
+import { useState, useEffect, type FormEvent } from 'react';
+import { Bell, Plus, Edit2, Trash2, CheckCircle2, AlertCircle, Calendar, Send } from 'lucide-react';
 import { adminNotificationsAPI } from '../api/admin';
 import { apiRequest } from '../api/client';
 
@@ -18,17 +18,84 @@ interface NotificationForm {
   user_id: string;
 }
 
+interface UserOption {
+  id: string;
+  name: string;
+  email: string;
+  phone?: string | null;
+  role_name?: string | null;
+}
+
+interface ResourceOption {
+  id: string;
+  name: string;
+}
+
+interface StudentOption {
+  id: string;
+  enrollment_year?: number | string | null;
+}
+
+type ComposeMode = 'single' | 'bulk';
+type BulkTarget = 'all' | 'role' | 'course' | 'module' | 'subject' | 'year';
+
+interface BulkFilters {
+  target: BulkTarget;
+  role_name: string;
+  course_id: string;
+  module_id: string;
+  subject_id: string;
+  enrollment_year: string;
+}
+
+interface SmsConfig {
+  enabled: boolean;
+  provider: string;
+  sender_id: string;
+  dry_run: boolean;
+}
+
+const emptyForm: NotificationForm = { title: '', message: '', user_id: '' };
+const emptyFilters: BulkFilters = {
+  target: 'all',
+  role_name: '',
+  course_id: '',
+  module_id: '',
+  subject_id: '',
+  enrollment_year: '',
+};
+const defaultSmsConfig: SmsConfig = {
+  enabled: true,
+  provider: 'manual',
+  sender_id: '',
+  dry_run: true,
+};
+
 export default function AdminNotificationsPage() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [users, setUsers] = useState<{ id: string; name: string; email: string }[]>([]);
+  const [users, setUsers] = useState<UserOption[]>([]);
+  const [courses, setCourses] = useState<ResourceOption[]>([]);
+  const [modules, setModules] = useState<ResourceOption[]>([]);
+  const [subjects, setSubjects] = useState<ResourceOption[]>([]);
+  const [years, setYears] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filterRead, setFilterRead] = useState<'all' | 'read' | 'unread'>('all');
+  const [composeMode, setComposeMode] = useState<ComposeMode>('single');
+  const [bulkFilters, setBulkFilters] = useState<BulkFilters>(emptyFilters);
+  const [smsConfig, setSmsConfig] = useState<SmsConfig>(() => {
+    try {
+      const stored = localStorage.getItem('adminSmsConfig');
+      return stored ? { ...defaultSmsConfig, ...JSON.parse(stored) } : defaultSmsConfig;
+    } catch {
+      return defaultSmsConfig;
+    }
+  });
 
-  const [formData, setFormData] = useState<NotificationForm>({ title: '', message: '', user_id: '' });
+  const [formData, setFormData] = useState<NotificationForm>(emptyForm);
 
   const loadNotifications = async () => {
     try {
@@ -46,12 +113,46 @@ export default function AdminNotificationsPage() {
   useEffect(() => { loadNotifications(); }, []);
 
   useEffect(() => {
-    apiRequest<{ id: string; name: string; email: string }[]>('/users')
-      .then(d => setUsers(Array.isArray(d) ? d : []))
-      .catch(() => {});
+    localStorage.setItem('adminSmsConfig', JSON.stringify(smsConfig));
+  }, [smsConfig]);
+
+  useEffect(() => {
+    Promise.allSettled([
+      apiRequest<UserOption[]>('/users'),
+      apiRequest<ResourceOption[]>('/courses'),
+      apiRequest<ResourceOption[]>('/modules'),
+      apiRequest<ResourceOption[]>('/subjects'),
+      apiRequest<StudentOption[]>('/students'),
+    ]).then(([usersResult, coursesResult, modulesResult, subjectsResult, studentsResult]) => {
+      if (usersResult.status === 'fulfilled' && Array.isArray(usersResult.value)) {
+        setUsers(usersResult.value);
+      }
+      if (coursesResult.status === 'fulfilled' && Array.isArray(coursesResult.value)) {
+        setCourses(coursesResult.value);
+      }
+      if (modulesResult.status === 'fulfilled' && Array.isArray(modulesResult.value)) {
+        setModules(modulesResult.value);
+      }
+      if (subjectsResult.status === 'fulfilled' && Array.isArray(subjectsResult.value)) {
+        setSubjects(subjectsResult.value);
+      }
+      if (studentsResult.status === 'fulfilled' && Array.isArray(studentsResult.value)) {
+        const uniqueYears = Array.from(
+          new Set(
+            studentsResult.value
+              .map((student) => student.enrollment_year)
+              .filter((year): year is string | number => year !== null && year !== undefined && year !== '')
+              .map(String)
+          )
+        ).sort((a, b) => Number(b) - Number(a));
+        setYears(uniqueYears);
+      }
+    });
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const roleNames = Array.from(new Set(users.map((u) => u.role_name).filter(Boolean) as string[])).sort();
+
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!formData.title.trim() || !formData.message.trim()) {
       setError('Title and message are required');
@@ -62,6 +163,24 @@ export default function AdminNotificationsPage() {
       if (editingId) {
         await adminNotificationsAPI.updateNotification(editingId, { title: formData.title, message: formData.message });
         setSuccess('Notification updated successfully!');
+      } else if (composeMode === 'bulk') {
+        const result = await adminNotificationsAPI.createBulkNotification({
+          title: formData.title,
+          message: formData.message,
+          filters: {
+            target: bulkFilters.target,
+            role_name: bulkFilters.role_name || undefined,
+            course_id: bulkFilters.course_id || undefined,
+            module_id: bulkFilters.module_id || undefined,
+            subject_id: bulkFilters.subject_id || undefined,
+            enrollment_year: bulkFilters.enrollment_year || undefined,
+          },
+          sms_config: smsConfig,
+        }) as { recipient_count?: number; sms?: { phone_ready_count?: number; skipped_no_phone_count?: number } };
+        const recipientCount = result.recipient_count ?? 0;
+        const phoneReady = result.sms?.phone_ready_count ?? 0;
+        const noPhone = result.sms?.skipped_no_phone_count ?? 0;
+        setSuccess(`Bulk message created for ${recipientCount} users. SMS-ready: ${phoneReady}; missing phone: ${noPhone}.`);
       } else {
         if (!formData.user_id.trim()) { setError('User ID is required'); return; }
         await adminNotificationsAPI.createNotification({ title: formData.title, message: formData.message, user_id: formData.user_id });
@@ -76,13 +195,16 @@ export default function AdminNotificationsPage() {
   };
 
   const resetForm = () => {
-    setFormData({ title: '', message: '', user_id: '' });
+    setFormData(emptyForm);
+    setBulkFilters(emptyFilters);
+    setComposeMode('single');
     setShowForm(false);
     setEditingId(null);
   };
 
   const handleEdit = (n: Notification) => {
     setFormData({ title: n.title, message: n.message, user_id: n.user_id });
+    setComposeMode('single');
     setEditingId(n.id);
     setShowForm(true);
   };
@@ -123,14 +245,14 @@ export default function AdminNotificationsPage() {
               <Bell size={32} className="text-purple-500" />
               Notifications Management
             </h1>
-            <p className="text-slate-400 mt-2">Send and manage notifications to system users</p>
+            <p className="text-slate-400 mt-2">Send notifications and prepare bulk SMS messages for targeted groups</p>
           </div>
           <button
             onClick={() => { resetForm(); setShowForm(true); }}
             className="px-6 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-medium flex items-center gap-2"
           >
             <Plus size={20} />
-            New Notification
+            New Message
           </button>
         </div>
 
@@ -146,31 +268,194 @@ export default function AdminNotificationsPage() {
           </div>
         )}
 
+        <div className="mb-6 bg-slate-900 border border-slate-800 rounded-lg shadow p-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-bold text-slate-100 flex items-center gap-2">
+                <Send size={18} className="text-purple-400" />
+                Bulk SMS Config
+              </h2>
+              <p className="text-sm text-slate-400 mt-1">Saved in this browser and sent with each bulk message request.</p>
+            </div>
+            <label className="flex items-center gap-2 text-sm font-medium text-slate-300">
+              <input
+                type="checkbox"
+                checked={smsConfig.enabled}
+                onChange={(e) => setSmsConfig({ ...smsConfig, enabled: e.target.checked })}
+                className="h-4 w-4 rounded accent-purple-500"
+              />
+              Enable SMS preview
+            </label>
+          </div>
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">Provider</label>
+              <select
+                value={smsConfig.provider}
+                onChange={(e) => setSmsConfig({ ...smsConfig, provider: e.target.value })}
+                className="w-full px-4 py-2 bg-slate-800 text-slate-200 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              >
+                <option value="manual">Manual / CSV export</option>
+                <option value="africastalking">Africa's Talking</option>
+                <option value="twilio">Twilio</option>
+                <option value="custom">Custom Gateway</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-2">Sender ID</label>
+              <input
+                type="text"
+                value={smsConfig.sender_id}
+                onChange={(e) => setSmsConfig({ ...smsConfig, sender_id: e.target.value })}
+                placeholder="School name or approved sender"
+                className="w-full px-4 py-2 bg-slate-800 text-slate-200 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+              />
+            </div>
+            <label className="flex items-center gap-2 text-sm font-medium text-slate-300 md:pt-8">
+              <input
+                type="checkbox"
+                checked={smsConfig.dry_run}
+                onChange={(e) => setSmsConfig({ ...smsConfig, dry_run: e.target.checked })}
+                className="h-4 w-4 rounded accent-purple-500"
+              />
+              Dry run only
+            </label>
+          </div>
+        </div>
+
         {/* Form Modal */}
         {showForm && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-slate-900 border border-slate-800 rounded-lg shadow-lg max-w-lg w-full">
-              <div className="p-6 border-b flex items-center justify-between">
+            <div className="bg-slate-900 border border-slate-800 rounded-lg shadow-lg max-w-2xl w-full max-h-[calc(100vh-2rem)] flex flex-col overflow-hidden">
+              <div className="p-6 border-b border-slate-800 flex items-center justify-between shrink-0">
                 <h2 className="text-xl font-bold text-slate-100">
-                  {editingId ? 'Edit Notification' : 'Create Notification'}
+                  {editingId ? 'Edit Notification' : 'Create Message'}
                 </h2>
                 <button onClick={resetForm} className="text-slate-400 hover:text-slate-100 text-2xl">×</button>
               </div>
-              <form onSubmit={handleSubmit} className="p-6 space-y-4">
+              <form onSubmit={handleSubmit} className="min-h-0 flex flex-1 flex-col">
+                <div className="min-h-0 flex-1 overflow-y-auto p-6 space-y-4">
                 {!editingId && (
-                  <div>
-                    <label className="block text-sm font-medium text-slate-300 mb-2">Target User</label>
-                    <select
-                      value={formData.user_id}
-                      onChange={(e) => setFormData({ ...formData, user_id: e.target.value })}
-                      className="w-full px-4 py-2 bg-slate-800 text-slate-200 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    >
-                      <option value="">— Select user —</option>
-                      {users.map(u => (
-                        <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
+                  <>
+                    <div className="grid grid-cols-2 gap-2 rounded-lg bg-slate-800/70 p-1">
+                      {(['single', 'bulk'] as const).map((mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          onClick={() => setComposeMode(mode)}
+                          className={`rounded-md px-3 py-2 text-sm font-semibold capitalize transition ${
+                            composeMode === mode ? 'bg-purple-600 text-white' : 'text-slate-300 hover:bg-slate-700'
+                          }`}
+                        >
+                          {mode === 'single' ? 'One user' : 'Bulk group'}
+                        </button>
                       ))}
-                    </select>
-                  </div>
+                    </div>
+
+                    {composeMode === 'single' ? (
+                      <div>
+                        <label className="block text-sm font-medium text-slate-300 mb-2">Target User</label>
+                        <select
+                          value={formData.user_id}
+                          onChange={(e) => setFormData({ ...formData, user_id: e.target.value })}
+                          className="w-full px-4 py-2 bg-slate-800 text-slate-200 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                        >
+                          <option value="">- Select user -</option>
+                          {users.map(u => (
+                            <option key={u.id} value={u.id}>{u.name} ({u.email})</option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4 space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-slate-300 mb-2">Send To</label>
+                          <select
+                            value={bulkFilters.target}
+                            onChange={(e) => setBulkFilters({ ...emptyFilters, target: e.target.value as BulkTarget })}
+                            className="w-full px-4 py-2 bg-slate-800 text-slate-200 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                          >
+                            <option value="all">All active users</option>
+                            <option value="role">Certain role/group</option>
+                            <option value="course">Students in course</option>
+                            <option value="module">Students in module</option>
+                            <option value="subject">Students in subject</option>
+                            <option value="year">Students by enrollment year</option>
+                          </select>
+                        </div>
+
+                        {bulkFilters.target === 'role' && (
+                          <div>
+                            <label className="block text-sm font-medium text-slate-300 mb-2">Role / Group</label>
+                            <select
+                              value={bulkFilters.role_name}
+                              onChange={(e) => setBulkFilters({ ...bulkFilters, role_name: e.target.value })}
+                              className="w-full px-4 py-2 bg-slate-800 text-slate-200 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            >
+                              <option value="">- Select role -</option>
+                              {roleNames.map((role) => <option key={role} value={role}>{role}</option>)}
+                            </select>
+                          </div>
+                        )}
+
+                        {bulkFilters.target === 'course' && (
+                          <div>
+                            <label className="block text-sm font-medium text-slate-300 mb-2">Course</label>
+                            <select
+                              value={bulkFilters.course_id}
+                              onChange={(e) => setBulkFilters({ ...bulkFilters, course_id: e.target.value })}
+                              className="w-full px-4 py-2 bg-slate-800 text-slate-200 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            >
+                              <option value="">- Select course -</option>
+                              {courses.map((course) => <option key={course.id} value={course.id}>{course.name}</option>)}
+                            </select>
+                          </div>
+                        )}
+
+                        {bulkFilters.target === 'module' && (
+                          <div>
+                            <label className="block text-sm font-medium text-slate-300 mb-2">Module</label>
+                            <select
+                              value={bulkFilters.module_id}
+                              onChange={(e) => setBulkFilters({ ...bulkFilters, module_id: e.target.value })}
+                              className="w-full px-4 py-2 bg-slate-800 text-slate-200 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            >
+                              <option value="">- Select module -</option>
+                              {modules.map((module) => <option key={module.id} value={module.id}>{module.name}</option>)}
+                            </select>
+                          </div>
+                        )}
+
+                        {bulkFilters.target === 'subject' && (
+                          <div>
+                            <label className="block text-sm font-medium text-slate-300 mb-2">Subject</label>
+                            <select
+                              value={bulkFilters.subject_id}
+                              onChange={(e) => setBulkFilters({ ...bulkFilters, subject_id: e.target.value })}
+                              className="w-full px-4 py-2 bg-slate-800 text-slate-200 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            >
+                              <option value="">- Select subject -</option>
+                              {subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}
+                            </select>
+                          </div>
+                        )}
+
+                        {bulkFilters.target === 'year' && (
+                          <div>
+                            <label className="block text-sm font-medium text-slate-300 mb-2">Enrollment Year</label>
+                            <select
+                              value={bulkFilters.enrollment_year}
+                              onChange={(e) => setBulkFilters({ ...bulkFilters, enrollment_year: e.target.value })}
+                              className="w-full px-4 py-2 bg-slate-800 text-slate-200 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            >
+                              <option value="">- Select year -</option>
+                              {years.map((year) => <option key={year} value={year}>{year}</option>)}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </>
                 )}
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-2">Title</label>
@@ -179,7 +464,7 @@ export default function AdminNotificationsPage() {
                     value={formData.title}
                     onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                     placeholder="Notification title"
-                    className="w-full px-4 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    className="w-full px-4 py-2 bg-slate-800 text-slate-200 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   />
                 </div>
                 <div>
@@ -189,12 +474,13 @@ export default function AdminNotificationsPage() {
                     onChange={(e) => setFormData({ ...formData, message: e.target.value })}
                     placeholder="Notification message"
                     rows={4}
-                    className="w-full px-4 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    className="w-full px-4 py-2 bg-slate-800 text-slate-200 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   />
                 </div>
-                <div className="flex gap-4 pt-4 border-t">
+                </div>
+                <div className="flex gap-4 p-6 border-t border-slate-800 shrink-0">
                   <button type="submit" className="flex-1 px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-medium">
-                    {editingId ? 'Update' : 'Create'}
+                    {editingId ? 'Update' : composeMode === 'bulk' ? 'Create Bulk Message' : 'Create'}
                   </button>
                   <button type="button" onClick={resetForm} className="px-6 py-2 bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 transition font-medium">
                     Cancel

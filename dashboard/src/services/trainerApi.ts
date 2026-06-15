@@ -157,8 +157,21 @@ export const trainerApi = {
     score: number;
     term: string;
     feedback?: string;
+    exam_copies: File[];
   }) {
-    const response = await trainerClient.post<TrainerScore>('/api/v1/trainer/scores', payload);
+    const formData = new FormData();
+    formData.append('student_id', payload.student_id);
+    formData.append('subject_id', payload.subject_id);
+    formData.append('score', String(payload.score));
+    formData.append('term', payload.term);
+    if (payload.feedback) {
+      formData.append('feedback', payload.feedback);
+    }
+    payload.exam_copies.forEach((file) => formData.append('exam_copies', file));
+
+    const response = await trainerClient.post<TrainerScore>('/api/v1/trainer/scores', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
     return response.data;
   },
 

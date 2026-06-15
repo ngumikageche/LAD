@@ -84,6 +84,22 @@ export interface TrainerStats {
   avg_class_performance: number;
 }
 
+export interface StudentWrittenReport {
+  id: string;
+  student_id: string;
+  trainer_id: string | null;
+  trainer_name: string | null;
+  author_user_id: string;
+  author_name: string | null;
+  subject_id: string | null;
+  subject_name: string | null;
+  report_type: 'general' | 'academic' | 'attendance' | 'behaviour' | 'support' | 'progress';
+  title: string;
+  body: string;
+  visibility: string;
+  created_at: string | null;
+}
+
 // API Service Objects
 
 export const trainerSubjectsAPI = {
@@ -116,6 +132,22 @@ export const trainerStudentsAPI = {
     return response.data;
   },
 
+  async getAllStudentsForReports(): Promise<TrainerStudent[]> {
+    const response = await apiClient.get('/students');
+    const rows = Array.isArray(response.data) ? (response.data as any[]) : [];
+    return rows.map((student) => ({
+      id: String(student.id),
+      name: student.user?.name ?? 'Unnamed student',
+      email: student.user?.email ?? '',
+      student_id: student.registration_number ?? student.code ?? '',
+      enrollment_status: 'active',
+      subjects: [],
+      overall_avg: 0,
+      assessments_taken: 0,
+      subject_averages: {},
+    }));
+  },
+
   async getStudentsBySubject(subjectId: string): Promise<TrainerStudent[]> {
     const response = await apiClient.get(
       `/trainers/students?subject_id=${subjectId}`
@@ -131,6 +163,24 @@ export const trainerStudentsAPI = {
   async searchStudents(query: string): Promise<TrainerStudent[]> {
     const response = await apiClient.get(`/trainers/students/search?q=${query}`);
     return response.data;
+  },
+
+  async getStudentReports(studentId: string): Promise<StudentWrittenReport[]> {
+    const response = await apiClient.get(`/trainers/students/${studentId}/reports`);
+    return response.data as StudentWrittenReport[];
+  },
+
+  async createStudentReport(
+    studentId: string,
+    data: {
+      title: string;
+      body: string;
+      report_type: StudentWrittenReport['report_type'];
+      subject_id?: string;
+    }
+  ): Promise<StudentWrittenReport> {
+    const response = await apiClient.post(`/trainers/students/${studentId}/reports`, data);
+    return response.data as StudentWrittenReport;
   },
 };
 

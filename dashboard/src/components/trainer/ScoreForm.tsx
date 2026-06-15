@@ -14,6 +14,7 @@ const ScoreForm = ({ subjects, onCreated }: ScoreFormProps) => {
   const [term, setTerm] = useState('');
   const [score, setScore] = useState('');
   const [feedback, setFeedback] = useState('');
+  const [examCopies, setExamCopies] = useState<File[]>([]);
   const [students, setStudents] = useState<TrainerStudentOption[]>([]);
   const [studentsLoading, setStudentsLoading] = useState(false);
   const [studentQuery, setStudentQuery] = useState('');
@@ -102,6 +103,10 @@ const ScoreForm = ({ subjects, onCreated }: ScoreFormProps) => {
       setError('Student ID, subject, term, and score are required.');
       return;
     }
+    if (examCopies.length === 0) {
+      setError('Upload at least one physical exam copy before saving marks.');
+      return;
+    }
 
     try {
       setIsSubmitting(true);
@@ -111,6 +116,7 @@ const ScoreForm = ({ subjects, onCreated }: ScoreFormProps) => {
         term: term.trim(),
         score: numericScore,
         feedback: feedback.trim() || undefined,
+        exam_copies: examCopies,
       });
 
       setSuccess('Score uploaded successfully.');
@@ -119,6 +125,7 @@ const ScoreForm = ({ subjects, onCreated }: ScoreFormProps) => {
       setTerm('');
       setScore('');
       setFeedback('');
+      setExamCopies([]);
       await onCreated();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to upload score.');
@@ -269,6 +276,29 @@ const ScoreForm = ({ subjects, onCreated }: ScoreFormProps) => {
             className="w-full rounded-2xl border border-slate-700 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-emerald-500 focus:ring-2 focus:ring-emerald-100"
             placeholder="Optional comments for the learner."
           />
+        </label>
+
+        <label className="block md:col-span-2">
+          <span className="mb-2 block text-sm font-medium text-slate-300">Physical Exam Copies *</span>
+          <input
+            type="file"
+            multiple
+            accept=".pdf,.png,.jpg,.jpeg,.zip,application/pdf,image/png,image/jpeg,application/zip"
+            onChange={(event) => setExamCopies(Array.from(event.target.files ?? []))}
+            className="w-full rounded-2xl border border-slate-700 px-4 py-3 text-sm text-slate-300 file:mr-4 file:rounded-xl file:border-0 file:bg-emerald-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-emerald-700"
+          />
+          <p className="mt-2 text-xs text-slate-500">
+            Attach scanned PDFs, photos, or a ZIP of the original exam scripts.
+          </p>
+          {examCopies.length > 0 ? (
+            <div className="mt-2 space-y-1">
+              {examCopies.map((copy) => (
+                <p key={`${copy.name}-${copy.size}`} className="text-xs text-slate-400">
+                  {copy.name} ({(copy.size / 1024).toFixed(1)} KB)
+                </p>
+              ))}
+            </div>
+          ) : null}
         </label>
 
         <div className="md:col-span-2">

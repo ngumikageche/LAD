@@ -55,6 +55,7 @@ export interface StudentLocation {
 }
 
 export interface CreateSessionRequest {
+  trainer_id?: string;
   subject_id?: string;
   course_id?: string;
   module_id?: string;

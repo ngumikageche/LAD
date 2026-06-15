@@ -3,10 +3,14 @@ import { X, MapPin, Clock, Radius, Zap, BookOpen } from "lucide-react";
 import type { CreateSessionRequest } from "../types";
 import { useGPSLocation } from "../hooks/useGPSLocation";
 import { apiRequest } from "../../../api/client";
+import { useAuth } from "../../../auth/AuthContext";
 
 interface AssignedSubject {
   id: string;
+  assignment_id?: string;
   name: string;
+  trainer_id?: string;
+  trainer_name?: string;
   module_id: string;
   module_name: string;
   course_id: string;
@@ -26,6 +30,7 @@ const inputCls = "w-full px-4 py-2 bg-slate-800 border border-slate-700 rounded-
 const labelCls = "block text-sm font-medium text-slate-300 mb-1.5";
 
 export function CreateSessionModal({ isOpen, onClose, onSubmit, isLoading = false }: CreateSessionModalProps) {
+  const { user } = useAuth();
   const [formData, setFormData] = useState<CreateSessionRequest>({
     subject_id: undefined,
     latitude: 0,
@@ -38,6 +43,8 @@ export function CreateSessionModal({ isOpen, onClose, onSubmit, isLoading = fals
   const { location, requestLocation, loading: locationLoading } = useGPSLocation();
   const [error, setError] = useState<string | null>(null);
   const [subjects, setSubjects] = useState<AssignedSubject[]>([]);
+  const [selectedSubjectKey, setSelectedSubjectKey] = useState("");
+  const [useCustomRefresh, setUseCustomRefresh] = useState(false);
   const [subjectsLoading, setSubjectsLoading] = useState(false);
 
   useEffect(() => {
@@ -46,7 +53,10 @@ export function CreateSessionModal({ isOpen, onClose, onSubmit, isLoading = fals
     apiRequest<AssignedSubject[]>("/api/v1/trainer/assigned-subjects")
       .then((data) => {
         setSubjects(data);
-        if (data.length === 1) setFormData((prev) => ({ ...prev, subject_id: data[0].id }));
+        if (data.length === 1) {
+          setSelectedSubjectKey(data[0].assignment_id ?? data[0].id);
+          setFormData((prev) => ({ ...prev, subject_id: data[0].id }));
+        }
       })
       .catch(() => setError("Failed to load your assigned subjects."))
       .finally(() => setSubjectsLoading(false));
@@ -63,15 +73,29 @@ export function CreateSessionModal({ isOpen, onClose, onSubmit, isLoading = fals
     setError(null);
     if (!formData.latitude || !formData.longitude) { setError("Please capture your location"); return; }
     if (!formData.subject_id) { setError("Please select a subject"); return; }
-    const selected = subjects.find((s) => s.id === formData.subject_id);
+    const refreshInterval = formData.regeneration_interval ?? 25;
+    if (refreshInterval < 10 || refreshInterval > 300) {
+      setError("Token refresh must be between 10 and 300 seconds");
+      return;
+    }
+    const selected = subjects.find((s) => (s.assignment_id ?? s.id) === selectedSubjectKey);
+    if (user?.user_type === "admin" && !selected?.trainer_id) {
+      setError("Please select a trainer-assigned subject");
+      return;
+    }
     try {
-      await onSubmit({ ...formData, course_id: selected?.course_id, module_id: selected?.module_id });
+      await onSubmit({
+        ...formData,
+        trainer_id: selected?.trainer_id,
+        course_id: selected?.course_id,
+        module_id: selected?.module_id,
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create session");
     }
   };
 
-  const selectedSubject = subjects.find((s) => s.id === formData.subject_id);
+  const selectedSubject = subjects.find((s) => (s.assignment_id ?? s.id) === selectedSubjectKey);
 
   if (!isOpen) return null;
 
@@ -107,19 +131,26 @@ export function CreateSessionModal({ isOpen, onClose, onSubmit, isLoading = fals
             ) : (
               <>
                 <select
-                  value={formData.subject_id ?? ""}
-                  onChange={(e) => setFormData({ ...formData, subject_id: e.target.value })}
+                  value={selectedSubjectKey}
+                  onChange={(e) => {
+                    const selected = subjects.find((s) => (s.assignment_id ?? s.id) === e.target.value);
+                    setSelectedSubjectKey(e.target.value);
+                    setFormData({ ...formData, subject_id: selected?.id });
+                  }}
                   required
                   className={inputCls}
                 >
                   <option value="" disabled>Select a subject</option>
                   {subjects.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
+                    <option key={`${s.trainer_id ?? "trainer"}-${s.id}`} value={s.assignment_id ?? s.id}>
+                      {s.name}{s.trainer_name ? ` — ${s.trainer_name}` : ""}
+                    </option>
                   ))}
                 </select>
                 {selectedSubject && (
                   <p className="text-xs text-slate-500 mt-1">
                     {selectedSubject.course_name} ({selectedSubject.cbet_level}) › {selectedSubject.module_name}
+                    {selectedSubject.trainer_name ? ` › ${selectedSubject.trainer_name}` : ""}
                   </p>
                 )}
               </>
@@ -192,17 +223,39 @@ export function CreateSessionModal({ isOpen, onClose, onSubmit, isLoading = fals
             <label className={labelCls + " flex items-center gap-1.5"}>
               <Zap size={14} /> Token Refresh (seconds)
             </label>
-            <select
-              value={formData.regeneration_interval}
-              onChange={(e) => setFormData({ ...formData, regeneration_interval: parseInt(e.target.value) })}
-              className={inputCls}
-            >
-              <option value={10}>10 seconds (Most Secure)</option>
-              <option value={20}>20 seconds</option>
-              <option value={25}>25 seconds (Recommended)</option>
-              <option value={30}>30 seconds</option>
-            </select>
-            <p className="text-xs text-slate-500 mt-1">Higher frequency = more secure</p>
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                value={useCustomRefresh ? "custom" : formData.regeneration_interval}
+                onChange={(e) => {
+                  if (e.target.value === "custom") {
+                    setUseCustomRefresh(true);
+                    return;
+                  }
+                  setUseCustomRefresh(false);
+                  setFormData({ ...formData, regeneration_interval: parseInt(e.target.value) });
+                }}
+                className={inputCls}
+              >
+                <option value={10}>10 seconds</option>
+                <option value={20}>20 seconds</option>
+                <option value={25}>25 seconds</option>
+                <option value={30}>30 seconds</option>
+                <option value="custom">Custom</option>
+              </select>
+              <input
+                type="number"
+                min={10}
+                max={300}
+                step={1}
+                disabled={!useCustomRefresh}
+                value={formData.regeneration_interval}
+                onChange={(e) => setFormData({ ...formData, regeneration_interval: parseInt(e.target.value || "25") })}
+                className={inputCls + " disabled:opacity-50"}
+              />
+            </div>
+            <p className="text-xs text-slate-500 mt-1">
+              Use 10-300 seconds. Lower values refresh more often and are more secure.
+            </p>
           </div>
 
           <div className="flex gap-3 pt-2">

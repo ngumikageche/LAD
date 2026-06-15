@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Plus, X } from 'lucide-react';
 import { apiRequest } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
@@ -33,6 +33,9 @@ export const PREDEFINED_ROLES: Array<{
       'documents.read': true,
       'attendance.read': true,
       'analytics.read': true,
+      'reports.student.term.view': true,
+      'reports.student.attendance.view': true,
+      'reports.student.fees.view': true,
     },
   },
   {
@@ -58,6 +61,12 @@ export const PREDEFINED_ROLES: Array<{
       'attendance.write': true,
       'analytics.read': true,
       'trainer_subjects.read': true,
+      'reports.class.performance.view': true,
+      'reports.class.performance.print': true,
+      'reports.class.performance.export': true,
+      'reports.teacher.syllabus.view': true,
+      'reports.teacher.attendance.view': true,
+      'reports.student.write': true,
     },
   },
   {
@@ -80,6 +89,11 @@ export const PREDEFINED_ROLES: Array<{
       'notifications.create': true,
       'documents.read': true,
       'attendance.read': true,
+      'reports.admin.pass_rate.view': true,
+      'reports.admin.enrolment.view': true,
+      'reports.admin.fees.view': true,
+      'reports.class.performance.view': true,
+      'reports.class.at_risk.view': true,
     },
   },
 ];
@@ -167,6 +181,57 @@ const PERMISSION_TABS: Array<{ label: string; permissions: PermDef[] }> = [
       { key: 'notifications.read',     label: 'Read Notifications' },
       { key: 'notifications.update',   label: 'Update Notifications' },
       { key: 'notifications.delete',   label: 'Delete Notifications' },
+    ],
+  },
+  {
+    label: 'Reports',
+    permissions: [
+      { key: 'reports.student.term.view',          label: 'View Student Report Cards' },
+      { key: 'reports.student.term.print',         label: 'Print Student Report Cards' },
+      { key: 'reports.student.term.export',        label: 'Export Student Report Cards' },
+      { key: 'reports.student.transcript.view',    label: 'View Student Transcripts' },
+      { key: 'reports.student.transcript.print',   label: 'Print Student Transcripts' },
+      { key: 'reports.student.transcript.export',  label: 'Export Student Transcripts' },
+      { key: 'reports.student.attendance.view',    label: 'View Student Attendance Reports' },
+      { key: 'reports.student.attendance.print',   label: 'Print Student Attendance Reports' },
+      { key: 'reports.student.attendance.export',  label: 'Export Student Attendance Reports' },
+      { key: 'reports.student.fees.view',          label: 'View Student Fee Statements' },
+      { key: 'reports.student.fees.print',         label: 'Print Student Fee Statements' },
+      { key: 'reports.student.fees.export',        label: 'Export Student Fee Statements' },
+      { key: 'reports.student.discipline.view',    label: 'View Student Discipline Reports' },
+      { key: 'reports.student.discipline.print',   label: 'Print Student Discipline Reports' },
+      { key: 'reports.student.discipline.export',  label: 'Export Student Discipline Reports' },
+      { key: 'reports.student.write',              label: 'Write Reports for Students' },
+      { key: 'reports.class.performance.view',     label: 'View Class Performance Reports' },
+      { key: 'reports.class.performance.print',    label: 'Print Class Performance Reports' },
+      { key: 'reports.class.performance.export',   label: 'Export Class Performance Reports' },
+      { key: 'reports.class.at_risk.view',         label: 'View Class At-Risk Reports' },
+      { key: 'reports.class.at_risk.print',        label: 'Print Class At-Risk Reports' },
+      { key: 'reports.class.at_risk.export',       label: 'Export Class At-Risk Reports' },
+      { key: 'reports.teacher.syllabus.view',      label: 'View Syllabus Coverage Reports' },
+      { key: 'reports.teacher.syllabus.print',     label: 'Print Syllabus Coverage Reports' },
+      { key: 'reports.teacher.syllabus.export',    label: 'Export Syllabus Coverage Reports' },
+      { key: 'reports.teacher.attendance.view',    label: 'View Teacher Attendance Reports' },
+      { key: 'reports.teacher.attendance.print',   label: 'Print Teacher Attendance Reports' },
+      { key: 'reports.teacher.attendance.export',  label: 'Export Teacher Attendance Reports' },
+      { key: 'reports.teacher.appraisal.view',     label: 'View Teacher Appraisal Reports' },
+      { key: 'reports.teacher.appraisal.print',    label: 'Print Teacher Appraisal Reports' },
+      { key: 'reports.teacher.appraisal.export',   label: 'Export Teacher Appraisal Reports' },
+      { key: 'reports.admin.pass_rate.view',       label: 'View Admin Exam Results' },
+      { key: 'reports.admin.pass_rate.print',      label: 'Print Admin Exam Results' },
+      { key: 'reports.admin.pass_rate.export',     label: 'Export Admin Exam Results' },
+      { key: 'reports.admin.enrolment.view',       label: 'View Admin Enrolment Reports' },
+      { key: 'reports.admin.enrolment.print',      label: 'Print Admin Enrolment Reports' },
+      { key: 'reports.admin.enrolment.export',     label: 'Export Admin Enrolment Reports' },
+      { key: 'reports.admin.fees.view',            label: 'View Admin Fee Reports' },
+      { key: 'reports.admin.fees.print',           label: 'Print Admin Fee Reports' },
+      { key: 'reports.admin.fees.export',          label: 'Export Admin Fee Reports' },
+      { key: 'reports.admin.safeguarding.view',    label: 'View Safeguarding Reports' },
+      { key: 'reports.admin.safeguarding.print',   label: 'Print Safeguarding Reports' },
+      { key: 'reports.admin.safeguarding.export',  label: 'Export Safeguarding Reports' },
+      { key: 'reports.admin.compliance.view',      label: 'View Compliance Reports' },
+      { key: 'reports.admin.compliance.print',     label: 'Print Compliance Reports' },
+      { key: 'reports.admin.compliance.export',    label: 'Export Compliance Reports' },
     ],
   },
 ];
@@ -306,6 +371,23 @@ const RolesPage = () => {
     }
   };
 
+  const activePermissions = PERMISSION_TABS[activeTab].permissions;
+  const isActiveTabFullySelected = activePermissions.every((p) => permissionMap[p.key]);
+
+  const toggleActiveTabPermissions = () => {
+    const next = { ...permissionMap };
+
+    activePermissions.forEach((permission) => {
+      if (isActiveTabFullySelected) {
+        delete next[permission.key];
+      } else {
+        next[permission.key] = true;
+      }
+    });
+
+    setPermissionMap(next);
+  };
+
   // Count enabled permissions per tab
   const tabCounts = PERMISSION_TABS.map((tab) =>
     isWildcard
@@ -431,10 +513,10 @@ const RolesPage = () => {
 
       {/* ── Modal ── */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 overflow-y-auto">
-          <div className="w-full max-w-2xl rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl my-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-2xl max-h-[calc(100vh-2rem)] rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl flex flex-col overflow-hidden">
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 shrink-0">
               <h2 className="text-xl font-bold text-slate-100">
                 {formState.id ? 'Update Role' : 'Create Role'}
               </h2>
@@ -443,8 +525,8 @@ const RolesPage = () => {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit}>
-              <div className="px-6 py-5 space-y-5">
+            <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5 space-y-5">
                 {/* Role name */}
                 <div>
                   <label className="block text-sm font-medium text-slate-300 mb-1.5">Role name</label>
@@ -480,7 +562,21 @@ const RolesPage = () => {
 
                 {/* Permission tabs */}
                 <div>
-                  <p className="text-sm font-medium text-slate-300 mb-3">Permissions</p>
+                  <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-medium text-slate-300">Permissions</p>
+                    <button
+                      type="button"
+                      onClick={toggleActiveTabPermissions}
+                      disabled={isWildcard}
+                      className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-300 transition hover:border-indigo-500/50 hover:text-indigo-300 disabled:cursor-not-allowed disabled:border-teal-500/20 disabled:bg-teal-500/10 disabled:text-teal-300"
+                    >
+                      {isWildcard
+                        ? 'All granted'
+                        : isActiveTabFullySelected
+                        ? `Clear ${PERMISSION_TABS[activeTab].label}`
+                        : `Select all ${PERMISSION_TABS[activeTab].label}`}
+                    </button>
+                  </div>
 
                   {/* Tab bar */}
                   <div className="flex gap-1 border-b border-slate-800 mb-4 overflow-x-auto">
@@ -509,7 +605,7 @@ const RolesPage = () => {
 
                   {/* Active tab content */}
                   <PermissionPanel
-                    permissions={PERMISSION_TABS[activeTab].permissions}
+                    permissions={activePermissions}
                     map={permissionMap}
                     onChange={togglePermission}
                     isWildcard={isWildcard}
@@ -522,7 +618,7 @@ const RolesPage = () => {
               </div>
 
               {/* Footer */}
-              <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-800">
+              <div className="flex justify-end gap-3 px-6 py-4 border-t border-slate-800 shrink-0">
                 <button
                   type="button"
                   onClick={closeModal}

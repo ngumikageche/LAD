@@ -53,6 +53,8 @@ interface CommitResult {
   updated: number;
   skipped: number;
   errors: string[];
+  batch_id?: string;
+  evidence_files?: number;
 }
 
 const GRADE_COLORS: Record<string, string> = {
@@ -72,6 +74,7 @@ export default function BulkMarksUploadPage() {
   const [assessmentSearch, setAssessmentSearch] = useState('');
 
   const [file, setFile] = useState<File | null>(null);
+  const [examCopies, setExamCopies] = useState<File[]>([]);
   const [previewing, setPreviewing] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
@@ -118,20 +121,29 @@ export default function BulkMarksUploadPage() {
 
   const handleCommit = async () => {
     if (!preview) return;
+    if (examCopies.length === 0) {
+      setError('Upload at least one physical exam copy before committing marks.');
+      return;
+    }
     setCommitting(true);
     setError(null);
+
+    const fd = new FormData();
+    fd.append('rows', JSON.stringify(preview.rows));
+    examCopies.forEach((copy) => fd.append('exam_copies', copy));
 
     try {
       const r = await fetch(`${API}/scores/bulk-marks/commit`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ rows: preview.rows }),
+        headers: { Authorization: `Bearer ${token}` },
+        body: fd,
       });
       const d = await r.json();
       if (!r.ok) { setError(d.error ?? 'Commit failed'); return; }
       setCommitResult(d);
       setPreview(null);
       setFile(null);
+      setExamCopies([]);
       if (fileRef.current) fileRef.current.value = '';
     } catch {
       setError('Network error during commit');
@@ -147,6 +159,7 @@ export default function BulkMarksUploadPage() {
     setPreview(null);
     setCommitResult(null);
     setError(null);
+    setExamCopies([]);
     setSelectedAssessment(null);
     setAssessmentSearch('');
     if (fileRef.current) fileRef.current.value = '';
@@ -279,6 +292,31 @@ export default function BulkMarksUploadPage() {
           />
         </div>
 
+        <div className="mt-5 rounded-xl border border-slate-700 bg-slate-800 p-4">
+          <label className="block">
+            <span className="text-sm font-semibold text-slate-200">Physical Exam Copies *</span>
+            <span className="mt-1 block text-xs text-slate-500">
+              Attach scanned PDFs, photos, or a ZIP of the original exam scripts before committing marks.
+            </span>
+            <input
+              type="file"
+              multiple
+              accept=".pdf,.png,.jpg,.jpeg,.zip,application/pdf,image/png,image/jpeg,application/zip"
+              onChange={(e) => setExamCopies(Array.from(e.target.files ?? []))}
+              className="mt-3 block w-full text-sm text-slate-400 file:mr-4 file:rounded-lg file:border-0 file:bg-indigo-600 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-white hover:file:bg-indigo-700"
+            />
+          </label>
+          {examCopies.length > 0 && (
+            <div className="mt-3 space-y-1">
+              {examCopies.map((copy) => (
+                <p key={`${copy.name}-${copy.size}`} className="text-xs text-slate-400">
+                  {copy.name} ({(copy.size / 1024).toFixed(1)} KB)
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+
         {/* CSV column guide */}
         <div className="mt-4 p-4 bg-slate-800 rounded-lg border border-slate-700">
           <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">CSV Column Reference</p>
@@ -358,6 +396,9 @@ export default function BulkMarksUploadPage() {
               <p className="text-xs text-slate-400 mt-1">Rows skipped</p>
             </div>
           </div>
+          <p className="mt-4 text-sm text-slate-400">
+            Exam evidence files uploaded: <span className="font-semibold text-slate-200">{commitResult.evidence_files ?? 0}</span>
+          </p>
           {commitResult.errors.length > 0 && (
             <div className="mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
               <p className="text-xs font-semibold text-red-300 mb-1">Errors:</p>
@@ -398,7 +439,7 @@ export default function BulkMarksUploadPage() {
               </label>
               <button
                 onClick={handleCommit}
-                disabled={committing || preview.valid === 0}
+                disabled={committing || preview.valid === 0 || examCopies.length === 0}
                 className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition"
               >
                 {committing ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />}

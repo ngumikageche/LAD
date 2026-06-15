@@ -2,21 +2,21 @@ import colors from './colors';
 
 const theme = {
   layout: {
-    app: 'bg-blue-950 text-slate-200',
-    shell: 'bg-blue-950',
-    sidebar: 'bg-blue-900 border-blue-800 text-slate-200',
-    navbar: 'bg-blue-900 border-blue-800 text-slate-100',
-    main: 'bg-blue-950',
-    canvas: 'bg-blue-950',
-    page: 'min-h-screen bg-blue-950 p-6',
+    app: 'bg-slate-950 text-slate-200',
+    shell: 'bg-slate-950',
+    sidebar: 'bg-slate-900 border-slate-800 text-slate-200',
+    navbar: 'bg-slate-900 border-slate-800 text-slate-100',
+    main: 'bg-slate-950',
+    canvas: 'bg-slate-950',
+    page: 'min-h-screen bg-slate-950 p-6',
   },
   surface: {
-    card: 'bg-slate-900 border border-slate-800 rounded-xl shadow-lg shadow-blue-950/20',
-    panel: 'bg-slate-900 border border-slate-800 rounded-xl',
-    elevated: 'bg-slate-800 border border-slate-700 rounded-xl',
-    subtle: 'bg-slate-800/80 border border-slate-700 rounded-xl',
+    card: 'bg-slate-900 border border-slate-800 rounded-lg shadow-lg shadow-slate-950/30',
+    panel: 'bg-slate-900 border border-slate-800 rounded-lg',
+    elevated: 'bg-slate-800 border border-slate-700 rounded-lg',
+    subtle: 'bg-slate-800/80 border border-slate-700 rounded-lg',
     input: 'bg-slate-800 border border-slate-700 text-slate-200 placeholder:text-slate-500',
-    overlay: 'bg-blue-950/70',
+    overlay: 'bg-slate-950/75 backdrop-blur-sm',
   },
   text: {
     primary: 'text-slate-200',

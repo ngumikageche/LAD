@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { MessageSquare, Send, Save, AlertCircle, CheckCircle2, User, Mail, BarChart3 } from 'lucide-react';
-import { trainerStudentsAPI, trainerScoresAPI } from '../api/trainer';
+import { FileText, Send, AlertCircle, CheckCircle2, User, Mail, BarChart3 } from 'lucide-react';
+import { trainerStudentsAPI, type StudentWrittenReport } from '../api/trainer';
 import { useAuth } from '../auth/AuthContext';
 
 interface Student {
@@ -11,28 +11,28 @@ interface Student {
   overall_avg: number;
 }
 
-interface FeedbackEntry {
-  student_id: string;
-  score_id: string;
-  feedback: string;
-}
-
 export default function ProvideFeedbackPage() {
   const { user } = useAuth();
+  const isAdmin = user?.user_type === 'admin';
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
-  const [feedbackText, setFeedbackText] = useState('');
+  const [reportTitle, setReportTitle] = useState('');
+  const [reportType, setReportType] = useState<StudentWrittenReport['report_type']>('general');
+  const [reportBody, setReportBody] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [feedbackHistory, setFeedbackHistory] = useState<any[]>([]);
+  const [reportHistory, setReportHistory] = useState<StudentWrittenReport[]>([]);
 
   useEffect(() => {
     const loadStudents = async () => {
       try {
         setLoading(true);
-        const data = await trainerStudentsAPI.getStudentsInSubjects();
+        setError(null);
+        const data = isAdmin
+          ? await trainerStudentsAPI.getAllStudentsForReports()
+          : await trainerStudentsAPI.getStudentsInSubjects();
         setStudents(Array.isArray(data) ? data : []);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load students');
@@ -42,41 +42,46 @@ export default function ProvideFeedbackPage() {
     };
 
     loadStudents();
-  }, []);
+  }, [isAdmin]);
 
-  const handleSelectStudent = (student: Student) => {
+  const handleSelectStudent = async (student: Student) => {
     setSelectedStudent(student);
-    setFeedbackText('');
-    // Mock feedback history
-    setFeedbackHistory([
-      { date: '2024-04-10', feedback: 'Great improvement in recent assessments!', score: 82 },
-      { date: '2024-03-28', feedback: 'Focus on conceptual understanding', score: 68 },
-    ]);
+    setReportTitle('');
+    setReportBody('');
+    setReportType('general');
+    setError(null);
+    try {
+      const reports = await trainerStudentsAPI.getStudentReports(student.id);
+      setReportHistory(Array.isArray(reports) ? reports : []);
+    } catch (err) {
+      setReportHistory([]);
+      setError(err instanceof Error ? err.message : 'Failed to load student reports');
+    }
   };
 
-  const handleSubmitFeedback = async () => {
-    if (!selectedStudent || !feedbackText.trim()) {
-      setError('Please select a student and enter feedback');
+  const handleSubmitReport = async () => {
+    if (!selectedStudent || !reportTitle.trim() || !reportBody.trim()) {
+      setError('Please select a student and complete the report title and body');
       return;
     }
 
     try {
       setSubmitting(true);
       setError(null);
-      
-      // Here we would call the API to save feedback
-      // For now, simulating the call
-      await trainerScoresAPI.provideFeedback(selectedStudent.id, feedbackText);
-      
-      setSuccess('Feedback sent successfully!');
-      setFeedbackText('');
-      setFeedbackHistory([
-        { date: new Date().toISOString().split('T')[0], feedback: feedbackText, score: 0 },
-        ...feedbackHistory,
-      ]);
+
+      const report = await trainerStudentsAPI.createStudentReport(selectedStudent.id, {
+        title: reportTitle.trim(),
+        body: reportBody.trim(),
+        report_type: reportType,
+      });
+
+      setSuccess('Student report saved and sent successfully!');
+      setReportTitle('');
+      setReportBody('');
+      setReportHistory([report, ...reportHistory]);
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to send feedback');
+      setError(err instanceof Error ? err.message : 'Failed to save report');
     } finally {
       setSubmitting(false);
     }
@@ -96,11 +101,11 @@ export default function ProvideFeedbackPage() {
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-slate-100 flex items-center gap-2">
-            <MessageSquare size={32} className="text-cyan-500" />
-            Provide Feedback
+            <FileText size={32} className="text-cyan-500" />
+            Student Reports
           </h1>
           <p className="text-slate-400 mt-2">
-            Guide students with constructive feedback on their performance
+            Write a specific report for an individual learner
           </p>
         </div>
 
@@ -123,7 +128,7 @@ export default function ProvideFeedbackPage() {
           {/* Student List */}
           <div className="bg-slate-900 border border-slate-800 rounded-lg shadow overflow-hidden">
             <div className="p-6 border-b bg-slate-800">
-              <h2 className="text-lg font-bold text-slate-100">My Students</h2>
+              <h2 className="text-lg font-bold text-slate-100">{isAdmin ? 'Students' : 'My Students'}</h2>
               <p className="text-sm text-slate-400 mt-1">
                 {students.length} student{students.length !== 1 ? 's' : ''}
               </p>
@@ -192,34 +197,65 @@ export default function ProvideFeedbackPage() {
                   <p className="text-xs text-slate-400">Student ID: {selectedStudent.student_id}</p>
                 </div>
 
-                {/* Feedback Form */}
+                {/* Report Form */}
                 <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
-                  <h3 className="text-lg font-bold text-slate-100 mb-4">Write Feedback</h3>
+                  <h3 className="text-lg font-bold text-slate-100 mb-4">Write Student Report</h3>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300 mb-2">
+                        Report Title
+                      </label>
+                      <input
+                        value={reportTitle}
+                        onChange={(e) => setReportTitle(e.target.value)}
+                        placeholder="e.g. Weekly progress update"
+                        className="w-full px-4 py-3 bg-slate-800 text-slate-100 border border-slate-700 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300 mb-2">
+                        Report Type
+                      </label>
+                      <select
+                        value={reportType}
+                        onChange={(e) => setReportType(e.target.value as StudentWrittenReport['report_type'])}
+                        className="w-full px-4 py-3 bg-slate-800 text-slate-100 border border-slate-700 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                      >
+                        <option value="general">General</option>
+                        <option value="academic">Academic</option>
+                        <option value="attendance">Attendance</option>
+                        <option value="behaviour">Behaviour</option>
+                        <option value="support">Support Plan</option>
+                        <option value="progress">Progress</option>
+                      </select>
+                    </div>
+                  </div>
 
                   <div className="mb-4">
                     <label className="block text-sm font-medium text-slate-300 mb-2">
-                      Feedback Message
+                      Report Body
                     </label>
                     <textarea
-                      value={feedbackText}
-                      onChange={(e) => setFeedbackText(e.target.value)}
-                      placeholder="Provide constructive feedback to guide the student's improvement..."
+                      value={reportBody}
+                      onChange={(e) => setReportBody(e.target.value)}
+                      placeholder="Write the report for this student..."
                       rows={6}
-                      className="w-full px-4 py-3 border border-slate-700 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                      className="w-full px-4 py-3 bg-slate-800 text-slate-100 border border-slate-700 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
                     />
                     <p className="text-xs text-slate-400 mt-2">
-                      {feedbackText.length}/500 characters
+                      {reportBody.length}/5000 characters
                     </p>
                   </div>
 
-                  {/* Feedback Templates */}
+                  {/* Report Templates */}
                   <div className="mb-4 p-4 bg-blue-500/10 rounded-lg">
                     <p className="text-sm font-medium text-blue-900 mb-2">💡 Suggested Focus Areas:</p>
                     <div className="space-y-2">
                       <button
                         onClick={() =>
-                          setFeedbackText(
-                            feedbackText +
+                          setReportBody(
+                            reportBody +
                             '\n- Focus on understanding fundamental concepts before moving to advanced topics.\n'
                           )
                         }
@@ -229,8 +265,8 @@ export default function ProvideFeedbackPage() {
                       </button>
                       <button
                         onClick={() =>
-                          setFeedbackText(
-                            feedbackText +
+                          setReportBody(
+                            reportBody +
                             '\n- Great effort! Continue practicing regularly to improve your performance.\n'
                           )
                         }
@@ -240,8 +276,8 @@ export default function ProvideFeedbackPage() {
                       </button>
                       <button
                         onClick={() =>
-                          setFeedbackText(
-                            feedbackText +
+                          setReportBody(
+                            reportBody +
                             '\n- Excellent work! You are showing strong understanding of the concepts.\n'
                           )
                         }
@@ -254,34 +290,36 @@ export default function ProvideFeedbackPage() {
 
                   {/* Send Button */}
                   <button
-                    onClick={handleSubmitFeedback}
-                    disabled={submitting || !feedbackText.trim()}
+                    onClick={handleSubmitReport}
+                    disabled={submitting || !reportTitle.trim() || !reportBody.trim()}
                     className="w-full px-6 py-3 bg-cyan-600 text-white rounded-lg hover:bg-cyan-700 transition disabled:opacity-50 font-medium flex items-center justify-center gap-2"
                   >
                     <Send size={20} />
-                    {submitting ? 'Sending...' : 'Send Feedback'}
+                    {submitting ? 'Saving...' : 'Save Student Report'}
                   </button>
                 </div>
 
-                {/* Feedback History */}
-                {feedbackHistory.length > 0 && (
+                {/* Report History */}
+                {reportHistory.length > 0 && (
                   <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
-                    <h3 className="text-lg font-bold text-slate-100 mb-4">Previous Feedback</h3>
+                    <h3 className="text-lg font-bold text-slate-100 mb-4">Previous Reports</h3>
                     <div className="space-y-4">
-                      {feedbackHistory.map((item, idx) => (
+                      {reportHistory.map((item) => (
                         <div
-                          key={idx}
+                          key={item.id}
                           className="p-4 bg-slate-800 rounded-lg border-l-4 border-blue-500"
                         >
                           <div className="flex items-center justify-between mb-2">
-                            <p className="font-medium text-slate-100">{item.date}</p>
-                            {item.score && (
-                              <span className="px-2 py-1 bg-blue-500/15 text-blue-300 rounded text-xs font-bold">
-                                {item.score}%
-                              </span>
-                            )}
+                            <p className="font-medium text-slate-100">{item.title}</p>
+                            <span className="px-2 py-1 bg-blue-500/15 text-blue-300 rounded text-xs font-bold capitalize">
+                              {item.report_type}
+                            </span>
                           </div>
-                          <p className="text-slate-300 text-sm">{item.feedback}</p>
+                          <p className="text-xs text-slate-500 mb-2">
+                            {item.created_at ? new Date(item.created_at).toLocaleString() : 'Just now'}
+                            {item.subject_name ? ` • ${item.subject_name}` : ''}
+                          </p>
+                          <p className="text-slate-300 text-sm whitespace-pre-line">{item.body}</p>
                         </div>
                       ))}
                     </div>
@@ -290,8 +328,8 @@ export default function ProvideFeedbackPage() {
               </>
             ) : (
               <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-12 text-center col-span-2">
-                <MessageSquare size={48} className="mx-auto text-slate-500 mb-4" />
-                <p className="text-slate-500 text-lg">Select a student to provide feedback</p>
+                <FileText size={48} className="mx-auto text-slate-500 mb-4" />
+                <p className="text-slate-500 text-lg">Select a student to write a report</p>
               </div>
             )}
           </div>

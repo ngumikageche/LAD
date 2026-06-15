@@ -150,6 +150,28 @@ export const adminNotificationsAPI = {
     return response.data;
   },
 
+  async createBulkNotification(data: {
+    title: string;
+    message: string;
+    filters: {
+      target: string;
+      role_name?: string;
+      course_id?: string;
+      module_id?: string;
+      subject_id?: string;
+      enrollment_year?: string;
+    };
+    sms_config: {
+      enabled: boolean;
+      provider: string;
+      sender_id: string;
+      dry_run: boolean;
+    };
+  }) {
+    const response = await apiClient.post('/notifications/bulk', data);
+    return response.data;
+  },
+
   async updateNotification(id: string, data: { title?: string; message?: string; is_read?: boolean }) {
     const response = await apiClient.put(`/notifications/${id}`, data);
     return response.data;

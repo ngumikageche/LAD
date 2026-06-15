@@ -42,6 +42,8 @@ import AdminEnrolmentPage from './pages/AdminEnrolmentPage';
 import AdminAttendancePage from './pages/AdminAttendancePage';
 import TrainerAttendanceSessionPage from './pages/TrainerAttendanceSessionPage';
 import StudentAttendanceCheckInPage from './pages/StudentAttendanceCheckInPage';
+import OnlineExamDesignerPage from './pages/OnlineExamDesignerPage';
+import StudentOnlineExamsPage from './pages/StudentOnlineExamsPage';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import ProtectedRoute, { UserTypeRoute, PermissionRoute } from './auth/ProtectedRoute';
 
@@ -67,6 +69,7 @@ function App() {
             <Route path="/register" element={<RegisterPage />} />
             <Route element={<DashboardLayout />}>
               <Route path="/" element={<DashboardRedirect />} />
+              <Route path="/reports" element={<ReportsPage />} />
               <Route element={<UserTypeRoute allowedTypes={['student']} />}>
                 <Route path="/student/dashboard" element={<StudentDashboardPage />} />
                 <Route path="/student/marks" element={<StudentMarksPage />} />
@@ -79,6 +82,7 @@ function App() {
                 <Route path="/student/fee-statement" element={<FeeStatementPage />} />
                 <Route path="/student/attendance/checkin" element={<StudentAttendanceCheckInPage />} />
                 <Route path="/student/documents" element={<DocumentsPage />} />
+                <Route path="/student/online-exams" element={<StudentOnlineExamsPage />} />
               </Route>
               <Route element={<UserTypeRoute allowedTypes={['trainer']} />}>
                 <Route path="/trainer-hub" element={<TrainerDashboardPage />} />
@@ -90,6 +94,7 @@ function App() {
                 <Route path="/trainer/attendance" element={<TrainerAttendancePage />} />
                 <Route path="/trainer/attendance/manual" element={<TrainerManualAttendancePage />} />
                 <Route path="/trainer/documents" element={<DocumentsPage />} />
+                <Route path="/trainer/online-exams" element={<OnlineExamDesignerPage />} />
               </Route>
               {/* Attendance session management: trainer OR admin, never student */}
               <Route element={<PermissionRoute permissionKey="attendance.create" deniedTypes={['student']} />}>
@@ -103,6 +108,8 @@ function App() {
                 <Route path="/admin/scores/bulk-upload" element={<BulkMarksUploadPage />} />
                 <Route path="/admin/documents" element={<DocumentsPage />} />
                 <Route path="/admin/notifications" element={<AdminNotificationsPage />} />
+                <Route path="/admin/student-reports" element={<ProvideFeedbackPage />} />
+                <Route path="/admin/online-exams" element={<OnlineExamDesignerPage />} />
                 <Route path="/admin/reports/exam-results" element={<AdminExamResultsPage />} />
                 <Route path="/admin/reports/fees" element={<AdminFeeCollectionPage />} />
                 <Route path="/admin/reports/enrolment" element={<AdminEnrolmentPage />} />
@@ -118,7 +125,6 @@ function App() {
                 <Route path="/modules" element={<ModulesPage />} />
                 <Route path="/subjects" element={<SubjectsPage />} />
                 <Route path="/progress" element={<ProgressPage />} />
-                <Route path="/reports" element={<ReportsPage />} />
               </Route>
             </Route>
           </Route>
