@@ -2,7 +2,6 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import DashboardLayout from './components/layout/DashboardLayout';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
-import DashboardPage from './pages/DashboardPage';
 import StudentsPage from './pages/StudentsPage';
 import SubjectsPage from './pages/SubjectsPage';
 import ProgressPage from './pages/ProgressPage';
@@ -30,6 +29,7 @@ import DocumentsPage from './pages/DocumentsPage';
 import BulkMarksUploadPage from './pages/BulkMarksUploadPage';
 import AdminNotificationsPage from './pages/AdminNotificationsPage';
 import ReportCardPage from './pages/ReportCardPage';
+import StudentPracticalAssessmentPage from './pages/StudentPracticalAssessmentPage';
 import AttendanceReportPage from './pages/AttendanceReportPage';
 import FeeStatementPage from './pages/FeeStatementPage';
 import ClassPerformancePage from './pages/ClassPerformancePage';
@@ -44,6 +44,7 @@ import TrainerAttendanceSessionPage from './pages/TrainerAttendanceSessionPage';
 import StudentAttendanceCheckInPage from './pages/StudentAttendanceCheckInPage';
 import OnlineExamDesignerPage from './pages/OnlineExamDesignerPage';
 import StudentOnlineExamsPage from './pages/StudentOnlineExamsPage';
+import TrainerPracticalAssessmentPage from './pages/TrainerPracticalAssessmentPage';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import ProtectedRoute, { UserTypeRoute, PermissionRoute } from './auth/ProtectedRoute';
 
@@ -80,6 +81,7 @@ function App() {
                 <Route path="/student/report-card" element={<ReportCardPage />} />
                 <Route path="/student/attendance-report" element={<AttendanceReportPage />} />
                 <Route path="/student/fee-statement" element={<FeeStatementPage />} />
+                <Route path="/student/practical-assessments" element={<StudentPracticalAssessmentPage />} />
                 <Route path="/student/attendance/checkin" element={<StudentAttendanceCheckInPage />} />
                 <Route path="/student/documents" element={<DocumentsPage />} />
                 <Route path="/student/online-exams" element={<StudentOnlineExamsPage />} />
@@ -90,6 +92,7 @@ function App() {
                 <Route path="/trainer/feedback" element={<ProvideFeedbackPage />} />
                 <Route path="/trainer/student-profile" element={<TrainerStudentProfilePage />} />
                 <Route path="/trainer/class-performance" element={<ClassPerformancePage />} />
+                <Route path="/trainer/practical-assessments" element={<TrainerPracticalAssessmentPage />} />
                 <Route path="/trainer/syllabus" element={<SyllabusCoveragePage />} />
                 <Route path="/trainer/attendance" element={<TrainerAttendancePage />} />
                 <Route path="/trainer/attendance/manual" element={<TrainerManualAttendancePage />} />
@@ -109,6 +112,7 @@ function App() {
                 <Route path="/admin/documents" element={<DocumentsPage />} />
                 <Route path="/admin/notifications" element={<AdminNotificationsPage />} />
                 <Route path="/admin/student-reports" element={<ProvideFeedbackPage />} />
+                <Route path="/admin/practical-assessments" element={<TrainerPracticalAssessmentPage />} />
                 <Route path="/admin/online-exams" element={<OnlineExamDesignerPage />} />
                 <Route path="/admin/reports/exam-results" element={<AdminExamResultsPage />} />
                 <Route path="/admin/reports/fees" element={<AdminFeeCollectionPage />} />

@@ -28,6 +28,7 @@ class Student(BaseModel):
     scores = relationship("Score", back_populates="student")
     competency_records = relationship("CompetencyRecord", back_populates="student")
     portfolio_evidence = relationship("PortfolioEvidence", back_populates="student")
+    practical_assessment_reports = relationship("PracticalAssessmentReport", back_populates="student")
     attendance = relationship("Attendance", back_populates="student")
     student_subjects = relationship("StudentSubject", back_populates="student")
     alerts = relationship("Alert", back_populates="student")

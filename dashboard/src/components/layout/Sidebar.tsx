@@ -41,14 +41,15 @@ const studentGroups: NavGroup[] = [
       { name: 'Documents',         icon: BookOpen,        path: '/student/documents',         color: 'text-indigo-300' },
     ],
   },
-  {
-    label: 'Reports',
-    items: [
-      { name: 'All Reports',       icon: FileText,        path: '/reports',                   color: 'text-teal-300', permission: 'reports.*' },
-      { name: 'Report Card',       icon: ClipboardList,   path: '/student/report-card',       color: 'text-blue-300', permission: 'reports.student.term' },
-      { name: 'Attendance',        icon: CalendarCheck,   path: '/student/attendance-report', color: 'text-green-400', permission: 'reports.student.attendance' },
-      { name: 'Fee Statement',     icon: Receipt,         path: '/student/fee-statement',     color: 'text-amber-400', permission: 'reports.student.fees' },
-    ],
+    {
+      label: 'Reports',
+      items: [
+        { name: 'All Reports',       icon: FileText,        path: '/reports',                   color: 'text-teal-300', permission: 'reports.*' },
+        { name: 'Report Card',       icon: ClipboardList,   path: '/student/report-card',       color: 'text-blue-300', permission: 'reports.student.term' },
+        { name: 'Practical Reports', icon: FileText,        path: '/student/practical-assessments', color: 'text-teal-300' },
+        { name: 'Attendance',        icon: CalendarCheck,   path: '/student/attendance-report', color: 'text-green-400', permission: 'reports.student.attendance' },
+        { name: 'Fee Statement',     icon: Receipt,         path: '/student/fee-statement',     color: 'text-amber-400', permission: 'reports.student.fees' },
+      ],
   },
   {
     label: 'Attendance',
@@ -80,6 +81,7 @@ const trainerGroups: NavGroup[] = [
       { name: 'All Reports',       icon: FileText,        path: '/reports',                   color: 'text-teal-300', permission: 'reports.*' },
       { name: 'Trainer Reports',   icon: FileText,        path: '/trainer/reports',           color: 'text-blue-300', permission: 'reports.class.performance' },
       { name: 'Class Performance', icon: BarChart3,       path: '/trainer/class-performance', color: 'text-teal-300', permission: 'reports.class.performance' },
+      { name: 'Practical Assess.', icon: FileText,        path: '/trainer/practical-assessments', color: 'text-teal-300' },
       { name: 'Syllabus Coverage', icon: BookOpen,        path: '/trainer/syllabus',          color: 'text-green-400', permission: 'reports.teacher.syllabus' },
       { name: 'My Attendance',     icon: UserCheck,       path: '/trainer/attendance',        color: 'text-amber-400', permission: 'reports.teacher.attendance' },
       { name: 'Manual Attendance',  icon: PenLine,         path: '/trainer/attendance/manual', color: 'text-orange-400' },
@@ -127,6 +129,7 @@ const adminGroups: NavGroup[] = [
     items: [
       { name: 'Score Management',  icon: FileText,        path: '/admin/scores',               color: 'text-red-400'    },
       { name: 'Bulk Upload Marks', icon: Upload,          path: '/admin/scores/bulk-upload',   color: 'text-amber-400'  },
+      { name: 'Practical Assess.', icon: FileText,        path: '/admin/practical-assessments', color: 'text-teal-300' },
       { name: 'Online Exams',      icon: ClipboardList,   path: '/admin/online-exams',         color: 'text-indigo-300' },
       { name: 'Documents',          icon: BookOpen,        path: '/admin/documents',            color: 'text-teal-300'   },
       { name: 'Progress',          icon: BarChart,        path: '/progress',                   color: 'text-green-400'},

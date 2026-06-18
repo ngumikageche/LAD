@@ -64,11 +64,19 @@ const TrainerDashboard = () => {
 
   return (
     <div className="space-y-8">
-      <div className="rounded-[2rem] bg-[radial-gradient(circle_at_top_left,_rgba(16,185,129,0.18),_transparent_35%),linear-gradient(135deg,#f7fee7_0%,#eff6ff_55%,#ffffff_100%)] p-8 shadow-sm ring-1 ring-emerald-100">
-        <h1 className="text-4xl font-bold tracking-tight text-slate-100">Trainer Dashboard</h1>
-        <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-          Manage assigned subjects, upload validated scores, review recent grading activity, and intervene early for at-risk students.
-        </p>
+      <div className="relative overflow-hidden rounded-[2rem] border border-slate-700/80 bg-[radial-gradient(circle_at_top_left,rgba(20,184,166,0.22),transparent_34%),radial-gradient(circle_at_85%_15%,rgba(59,130,246,0.18),transparent_28%),linear-gradient(135deg,#020617_0%,#0f172a_48%,#111827_100%)] p-8 shadow-[0_24px_80px_-28px_rgba(15,23,42,0.75)]">
+        <div className="pointer-events-none absolute inset-0 opacity-70">
+          <div className="absolute -left-16 top-0 h-40 w-40 rounded-full bg-teal-400/10 blur-3xl" />
+          <div className="absolute right-0 top-6 h-44 w-44 rounded-full bg-blue-500/10 blur-3xl" />
+          <div className="absolute bottom-0 left-1/3 h-36 w-36 rounded-full bg-amber-400/10 blur-3xl" />
+        </div>
+        <div className="relative">
+          <p className="text-xs uppercase tracking-[0.35em] text-teal-300">Trainer Dashboard</p>
+          <h1 className="mt-3 text-4xl font-bold tracking-tight text-slate-50">Trainer Dashboard</h1>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">
+            Manage assigned subjects, upload validated scores, review recent grading activity, and intervene early for at-risk students.
+          </p>
+        </div>
       </div>
 
       {error ? (

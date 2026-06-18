@@ -29,6 +29,7 @@ class Trainer(BaseModel):
     lesson_plans = relationship("LessonPlan", back_populates="trainer")
     staff_attendance = relationship("StaffAttendance", back_populates="trainer")
     attendance_sessions = relationship("AttendanceSession", back_populates="trainer")
+    practical_assessment_reports = relationship("PracticalAssessmentReport", back_populates="trainer")
 
 
 @event.listens_for(Trainer, "before_insert")

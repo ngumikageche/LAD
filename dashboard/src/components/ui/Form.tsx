@@ -94,7 +94,7 @@ export const Select: React.FC<SelectProps> = ({
   );
 };
 
-interface TextAreaProps extends React.TextAreaHTMLAttributes<HTMLTextAreaElement> {
+interface TextAreaProps extends React.TextareaHTMLAttributes<HTMLTextAreaElement> {
   error?: boolean;
 }
 

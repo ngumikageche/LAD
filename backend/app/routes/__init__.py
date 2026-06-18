@@ -40,9 +40,9 @@ from .advanced_analytics import bp as advanced_analytics_bp
 from .advanced_reports import bp as advanced_reports_bp
 from .documents import bp as documents_bp
 from .bulk_marks import bp as bulk_marks_bp
-from .bulk_marks import bp as bulk_marks_bp
 from .attendance import bp as attendance_bp
 from .online_exams import bp as online_exams_bp
+from .practical_assessments import bp as practical_assessments_bp
 from .permissions import trainer_or_admin_required  # re-exported for convenience
 
 __all__ = [
@@ -88,4 +88,5 @@ __all__ = [
 	"bulk_marks_bp",
 	"attendance_bp",
 	"online_exams_bp",
+	"practical_assessments_bp",
 ]

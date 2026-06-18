@@ -31,6 +31,7 @@ from .competency_record import CompetencyRecord
 from .course_subject import CourseSubject
 from .document import Document
 from .student_report import StudentReport
+from .practical_assessment_report import PracticalAssessmentReport
 from .module import Module
 from .competency import Competency
 from .attendance_session import AttendanceSession, AttendanceRecord, AttendanceTokenHistory
@@ -67,6 +68,7 @@ __all__ = [
 	"StaffAttendance",
 	"Document",
 	"StudentReport",
+	"PracticalAssessmentReport",
 	"Module",
 	"Competency",
 	"AttendanceSession",

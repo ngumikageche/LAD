@@ -63,6 +63,14 @@ export const reportsAPI = {
     const response = await apiClient.get(`/reports/student/${studentId}/fees${params}`);
     return response.data;
   },
+  async getPracticalAssessments(studentId: string) {
+    const response = await apiClient.get(`/students/${studentId}/practical-assessments`);
+    return response.data;
+  },
+  async getPracticalAssessment(studentId: string, reportId: string) {
+    const response = await apiClient.get(`/students/${studentId}/practical-assessments/${reportId}`);
+    return response.data;
+  },
 };
 
 export const scoresAPI = {

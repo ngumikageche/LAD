@@ -55,6 +55,26 @@ export type StudentNotification = {
   created_at: string | null;
 };
 
+export type StudentAttendanceRecord = {
+  id: string;
+  session_id: string;
+  session_code: string | null;
+  subject_name: string | null;
+  status: string;
+  checked_in_at: string;
+  distance_from_trainer: number | null;
+};
+
+export type StudentAttendanceResponse = {
+  records: StudentAttendanceRecord[];
+  summary: {
+    total: number;
+    successful: number;
+    failed: number;
+    attendance_rate: number;
+  };
+};
+
 export type StudentAnnouncement = {
   id: string;
   title: string;
@@ -159,6 +179,11 @@ export const studentApi = {
 
   async getSubjects() {
     const response = await studentClient.get<{ items: StudentSubject[]; total: number }>('/api/v1/student/subjects');
+    return response.data;
+  },
+
+  async getAttendance() {
+    const response = await studentClient.get<StudentAttendanceResponse>('/api/v1/student/attendance');
     return response.data;
   },
 

@@ -141,6 +141,51 @@ export interface Assessment {
 }
 export type { Assessment };
 
+export interface PracticalAssessmentReport {
+  id: string;
+  student_id: string;
+  trainer_id: string;
+  student_name?: string | null;
+  student_registration_number?: string | null;
+  trainer_name?: string | null;
+  institution_name: string;
+  department_name: string;
+  awarding_body: string;
+  qualification: string;
+  unit_of_competency: string;
+  unit_code: string;
+  period: string;
+  assessment_date: string | null;
+  task_1_description: string | null;
+  task_2_description: string | null;
+  task_3_description: string | null;
+  task_4_description: string | null;
+  task_1_score: number | null;
+  task_2_score: number | null;
+  task_3_score: number | null;
+  task_4_score: number | null;
+  task_1_remark: string | null;
+  task_2_remark: string | null;
+  task_3_remark: string | null;
+  task_4_remark: string | null;
+  total_score: number | null;
+  competency_outcome: string | null;
+  released_at: string | null;
+  released_by_user_id: string | null;
+  released_by_name?: string | null;
+  status: 'draft' | 'complete' | 'released';
+  created_at: string;
+  updated_at: string;
+  task_items?: Array<{
+    number: number;
+    description: string | null;
+    score: number | null;
+    remark: string | null;
+  }>;
+}
+
+export type { PracticalAssessmentReport };
+
 export interface CompetencyRecord {
   id: string;
   student_id: string;
@@ -214,4 +259,3 @@ export interface Survey {
   submitted_at: string;
 }
 export type { Survey };
-

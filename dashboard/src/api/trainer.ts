@@ -76,6 +76,55 @@ export interface ScoreEntry {
   feedback?: string;
 }
 
+export interface PracticalAssessmentReport {
+  id: string;
+  student_id: string;
+  trainer_id: string;
+  student_name?: string | null;
+  student_registration_number?: string | null;
+  trainer_name?: string | null;
+  institution_name: string;
+  department_name: string;
+  awarding_body: string;
+  qualification: string;
+  unit_of_competency: string;
+  unit_code: string;
+  period: string;
+  assessment_date: string | null;
+  task_1_description: string | null;
+  task_2_description: string | null;
+  task_3_description: string | null;
+  task_4_description: string | null;
+  task_1_score: number | null;
+  task_2_score: number | null;
+  task_3_score: number | null;
+  task_4_score: number | null;
+  task_1_remark: string | null;
+  task_2_remark: string | null;
+  task_3_remark: string | null;
+  task_4_remark: string | null;
+  total_score: number | null;
+  competency_outcome: string | null;
+  released_at: string | null;
+  released_by_user_id: string | null;
+  released_by_name?: string | null;
+  status: 'draft' | 'complete' | 'released';
+  created_at: string | null;
+  updated_at: string | null;
+  task_items?: Array<{
+    number: number;
+    description: string | null;
+    score: number | null;
+    remark: string | null;
+  }>;
+}
+
+export type PracticalAssessmentPayload = Partial<Omit<PracticalAssessmentReport, 'id' | 'created_at' | 'updated_at'>> & {
+  id?: string;
+  student_id: string;
+  trainer_id?: string;
+};
+
 export interface TrainerStats {
   assigned_subjects: number;
   total_students: number;
@@ -300,6 +349,45 @@ export const trainerScoresAPI = {
       feedback,
     });
     return response.data;
+  },
+};
+
+export const trainerPracticalAssessmentsAPI = {
+  async listPracticalAssessments(filters?: { student_id?: string; status?: string }): Promise<PracticalAssessmentReport[]> {
+    const params = new URLSearchParams();
+    if (filters?.student_id) params.append('student_id', filters.student_id);
+    if (filters?.status) params.append('status', filters.status);
+    const response = await apiClient.get(`/practical-assessments${params.toString() ? `?${params.toString()}` : ''}`);
+    return response.data as PracticalAssessmentReport[];
+  },
+
+  async getPracticalAssessment(reportId: string): Promise<PracticalAssessmentReport> {
+    const response = await apiClient.get(`/practical-assessments/${reportId}`);
+    return response.data as PracticalAssessmentReport;
+  },
+
+  async savePracticalAssessment(payload: PracticalAssessmentPayload): Promise<PracticalAssessmentReport> {
+    const body = { ...payload };
+    if (body.id) {
+      const response = await apiClient.put(`/practical-assessments/${body.id}`, body);
+      return response.data as PracticalAssessmentReport;
+    }
+    const response = await apiClient.post('/practical-assessments', body);
+    return response.data as PracticalAssessmentReport;
+  },
+
+  async releasePracticalAssessment(reportId: string): Promise<PracticalAssessmentReport> {
+    const response = await apiClient.post(`/practical-assessments/${reportId}/release`);
+    return response.data as PracticalAssessmentReport;
+  },
+
+  async unsendPracticalAssessment(reportId: string): Promise<PracticalAssessmentReport> {
+    const response = await apiClient.post(`/practical-assessments/${reportId}/unsend`);
+    return response.data as PracticalAssessmentReport;
+  },
+
+  async deletePracticalAssessment(reportId: string): Promise<void> {
+    await apiClient.delete(`/practical-assessments/${reportId}`);
   },
 };
 

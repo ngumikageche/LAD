@@ -4,13 +4,14 @@ import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer,
 } from 'recharts';
-import { studentApi, type StudentAnnouncement, type StudentDashboardResponse, type StudentSubject } from '../services/studentApi';
+import { studentApi, type StudentAnnouncement, type StudentAttendanceRecord, type StudentDashboardResponse, type StudentSubject } from '../services/studentApi';
 import CompetencyHeatmap from '../components/charts/CompetencyHeatmap';
 import AttendanceCorrelationChart from '../components/charts/AttendanceCorrelationChart';
 import InsightsPanel from '../components/ui/InsightsPanel';
 import PortfolioStatusPanel from '../components/ui/PortfolioStatusPanel';
 import WidgetHelp from '../components/ui/WidgetHelp';
 import { loadCachedDashboard, saveCachedDashboard } from '../utils/dashboardCache';
+import type { HeatmapCell } from '../services/analyticsApi';
 
 const CACHE_KEY = 'lad.student.dashboard.v2';
 
@@ -18,6 +19,7 @@ const StudentDashboardPage = () => {
   const [dashboard, setDashboard] = useState<StudentDashboardResponse | null>(null);
   const [subjects, setSubjects] = useState<StudentSubject[]>([]);
   const [announcements, setAnnouncements] = useState<StudentAnnouncement[]>([]);
+  const [attendance, setAttendance] = useState<StudentAttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -26,11 +28,13 @@ const StudentDashboardPage = () => {
       dashboard: StudentDashboardResponse;
       subjects: StudentSubject[];
       announcements: StudentAnnouncement[];
+      attendance: StudentAttendanceRecord[];
     }>(CACHE_KEY);
     if (cached) {
       setDashboard(cached.dashboard);
       setSubjects(cached.subjects);
       setAnnouncements(cached.announcements);
+      setAttendance(cached.attendance || []);
       setLoading(false);
     }
 
@@ -38,18 +42,21 @@ const StudentDashboardPage = () => {
       try {
         setLoading(true);
         setError('');
-        const [dashboardRes, subjectsRes, announcementsRes] = await Promise.all([
+        const [dashboardRes, subjectsRes, announcementsRes, attendanceRes] = await Promise.all([
           studentApi.getDashboard(),
           studentApi.getSubjects(),
           studentApi.getAnnouncements(1, 5),
+          studentApi.getAttendance(),
         ]);
         setDashboard(dashboardRes);
         setSubjects(subjectsRes.items);
         setAnnouncements(announcementsRes.items);
+        setAttendance(attendanceRes.records);
         saveCachedDashboard(CACHE_KEY, {
           dashboard: dashboardRes,
           subjects: subjectsRes.items,
           announcements: announcementsRes.items,
+          attendance: attendanceRes.records,
         });
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load dashboard');
@@ -64,6 +71,45 @@ const StudentDashboardPage = () => {
     () => (dashboard?.subject_performance || []).filter((s) => s.average_score < 50),
     [dashboard]
   );
+
+  const scoreHeatmapItems = useMemo<HeatmapCell[]>(() => {
+    const studentName = 'Me';
+    return (dashboard?.subject_performance || []).map((subject) => ({
+      student_id: 'me',
+      student_name: studentName,
+      competency_id: subject.subject_name,
+      competency_name: subject.subject_name,
+      score: subject.average_score,
+      mastery_level: subject.average_score >= 70 ? 'high' : subject.average_score >= 50 ? 'medium' : 'low',
+    }));
+  }, [dashboard]);
+
+  const attendanceHeatmapItems = useMemo<HeatmapCell[]>(() => {
+    const studentName = 'Me';
+    const subjectBuckets = new Map<string, { total: number; present: number }>();
+
+    attendance.forEach((record) => {
+      const subjectName = record.subject_name?.trim() || 'General';
+      const bucket = subjectBuckets.get(subjectName) || { total: 0, present: 0 };
+      bucket.total += 1;
+      if (record.status === 'success') {
+        bucket.present += 1;
+      }
+      subjectBuckets.set(subjectName, bucket);
+    });
+
+    return Array.from(subjectBuckets.entries()).map(([subjectName, bucket]) => {
+      const score = bucket.total > 0 ? (bucket.present / bucket.total) * 100 : 0;
+      return {
+        student_id: 'me',
+        student_name: studentName,
+        competency_id: subjectName,
+        competency_name: subjectName,
+        score,
+        mastery_level: score >= 90 ? 'high' : score >= 75 ? 'medium' : 'low',
+      };
+    });
+  }, [attendance]);
 
   if (loading) {
     return (
@@ -262,34 +308,48 @@ const StudentDashboardPage = () => {
         </section>
       </div>
 
-      {/* Enrolled subjects */}
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+      {/* Heatmaps */}
+      <div className="grid gap-6 xl:grid-cols-2">
         <section className="rounded-3xl border border-slate-700 bg-slate-900 border border-slate-800 p-6 shadow-sm">
           <div className="mb-4 flex items-center justify-between gap-4">
             <div>
-              <h2 className="text-2xl font-semibold text-slate-100">Competency Heatmap</h2>
-              <p className="text-sm text-slate-600">A quick view of strengths and remediation areas.</p>
+              <h2 className="text-2xl font-semibold text-slate-100">Scores Heatmap</h2>
+              <p className="text-sm text-slate-600">A quick view of your average scores by subject.</p>
             </div>
             <div className="flex items-center gap-3">
-              <WidgetHelp title="Competency Heatmap" description="Shows your competency performance using color-coded cells. Red means low mastery, yellow means developing, and green means strong mastery." />
+              <WidgetHelp title="Scores Heatmap" description="Shows your subject score averages using color-coded cells. Red means low mastery, yellow means developing, and green means strong performance." />
               <span className="text-xs text-slate-400">Updated {dashboard?.last_updated ? new Date(dashboard.last_updated).toLocaleString() : 'recently'}</span>
             </div>
           </div>
-          <CompetencyHeatmap items={dashboard?.analytics?.heatmap?.items || []} limitRows={1} />
+          <CompetencyHeatmap items={scoreHeatmapItems} limitRows={1} />
         </section>
 
         <section className="rounded-3xl border border-slate-700 bg-slate-900 border border-slate-800 p-6 shadow-sm">
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-2xl font-semibold text-slate-100">Learning Signals</h2>
+              <h2 className="text-2xl font-semibold text-slate-100">Attendance Heatmap</h2>
               <p className="text-sm text-slate-600">
-                Attendance rate {dashboard?.summary_panel?.attendance_rate?.toFixed(1) ?? '0.0'}% and portfolio completion {dashboard?.summary_panel?.portfolio_completion_rate?.toFixed(1) ?? '0.0'}%.
+                Attendance rate {dashboard?.summary_panel?.attendance_rate?.toFixed(1) ?? '0.0'}% across your recorded sessions.
               </p>
             </div>
-            <WidgetHelp title="Learning Signals" description="Shows the relationship between attendance and academic performance. It helps you see whether stronger attendance aligns with stronger scores." />
+            <WidgetHelp title="Attendance Heatmap" description="Shows attendance by subject using color-coded cells. Green means strong attendance and red means attendance needs attention." />
           </div>
-          <AttendanceCorrelationChart items={dashboard?.analytics?.attendance_correlation?.items || []} />
+          {attendanceHeatmapItems.length === 0 ? (
+            <div className="flex h-48 items-center justify-center rounded-2xl border border-dashed border-slate-300 text-slate-400">
+              No attendance data yet
+            </div>
+          ) : (
+            <CompetencyHeatmap items={attendanceHeatmapItems} limitRows={1} />
+          )}
         </section>
+      </div>
+
+      <div className="rounded-3xl border border-slate-700 bg-slate-900 border border-slate-800 p-6 shadow-sm">
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="text-2xl font-semibold text-slate-100">Learning Signals</h2>
+          <WidgetHelp title="Learning Signals" description="Shows the relationship between attendance and academic performance. It helps you see whether stronger attendance aligns with stronger scores." />
+        </div>
+        <AttendanceCorrelationChart items={dashboard?.analytics?.attendance_correlation?.items || []} />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
