@@ -172,6 +172,48 @@ def _can_trainer_access_student(trainer_id: uuid.UUID, student_id: uuid.UUID) ->
 
 
 def _computed_scores(report: PracticalAssessmentReport) -> tuple[float | None, str | None]:
+    if isinstance(report.report_sections, list) and report.report_sections:
+        scores: list[float] = []
+        total_max = 0.0
+        total_items = 0
+        for section in report.report_sections:
+            if not isinstance(section, dict):
+                continue
+            for item in section.get("items") or []:
+                if not isinstance(item, dict):
+                    continue
+                total_items += 1
+                total_max += float(item.get("max_score") or PracticalAssessmentReport.MAX_TASK_SCORE)
+                if item.get("score") is not None:
+                    scores.append(float(item.get("score")))
+        if not scores:
+            return None, "INCOMPLETE"
+        total = sum(scores)
+        if len(scores) < total_items or total_max <= 0:
+            return total, "INCOMPLETE"
+        percentage = (total / total_max) * 100
+        if percentage >= 70:
+            return total, "COMPETENT"
+        if percentage >= 50:
+            return total, "BORDERLINE"
+        return total, "NOT YET COMPETENT"
+
+    if isinstance(report.task_items, list) and report.task_items:
+        filled_scores = [float(item.get("score")) for item in report.task_items if item.get("score") is not None]
+        if not filled_scores:
+            return None, "INCOMPLETE"
+
+        total = sum(filled_scores)
+        total_max = sum(float(item.get("max_score") or PracticalAssessmentReport.MAX_TASK_SCORE) for item in report.task_items)
+        if len(filled_scores) < len(report.task_items) or total_max <= 0:
+            return total, "INCOMPLETE"
+        percentage = (total / total_max) * 100
+        if percentage >= 70:
+            return total, "COMPETENT"
+        if percentage >= 50:
+            return total, "BORDERLINE"
+        return total, "NOT YET COMPETENT"
+
     scores = [report.task_1_score, report.task_2_score, report.task_3_score, report.task_4_score]
     filled_scores = [score for score in scores if score is not None]
     if not filled_scores:
@@ -188,7 +230,327 @@ def _computed_scores(report: PracticalAssessmentReport) -> tuple[float | None, s
     return total, "NOT YET COMPETENT"
 
 
-def _task_rows(report: PracticalAssessmentReport) -> list[dict]:
+def _normalize_task_items(raw_items) -> list[dict]:
+    if raw_items in (None, ""):
+        return []
+    if not isinstance(raw_items, list):
+        raise ValueError("'task_items' must be a list")
+
+    items = []
+    for index, raw in enumerate(raw_items, start=1):
+        if not isinstance(raw, dict):
+            raise ValueError(f"'task_items[{index}]' must be an object")
+        description = raw.get("description")
+        remark = raw.get("remark")
+        score = raw.get("score")
+        max_score = raw.get("max_score", PracticalAssessmentReport.MAX_TASK_SCORE)
+
+        if description not in (None, "") and not isinstance(description, str):
+            raise ValueError(f"'task_items[{index}].description' must be a string")
+        if remark not in (None, "") and not isinstance(remark, str):
+            raise ValueError(f"'task_items[{index}].remark' must be a string")
+        if score not in (None, ""):
+            try:
+                score = float(score)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"'task_items[{index}].score' must be a number") from exc
+            if score < 0:
+                raise ValueError(f"'task_items[{index}].score' must be zero or greater")
+        else:
+            score = None
+        try:
+            max_score = float(max_score)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"'task_items[{index}].max_score' must be a number") from exc
+        if max_score <= 0:
+            raise ValueError(f"'task_items[{index}].max_score' must be greater than zero")
+
+        if description in (None, "") and score is None and remark in (None, ""):
+            continue
+
+        items.append(
+            {
+                "number": index,
+                "description": description.strip() if isinstance(description, str) and description.strip() else None,
+                "score": score,
+                "remark": remark.strip() if isinstance(remark, str) and remark.strip() else None,
+                "max_score": max_score,
+            }
+        )
+    return items
+
+
+def _normalize_oral_questions(raw_questions) -> list[dict]:
+    if raw_questions in (None, ""):
+        return []
+    if not isinstance(raw_questions, list):
+        raise ValueError("'oral_questions' must be a list")
+
+    questions = []
+    for index, raw in enumerate(raw_questions, start=1):
+        if not isinstance(raw, dict):
+            raise ValueError(f"'oral_questions[{index}]' must be an object")
+        question = raw.get("question")
+        answer_guidance = raw.get("answer_guidance")
+        awarded_score = raw.get("awarded_score")
+        max_score = raw.get("max_score", PracticalAssessmentReport.DEFAULT_ORAL_MAX_SCORE)
+
+        if question not in (None, "") and not isinstance(question, str):
+            raise ValueError(f"'oral_questions[{index}].question' must be a string")
+        if answer_guidance not in (None, "") and not isinstance(answer_guidance, str):
+            raise ValueError(f"'oral_questions[{index}].answer_guidance' must be a string")
+        if awarded_score not in (None, ""):
+            try:
+                awarded_score = float(awarded_score)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"'oral_questions[{index}].awarded_score' must be a number") from exc
+            if awarded_score < 0:
+                raise ValueError(f"'oral_questions[{index}].awarded_score' must be zero or greater")
+        else:
+            awarded_score = None
+        try:
+            max_score = float(max_score)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"'oral_questions[{index}].max_score' must be a number") from exc
+        if max_score <= 0:
+            raise ValueError(f"'oral_questions[{index}].max_score' must be greater than zero")
+
+        if question in (None, "") and answer_guidance in (None, "") and awarded_score is None:
+            continue
+
+        questions.append(
+            {
+                "number": index,
+                "question": question.strip() if isinstance(question, str) and question.strip() else None,
+                "answer_guidance": answer_guidance.strip() if isinstance(answer_guidance, str) and answer_guidance.strip() else None,
+                "awarded_score": awarded_score,
+                "max_score": max_score,
+            }
+        )
+    return questions
+
+
+def _normalize_section_items(raw_items, section_type: str, section_index: int) -> list[dict]:
+    if raw_items in (None, ""):
+        return []
+    if not isinstance(raw_items, list):
+        raise ValueError(f"'report_sections[{section_index}].items' must be a list")
+
+    items = []
+    default_max = (
+        PracticalAssessmentReport.DEFAULT_ORAL_MAX_SCORE
+        if section_type == "oral"
+        else PracticalAssessmentReport.MAX_TASK_SCORE
+    )
+    for item_index, raw in enumerate(raw_items, start=1):
+        if not isinstance(raw, dict):
+            raise ValueError(f"'report_sections[{section_index}].items[{item_index}]' must be an object")
+
+        prompt = raw.get("prompt")
+        expected_response = raw.get("expected_response")
+        remark = raw.get("remark")
+        sub_items = raw.get("sub_items")
+        score = raw.get("score")
+        max_score = raw.get("max_score", default_max)
+
+        for field_name, field_value in (
+            ("prompt", prompt),
+            ("expected_response", expected_response),
+            ("remark", remark),
+        ):
+            if field_value not in (None, "") and not isinstance(field_value, str):
+                raise ValueError(
+                    f"'report_sections[{section_index}].items[{item_index}].{field_name}' must be a string"
+                )
+        if sub_items not in (None, ""):
+            if not isinstance(sub_items, list) or any(not isinstance(value, str) for value in sub_items):
+                raise ValueError(
+                    f"'report_sections[{section_index}].items[{item_index}].sub_items' must be a list of strings"
+                )
+        else:
+            sub_items = []
+
+        if score not in (None, ""):
+            try:
+                score = float(score)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"'report_sections[{section_index}].items[{item_index}].score' must be a number") from exc
+            if score < 0:
+                raise ValueError(f"'report_sections[{section_index}].items[{item_index}].score' must be zero or greater")
+        else:
+            score = None
+
+        try:
+            max_score = float(max_score)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"'report_sections[{section_index}].items[{item_index}].max_score' must be a number") from exc
+        if max_score <= 0:
+            raise ValueError(f"'report_sections[{section_index}].items[{item_index}].max_score' must be greater than zero")
+
+        if prompt in (None, "") and expected_response in (None, "") and remark in (None, "") and score is None:
+            continue
+
+        items.append(
+            {
+                "number": item_index,
+                "prompt": prompt.strip() if isinstance(prompt, str) and prompt.strip() else None,
+                "expected_response": expected_response.strip() if isinstance(expected_response, str) and expected_response.strip() else None,
+                "remark": remark.strip() if isinstance(remark, str) and remark.strip() else None,
+                "sub_items": [value.strip() for value in sub_items if value.strip()],
+                "score": score,
+                "max_score": max_score,
+            }
+        )
+    return items
+
+
+def _normalize_report_sections(raw_sections) -> list[dict]:
+    if raw_sections in (None, ""):
+        return []
+    if not isinstance(raw_sections, list):
+        raise ValueError("'report_sections' must be a list")
+
+    sections = []
+    for section_index, raw in enumerate(raw_sections, start=1):
+        if not isinstance(raw, dict):
+            raise ValueError(f"'report_sections[{section_index}]' must be an object")
+        title = raw.get("title")
+        section_type = str(raw.get("type") or "narrative").strip().lower()
+        description = raw.get("description")
+        content = raw.get("content")
+        duration_hours = raw.get("duration_hours")
+        section_assessment_date = raw.get("assessment_date")
+        section_assessment_venue = raw.get("assessment_venue")
+        note = raw.get("note")
+
+        if section_type not in {"narrative", "checklist", "oral", "session"}:
+            raise ValueError(f"'report_sections[{section_index}].type' must be narrative, checklist, session, or oral")
+        for field_name, field_value in (
+            ("title", title),
+            ("description", description),
+            ("content", content),
+            ("assessment_date", section_assessment_date),
+            ("assessment_venue", section_assessment_venue),
+            ("note", note),
+        ):
+            if field_value not in (None, "") and not isinstance(field_value, str):
+                raise ValueError(f"'report_sections[{section_index}].{field_name}' must be a string")
+        if duration_hours not in (None, ""):
+            try:
+                duration_hours = float(duration_hours)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"'report_sections[{section_index}].duration_hours' must be a number") from exc
+            if duration_hours <= 0:
+                raise ValueError(f"'report_sections[{section_index}].duration_hours' must be greater than zero")
+        else:
+            duration_hours = None
+
+        items = _normalize_section_items(raw.get("items"), section_type, section_index) if section_type != "narrative" else []
+        if section_type == "narrative" and not (isinstance(content, str) and content.strip()) and not (isinstance(description, str) and description.strip()):
+            continue
+        if section_type != "narrative" and not items and not (isinstance(description, str) and description.strip()):
+            continue
+
+        sections.append(
+            {
+                "number": section_index,
+                "title": title.strip() if isinstance(title, str) and title.strip() else None,
+                "type": section_type,
+                "description": description.strip() if isinstance(description, str) and description.strip() else None,
+                "content": content.strip() if isinstance(content, str) and content.strip() else None,
+                "duration_hours": duration_hours,
+                "assessment_date": section_assessment_date.strip() if isinstance(section_assessment_date, str) and section_assessment_date.strip() else None,
+                "assessment_venue": section_assessment_venue.strip() if isinstance(section_assessment_venue, str) and section_assessment_venue.strip() else None,
+                "note": note.strip() if isinstance(note, str) and note.strip() else None,
+                "items": items,
+            }
+        )
+    return sections
+
+
+def _legacy_report_sections(report: PracticalAssessmentReport) -> list[dict]:
+    sections = []
+    task_rows = _task_rows(report)
+    oral_questions = _normalize_oral_questions(report.oral_questions) if isinstance(report.oral_questions, list) else []
+
+    if report.practical_brief:
+        sections.append(
+            {
+                "number": len(sections) + 1,
+                "title": "Practical Brief",
+                "type": "narrative",
+                "description": None,
+                "content": report.practical_brief,
+                "items": [],
+            }
+        )
+    if task_rows:
+        sections.append(
+            {
+                "number": len(sections) + 1,
+                "title": "Task Checklist",
+                "type": "session",
+                "description": None,
+                "content": None,
+                "duration_hours": None,
+                "assessment_date": None,
+                "assessment_venue": report.assessment_venue,
+                "note": None,
+                "items": [
+                    {
+                        "number": index + 1,
+                        "prompt": row.get("description"),
+                        "expected_response": None,
+                        "remark": row.get("remark"),
+                        "sub_items": [],
+                        "score": row.get("score"),
+                        "max_score": row.get("max_score"),
+                    }
+                    for index, row in enumerate(task_rows)
+                ],
+            }
+        )
+    if oral_questions:
+        sections.append(
+            {
+                "number": len(sections) + 1,
+                "title": "Oral Questions",
+                "type": "oral",
+                "description": None,
+                "content": None,
+                "duration_hours": None,
+                "assessment_date": None,
+                "assessment_venue": None,
+                "note": None,
+                "items": [
+                    {
+                        "number": index + 1,
+                        "prompt": question.get("question"),
+                        "expected_response": question.get("answer_guidance"),
+                        "remark": None,
+                        "sub_items": [],
+                        "score": question.get("awarded_score"),
+                        "max_score": question.get("max_score"),
+                    }
+                    for index, question in enumerate(oral_questions)
+                ],
+            }
+        )
+    if report.general_remarks:
+        sections.append(
+            {
+                "number": len(sections) + 1,
+                "title": "General Remarks",
+                "type": "narrative",
+                "description": None,
+                "content": report.general_remarks,
+                "items": [],
+            }
+        )
+    return sections
+
+
+def _legacy_task_rows(report: PracticalAssessmentReport) -> list[dict]:
     rows = []
     for index in range(1, 5):
         description = getattr(report, f"task_{index}_description", None)
@@ -202,13 +564,73 @@ def _task_rows(report: PracticalAssessmentReport) -> list[dict]:
                 "description": description,
                 "score": score,
                 "remark": remark,
+                "max_score": PracticalAssessmentReport.MAX_TASK_SCORE,
             }
         )
     return rows
 
 
+def _task_rows(report: PracticalAssessmentReport) -> list[dict]:
+    if isinstance(report.task_items, list) and report.task_items:
+        return _normalize_task_items(report.task_items)
+    return _legacy_task_rows(report)
+
+
+def _sync_legacy_task_fields(report: PracticalAssessmentReport, rows: list[dict]) -> None:
+    for index in range(1, 5):
+        row = rows[index - 1] if index - 1 < len(rows) else None
+        setattr(report, f"task_{index}_description", row.get("description") if row else None)
+        setattr(report, f"task_{index}_score", row.get("score") if row else None)
+        setattr(report, f"task_{index}_remark", row.get("remark") if row else None)
+
+
+def _score_percentage(task_rows: list[dict]) -> float | None:
+    if not task_rows:
+        return None
+    scores = [float(item.get("score")) for item in task_rows if item.get("score") is not None]
+    total_max = sum(float(item.get("max_score") or PracticalAssessmentReport.MAX_TASK_SCORE) for item in task_rows)
+    if len(scores) != len(task_rows) or total_max <= 0:
+        return None
+    return (sum(scores) / total_max) * 100
+
+
+def _section_score_summary(sections: list[dict]) -> tuple[float | None, float | None, float | None]:
+    scored_items = []
+    total_max = 0.0
+    total_items = 0
+    for section in sections:
+        for item in section.get("items") or []:
+            total_items += 1
+            total_max += float(item.get("max_score") or PracticalAssessmentReport.MAX_TASK_SCORE)
+            if item.get("score") is not None:
+                scored_items.append(float(item.get("score")))
+    if not scored_items:
+        return None, None, None
+    total_score = sum(scored_items)
+    if len(scored_items) != total_items or total_max <= 0:
+        return total_score, total_max, None
+    return total_score, total_max, (total_score / total_max) * 100
+
+
 def _report_payload(report: PracticalAssessmentReport) -> dict:
     total_score, competency_outcome = _computed_scores(report)
+    task_rows = _task_rows(report)
+    oral_questions = _normalize_oral_questions(report.oral_questions) if isinstance(report.oral_questions, list) else []
+    report_sections = (
+        _normalize_report_sections(report.report_sections)
+        if isinstance(report.report_sections, list) and report.report_sections
+        else _legacy_report_sections(report)
+    )
+    section_total_score, section_total_max, section_percentage = _section_score_summary(report_sections)
+    total_max_score = (
+        section_total_max
+        if section_total_max is not None
+        else (
+            sum(float(item.get("max_score") or PracticalAssessmentReport.MAX_TASK_SCORE) for item in task_rows)
+            if task_rows
+            else float(PracticalAssessmentReport.MAX_TASK_SCORE * 4)
+        )
+    )
     context = _assessment_context(report.student, report.trainer) if report.student and report.trainer else {}
     return {
         "id": str(report.id),
@@ -225,7 +647,12 @@ def _report_payload(report: PracticalAssessmentReport) -> dict:
         "unit_code": _display_context_value(report, "unit_code", context),
         "period": _display_context_value(report, "period", context),
         "assessment_date": report.assessment_date.isoformat() if report.assessment_date else None,
-        "task_items": _task_rows(report),
+        "assessment_venue": report.assessment_venue,
+        "practical_brief": report.practical_brief,
+        "general_remarks": report.general_remarks,
+        "report_sections": report_sections,
+        "task_items": task_rows,
+        "oral_questions": oral_questions,
         "task_1_description": report.task_1_description,
         "task_2_description": report.task_2_description,
         "task_3_description": report.task_3_description,
@@ -238,7 +665,9 @@ def _report_payload(report: PracticalAssessmentReport) -> dict:
         "task_2_remark": report.task_2_remark,
         "task_3_remark": report.task_3_remark,
         "task_4_remark": report.task_4_remark,
-        "total_score": total_score,
+        "total_score": section_total_score if section_total_score is not None else total_score,
+        "total_max_score": total_max_score,
+        "score_percentage": section_percentage if section_percentage is not None else _score_percentage(task_rows),
         "competency_outcome": competency_outcome,
         "released_at": report.released_at.isoformat() if report.released_at else None,
         "released_by_user_id": str(report.released_by_user_id) if report.released_by_user_id else None,
@@ -252,6 +681,9 @@ def _report_payload(report: PracticalAssessmentReport) -> dict:
 def _apply_payload(report: PracticalAssessmentReport, payload: dict) -> PracticalAssessmentReport:
     for field in (
         "assessment_date",
+        "assessment_venue",
+        "practical_brief",
+        "general_remarks",
         "task_1_description",
         "task_2_description",
         "task_3_description",
@@ -277,6 +709,47 @@ def _apply_payload(report: PracticalAssessmentReport, payload: dict) -> Practica
                     raise ValueError("Invalid 'assessment_date'") from exc
             else:
                 setattr(report, field, value)
+    if "task_items" in payload:
+        report.task_items = _normalize_task_items(payload.get("task_items"))
+        _sync_legacy_task_fields(report, report.task_items)
+    elif any(field in payload for field in (
+        "task_1_description",
+        "task_2_description",
+        "task_3_description",
+        "task_4_description",
+        "task_1_score",
+        "task_2_score",
+        "task_3_score",
+        "task_4_score",
+        "task_1_remark",
+        "task_2_remark",
+        "task_3_remark",
+        "task_4_remark",
+    )):
+        report.task_items = _legacy_task_rows(report)
+    if "oral_questions" in payload:
+        report.oral_questions = _normalize_oral_questions(payload.get("oral_questions"))
+    if "report_sections" in payload:
+        report.report_sections = _normalize_report_sections(payload.get("report_sections"))
+    elif any(field in payload for field in (
+        "practical_brief",
+        "general_remarks",
+        "task_items",
+        "oral_questions",
+        "task_1_description",
+        "task_2_description",
+        "task_3_description",
+        "task_4_description",
+        "task_1_score",
+        "task_2_score",
+        "task_3_score",
+        "task_4_score",
+        "task_1_remark",
+        "task_2_remark",
+        "task_3_remark",
+        "task_4_remark",
+    )):
+        report.report_sections = _legacy_report_sections(report)
     return report
 
 
@@ -296,6 +769,12 @@ def _validate_score_fields(payload: dict) -> None:
 
 
 def _validate_task_descriptions(payload: dict) -> None:
+    if "report_sections" in payload:
+        _normalize_report_sections(payload.get("report_sections"))
+    if "task_items" in payload:
+        _normalize_task_items(payload.get("task_items"))
+    if "oral_questions" in payload:
+        _normalize_oral_questions(payload.get("oral_questions"))
     for field in ("task_1_description", "task_2_description", "task_3_description", "task_4_description"):
         if field not in payload:
             continue

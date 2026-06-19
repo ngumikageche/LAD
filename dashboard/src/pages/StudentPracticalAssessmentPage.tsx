@@ -59,8 +59,8 @@ export default function StudentPracticalAssessmentPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <div className="rounded-3xl border border-slate-800 bg-slate-900 p-8 shadow-lg shadow-slate-950/30">
+    <div className="space-y-8 print:block" data-print-root>
+      <div className="rounded-3xl border border-slate-800 bg-slate-900 p-8 shadow-lg shadow-slate-950/30 print:hidden">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <p className="text-xs uppercase tracking-[0.35em] text-teal-300">Learner Portal</p>
@@ -84,8 +84,8 @@ export default function StudentPracticalAssessmentPage() {
         ) : null}
       </div>
 
-      <div className="grid gap-6 xl:grid-cols-[300px_1fr]">
-        <aside className="rounded-3xl border border-slate-800 bg-slate-900 p-5 shadow-lg shadow-slate-950/20">
+      <div className="grid gap-6 xl:grid-cols-[300px_1fr] print:block">
+        <aside className="rounded-3xl border border-slate-800 bg-slate-900 p-5 shadow-lg shadow-slate-950/20 print:hidden">
           <div className="flex items-center gap-2 border-b border-slate-800 pb-4">
             <FileText size={18} className="text-teal-300" />
             <h2 className="text-lg font-semibold text-slate-100">Reports</h2>
@@ -135,9 +135,9 @@ export default function StudentPracticalAssessmentPage() {
           </div>
         </aside>
 
-        <main className="space-y-6">
-          <section className="rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-lg shadow-slate-950/20">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <main className="space-y-6 print:block">
+          <section className="rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-lg shadow-slate-950/20 print:border-0 print:bg-transparent print:p-0 print:shadow-none">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between print:hidden">
               <div>
                 <h2 className="text-xl font-bold text-slate-100">Report Preview</h2>
                 <p className="text-sm text-slate-500">Printable assessment layout for the selected report.</p>
@@ -163,7 +163,7 @@ export default function StudentPracticalAssessmentPage() {
             </div>
 
             {selectedReport ? (
-              <div ref={printRef} className="mt-6">
+              <div ref={printRef} className="mt-6 print:mt-0">
                 <PracticalAssessmentReportView
                   report={selectedReport}
                   studentName={selectedReport.student_name ?? user?.name ?? null}

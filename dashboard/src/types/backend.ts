@@ -156,6 +156,29 @@ export interface PracticalAssessmentReport {
   unit_code: string;
   period: string;
   assessment_date: string | null;
+  assessment_venue?: string | null;
+  practical_brief?: string | null;
+  general_remarks?: string | null;
+  report_sections?: Array<{
+    number: number;
+    title: string | null;
+    type: 'narrative' | 'checklist' | 'session' | 'oral';
+    description: string | null;
+    content: string | null;
+    duration_hours?: number | null;
+    assessment_date?: string | null;
+    assessment_venue?: string | null;
+    note?: string | null;
+    items: Array<{
+      number: number;
+      prompt: string | null;
+      expected_response: string | null;
+      remark: string | null;
+      sub_items?: string[];
+      score: number | null;
+      max_score?: number | null;
+    }>;
+  }>;
   task_1_description: string | null;
   task_2_description: string | null;
   task_3_description: string | null;
@@ -169,6 +192,8 @@ export interface PracticalAssessmentReport {
   task_3_remark: string | null;
   task_4_remark: string | null;
   total_score: number | null;
+  total_max_score?: number | null;
+  score_percentage?: number | null;
   competency_outcome: string | null;
   released_at: string | null;
   released_by_user_id: string | null;
@@ -181,6 +206,14 @@ export interface PracticalAssessmentReport {
     description: string | null;
     score: number | null;
     remark: string | null;
+    max_score?: number | null;
+  }>;
+  oral_questions?: Array<{
+    number: number;
+    question: string | null;
+    answer_guidance: string | null;
+    awarded_score: number | null;
+    max_score?: number | null;
   }>;
 }
 

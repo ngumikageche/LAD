@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, CheckCircle2, FileText, Printer, Save, Send, Sparkles, Trash2, Undo2, User } from 'lucide-react';
+import { AlertCircle, CheckCircle2, ClipboardList, Mic, Plus, Printer, Save, Send, Trash2, Undo2, User } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { Button } from '../components/ui/Button';
 import { FormField, Input, Select, TextArea } from '../components/ui/Form';
@@ -15,41 +15,40 @@ type StudentOption = {
   overall_avg: number;
 };
 
+type SectionType = 'narrative' | 'session' | 'oral';
+
+type SectionItemForm = {
+  prompt: string;
+  expected_response: string;
+  remark: string;
+  details: string;
+  score: string;
+  max_score: string;
+};
+
+type SectionForm = {
+  title: string;
+  type: SectionType;
+  description: string;
+  content: string;
+  duration_hours: string;
+  assessment_date: string;
+  assessment_venue: string;
+  note: string;
+  items: SectionItemForm[];
+};
+
 type FormState = {
   assessment_date: string;
-  task_1_description: string;
-  task_2_description: string;
-  task_3_description: string;
-  task_4_description: string;
-  task_1_score: string;
-  task_2_score: string;
-  task_3_score: string;
-  task_4_score: string;
-  task_1_remark: string;
-  task_2_remark: string;
-  task_3_remark: string;
-  task_4_remark: string;
+  assessment_venue: string;
   status: PracticalAssessmentReport['status'];
 };
 
 const DEFAULT_FORM: FormState = {
   assessment_date: '',
-  task_1_description: '',
-  task_2_description: '',
-  task_3_description: '',
-  task_4_description: '',
-  task_1_score: '',
-  task_2_score: '',
-  task_3_score: '',
-  task_4_score: '',
-  task_1_remark: '',
-  task_2_remark: '',
-  task_3_remark: '',
-  task_4_remark: '',
+  assessment_venue: '',
   status: 'draft',
 };
-
-const MAX_TASKS = 4;
 
 const toNumber = (value: string) => {
   if (value.trim() === '') return null;
@@ -65,6 +64,163 @@ const autoRemark = (score: number | null) => {
   return 'Unsatisfactory - task not adequately completed.';
 };
 
+const hasItemContent = (item: SectionItemForm) => (
+  item.prompt.trim() !== ''
+  || item.expected_response.trim() !== ''
+  || item.remark.trim() !== ''
+  || item.details.trim() !== ''
+  || item.score.trim() !== ''
+);
+
+const emptyItem = (type: SectionType): SectionItemForm => ({
+  prompt: '',
+  expected_response: '',
+  remark: '',
+  details: '',
+  score: '',
+  max_score: type === 'oral' ? '1' : '2',
+});
+
+const sectionPreset = (type: SectionType): SectionForm => {
+  if (type === 'session') {
+    return {
+      title: 'Session Title',
+      type,
+      description: '',
+      content: '',
+      duration_hours: '3',
+      assessment_date: '',
+      assessment_venue: '',
+      note: '',
+      items: [emptyItem(type)],
+    };
+  }
+  if (type === 'oral') {
+    return {
+      title: 'Oral Assessment',
+      type,
+      description: 'Assessor to award marks for each correct response by the candidate in the table below.',
+      content: '',
+      duration_hours: '',
+      assessment_date: '',
+      assessment_venue: '',
+      note: '',
+      items: [emptyItem(type)],
+    };
+  }
+  return {
+    title: 'Practical Brief',
+    type,
+    description: '',
+    content: '',
+    duration_hours: '',
+    assessment_date: '',
+    assessment_venue: '',
+    note: '',
+    items: [],
+  };
+};
+
+const cdaccTemplateSections = (): SectionForm[] => ([
+  {
+    title: 'Instructions to the Assessor',
+    type: 'narrative',
+    description: '',
+    content: [
+      '1. This assessment is to take place in the prescribed order as arranged in the tool.',
+      '2. Capture clear photographs and/or videos of each candidate’s work at critical points as they perform the tasks and label all media files with Candidate Registration Number, Unit Code, Practical Session Number, and Date.',
+      '3. Record candidate scores and assessor remarks in the observation checklists for each session.',
+      '4. Store all completed checklists, media files, and candidate drawings in a secure digital or physical folder per candidate.',
+    ].join('\n'),
+    duration_hours: '',
+    assessment_date: '',
+    assessment_venue: '',
+    note: '',
+    items: [],
+  },
+  {
+    title: 'Practical Brief',
+    type: 'narrative',
+    description: '',
+    content: 'In this practical, the candidate will be required to demonstrate competence based on the provided drawing, procedure, or work instruction. The assessment will involve hands-on sessions and an oral assessment.',
+    duration_hours: '',
+    assessment_date: '',
+    assessment_venue: '',
+    note: '',
+    items: [],
+  },
+  {
+    title: 'Session 1',
+    type: 'session',
+    description: 'Practical checklist',
+    content: '',
+    duration_hours: '3',
+    assessment_date: '',
+    assessment_venue: '',
+    note: 'Photos and videos should be taken at critical points during this session.',
+    items: [emptyItem('session')],
+  },
+  {
+    title: 'Session 2',
+    type: 'session',
+    description: 'Practical checklist',
+    content: '',
+    duration_hours: '3',
+    assessment_date: '',
+    assessment_venue: '',
+    note: 'Photos and videos should be taken at critical points during this session.',
+    items: [emptyItem('session')],
+  },
+  {
+    title: 'Session 3',
+    type: 'session',
+    description: 'Practical checklist',
+    content: '',
+    duration_hours: '3',
+    assessment_date: '',
+    assessment_venue: '',
+    note: 'Photos and videos should be taken at critical points during this session.',
+    items: [emptyItem('session')],
+  },
+  {
+    title: 'Oral Assessment',
+    type: 'oral',
+    description: 'Assessor to award marks for each correct response by the candidate in the table below.',
+    content: '',
+    duration_hours: '',
+    assessment_date: '',
+    assessment_venue: '',
+    note: '',
+    items: [emptyItem('oral')],
+  },
+]);
+
+const reportSectionsToForm = (report: PracticalAssessmentReport): SectionForm[] => {
+  if (report.report_sections?.length) {
+    return report.report_sections.map((section) => ({
+      title: section.title ?? '',
+      type: section.type === 'checklist' ? 'session' : section.type,
+      description: section.description ?? '',
+      content: section.content ?? '',
+      duration_hours: section.duration_hours == null ? '' : String(section.duration_hours),
+      assessment_date: section.assessment_date ?? '',
+      assessment_venue: section.assessment_venue ?? '',
+      note: section.note ?? '',
+      items: section.type === 'narrative'
+        ? []
+        : (section.items.length ? section.items : [null]).map((item) => ({
+            prompt: item?.prompt ?? '',
+            expected_response: item?.expected_response ?? '',
+            remark: item?.remark ?? '',
+            details: (item?.sub_items ?? []).join('\n'),
+            score: item?.score == null ? '' : String(item.score),
+            max_score: item?.max_score == null ? (section.type === 'oral' ? '1' : '2') : String(item.max_score),
+          })),
+    }));
+  }
+  return [sectionPreset('narrative')];
+};
+
 export default function TrainerPracticalAssessmentPage() {
   const { user } = useAuth();
   const isAdmin = user?.user_type === 'admin';
@@ -72,8 +228,8 @@ export default function TrainerPracticalAssessmentPage() {
   const [reports, setReports] = useState<PracticalAssessmentReport[]>([]);
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [selectedReportId, setSelectedReportId] = useState('');
-  const [visibleTaskCount, setVisibleTaskCount] = useState(1);
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
+  const [sections, setSections] = useState<SectionForm[]>([sectionPreset('narrative')]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [releasing, setReleasing] = useState(false);
@@ -114,20 +270,31 @@ export default function TrainerPracticalAssessmentPage() {
     loadStudents();
   }, [isAdmin]);
 
+  const resetEditor = () => {
+    setSelectedReportId('');
+    setForm({ ...DEFAULT_FORM });
+    setSections([sectionPreset('narrative')]);
+  };
+
+  const loadFormFromReport = (report: PracticalAssessmentReport) => {
+    setForm({
+      assessment_date: report.assessment_date ? report.assessment_date.slice(0, 10) : '',
+      assessment_venue: report.assessment_venue ?? '',
+      status: report.status,
+    });
+    setSections(reportSectionsToForm(report));
+  };
+
   const refreshReports = async (studentId: string, preferredReportId?: string) => {
     if (!studentId) {
       setReports([]);
-      setSelectedReportId('');
-      setForm({ ...DEFAULT_FORM });
-      setVisibleTaskCount(1);
+      resetEditor();
       return;
     }
 
     try {
       setError(null);
-      const data = await trainerPracticalAssessmentsAPI.listPracticalAssessments({
-        student_id: studentId,
-      });
+      const data = await trainerPracticalAssessmentsAPI.listPracticalAssessments({ student_id: studentId });
       const items = Array.isArray(data) ? data : [];
       setReports(items);
       const nextSelected =
@@ -138,14 +305,11 @@ export default function TrainerPracticalAssessmentPage() {
         setSelectedReportId(nextSelected.id);
         loadFormFromReport(nextSelected);
       } else {
-        setSelectedReportId('');
-        setForm({ ...DEFAULT_FORM });
-        setVisibleTaskCount(1);
+        resetEditor();
       }
     } catch (err) {
       setReports([]);
-      setSelectedReportId('');
-      setVisibleTaskCount(1);
+      resetEditor();
       setError(err instanceof Error ? err.message : 'Failed to load practical assessments');
     }
   };
@@ -160,66 +324,117 @@ export default function TrainerPracticalAssessmentPage() {
     }
   }, [selectedReport]);
 
-  const loadFormFromReport = (report: PracticalAssessmentReport) => {
-    const taskValues = [
-      [report.task_1_score, report.task_1_remark],
-      [report.task_2_score, report.task_2_remark],
-      [report.task_3_score, report.task_3_remark],
-      [report.task_4_score, report.task_4_remark],
-    ];
-    const inferredVisibleTasks = taskValues.reduce((highest, [score, remark], index) => {
-      const filled = (score != null && String(score).trim() !== '') || (remark != null && String(remark).trim() !== '');
-      return filled ? index + 1 : highest;
-    }, 1);
-    setForm({
-      assessment_date: report.assessment_date ? report.assessment_date.slice(0, 10) : '',
-      task_1_description: report.task_1_description ?? '',
-      task_2_description: report.task_2_description ?? '',
-      task_3_description: report.task_3_description ?? '',
-      task_4_description: report.task_4_description ?? '',
-      task_1_score: report.task_1_score == null ? '' : String(report.task_1_score),
-      task_2_score: report.task_2_score == null ? '' : String(report.task_2_score),
-      task_3_score: report.task_3_score == null ? '' : String(report.task_3_score),
-      task_4_score: report.task_4_score == null ? '' : String(report.task_4_score),
-      task_1_remark: report.task_1_remark ?? '',
-      task_2_remark: report.task_2_remark ?? '',
-      task_3_remark: report.task_3_remark ?? '',
-      task_4_remark: report.task_4_remark ?? '',
-      status: report.status,
-    });
-    setVisibleTaskCount(Math.max(1, Math.min(MAX_TASKS, inferredVisibleTasks || 1)));
-  };
-
   const updateField = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
   };
 
-  const buildPayload = (statusOverride?: PracticalAssessmentReport['status']): PracticalAssessmentPayload => {
-    const payload: PracticalAssessmentPayload = {
-      id: selectedReportId || undefined,
-      student_id: selectedStudentId,
-      trainer_id: user?.trainer_id ?? undefined,
-      status: statusOverride ?? form.status,
-    };
-
-    if (form.assessment_date.trim()) {
-      payload.assessment_date = form.assessment_date.trim();
-    }
-    if (form.task_1_description.trim()) payload.task_1_description = form.task_1_description.trim();
-    if (form.task_2_description.trim()) payload.task_2_description = form.task_2_description.trim();
-    if (form.task_3_description.trim()) payload.task_3_description = form.task_3_description.trim();
-    if (form.task_4_description.trim()) payload.task_4_description = form.task_4_description.trim();
-    if (form.task_1_score.trim()) payload.task_1_score = toNumber(form.task_1_score);
-    if (form.task_2_score.trim()) payload.task_2_score = toNumber(form.task_2_score);
-    if (form.task_3_score.trim()) payload.task_3_score = toNumber(form.task_3_score);
-    if (form.task_4_score.trim()) payload.task_4_score = toNumber(form.task_4_score);
-    if (form.task_1_remark.trim()) payload.task_1_remark = form.task_1_remark.trim();
-    if (form.task_2_remark.trim()) payload.task_2_remark = form.task_2_remark.trim();
-    if (form.task_3_remark.trim()) payload.task_3_remark = form.task_3_remark.trim();
-    if (form.task_4_remark.trim()) payload.task_4_remark = form.task_4_remark.trim();
-
-    return payload;
+  const updateSection = <K extends keyof SectionForm>(sectionIndex: number, key: K, value: SectionForm[K]) => {
+    setSections((current) => current.map((section, index) => (
+      index === sectionIndex ? { ...section, [key]: value } : section
+    )));
   };
+
+  const changeSectionType = (sectionIndex: number, nextType: SectionType) => {
+    setSections((current) => current.map((section, index) => {
+      if (index !== sectionIndex) return section;
+      if (section.type === nextType) return section;
+      if (nextType === 'narrative') {
+        return {
+          ...section,
+          type: nextType,
+          duration_hours: '',
+          note: '',
+          items: [],
+        };
+      }
+      const fallbackItems = section.items.length
+        ? section.items.map((item) => ({
+            ...item,
+            max_score: item.max_score.trim() || (nextType === 'oral' ? '1' : '2'),
+          }))
+        : [emptyItem(nextType)];
+      return {
+        ...section,
+        type: nextType,
+        duration_hours: section.duration_hours || (nextType === 'oral' ? '' : '3'),
+        items: fallbackItems,
+      };
+    }));
+  };
+
+  const updateItem = <K extends keyof SectionItemForm>(sectionIndex: number, itemIndex: number, key: K, value: SectionItemForm[K]) => {
+    setSections((current) => current.map((section, index) => (
+      index === sectionIndex
+        ? {
+            ...section,
+            items: section.items.map((item, currentIndex) => (
+              currentIndex === itemIndex ? { ...item, [key]: value } : item
+            )),
+          }
+        : section
+    )));
+  };
+
+  const addSection = (type: SectionType) => {
+    setSections((current) => [...current, sectionPreset(type)]);
+  };
+
+  const loadCdaccTemplate = () => {
+    setSections(cdaccTemplateSections());
+    setSuccess('CDACC template loaded.');
+    window.setTimeout(() => setSuccess(null), 2500);
+  };
+
+  const addItem = (sectionIndex: number) => {
+    setSections((current) => current.map((section, index) => (
+      index === sectionIndex ? { ...section, items: [...section.items, emptyItem(section.type)] } : section
+    )));
+  };
+
+  const removeSection = (sectionIndex: number) => {
+    setSections((current) => current.length > 1 ? current.filter((_, index) => index !== sectionIndex) : current);
+  };
+
+  const removeItem = (sectionIndex: number, itemIndex: number) => {
+    setSections((current) => current.map((section, index) => (
+      index === sectionIndex
+        ? { ...section, items: section.items.length > 1 ? section.items.filter((_, currentIndex) => currentIndex !== itemIndex) : section.items }
+        : section
+    )));
+  };
+
+  const buildPayload = (statusOverride?: PracticalAssessmentReport['status']): PracticalAssessmentPayload => ({
+    id: selectedReportId || undefined,
+    student_id: selectedStudentId,
+    trainer_id: user?.trainer_id ?? undefined,
+    status: statusOverride ?? form.status,
+    assessment_date: form.assessment_date.trim() || undefined,
+    assessment_venue: form.assessment_venue.trim() || undefined,
+    report_sections: sections.map((section, sectionIndex) => ({
+      number: sectionIndex + 1,
+      title: section.title.trim() || null,
+      type: section.type,
+      description: section.description.trim() || null,
+      content: section.type === 'narrative' ? (section.content.trim() || null) : null,
+      duration_hours: toNumber(section.duration_hours),
+      assessment_date: section.assessment_date.trim() || null,
+      assessment_venue: section.assessment_venue.trim() || null,
+      note: section.note.trim() || null,
+      items: section.type === 'narrative'
+        ? []
+        : section.items
+          .filter(hasItemContent)
+          .map((item, itemIndex) => ({
+            number: itemIndex + 1,
+            prompt: item.prompt.trim() || null,
+            expected_response: item.expected_response.trim() || null,
+            remark: item.remark.trim() || null,
+            sub_items: item.details.split('\n').map((value) => value.trim()).filter(Boolean),
+            score: toNumber(item.score),
+            max_score: toNumber(item.max_score) ?? (section.type === 'oral' ? 1 : 2),
+          })),
+    })),
+  });
 
   const persistReport = async (statusOverride?: PracticalAssessmentReport['status']) => {
     if (!selectedStudentId) {
@@ -303,51 +518,27 @@ export default function TrainerPracticalAssessmentPage() {
     }
   };
 
-  const handleAutoRemark = (taskIndex: number) => {
-    const scoreKey = `task_${taskIndex + 1}_score` as keyof FormState;
-    const remarkKey = `task_${taskIndex + 1}_remark` as keyof FormState;
-    const score = toNumber(form[scoreKey]);
-    updateField(remarkKey, autoRemark(score) as FormState[typeof remarkKey]);
-  };
-
-  const handleAddTask = () => {
-    setVisibleTaskCount((current) => Math.min(MAX_TASKS, current + 1));
-  };
-
-  const handleRemoveTask = (index: number) => {
-    if (index === 0 || index !== visibleTaskCount - 1) return;
-    const scoreKey = `task_${index + 1}_score` as keyof FormState;
-    const remarkKey = `task_${index + 1}_remark` as keyof FormState;
-    updateField(scoreKey, '' as FormState[typeof scoreKey]);
-    updateField(remarkKey, '' as FormState[typeof remarkKey]);
-    setVisibleTaskCount((current) => Math.max(1, current - 1));
-  };
-
-  const selectedSummary = useMemo(() => {
-    const scores = [form.task_1_score, form.task_2_score, form.task_3_score, form.task_4_score]
-      .map(toNumber)
-      .filter((score): score is number => score != null);
-    const total = scores.reduce((sum, score) => sum + score, 0);
+  const summary = useMemo(() => {
+    const scoredItems = sections.flatMap((section) => (
+      section.type === 'narrative'
+        ? []
+        : section.items.map((item) => ({
+            hasContent: item.prompt.trim() !== '' || item.score.trim() !== '' || item.details.trim() !== '',
+            score: toNumber(item.score),
+            max: toNumber(item.max_score) ?? (section.type === 'oral' ? 1 : 2),
+          })).filter((item) => item.hasContent)
+    ));
+    const totalScore = scoredItems.reduce((sum, item) => sum + (item.score ?? 0), 0);
+    const totalMax = scoredItems.reduce((sum, item) => sum + item.max, 0);
+    const allScored = scoredItems.length > 0 && scoredItems.every((item) => item.score != null);
+    const percentage = allScored && totalMax > 0 ? (totalScore / totalMax) * 100 : null;
     return {
-      total: scores.length > 0 ? total : null,
+      totalScore: scoredItems.length ? totalScore : null,
+      totalMax: scoredItems.length ? totalMax : null,
       outcome:
-        scores.length === 4
-          ? total >= 70
-            ? 'COMPETENT'
-            : total >= 50
-              ? 'BORDERLINE'
-              : 'NOT YET COMPETENT'
-          : 'INCOMPLETE',
+        percentage == null ? 'INCOMPLETE' : percentage >= 70 ? 'COMPETENT' : percentage >= 50 ? 'BORDERLINE' : 'NOT YET COMPETENT',
     };
-  }, [form]);
-
-  const liveTotalScore = useMemo(() => {
-    const scores = [form.task_1_score, form.task_2_score, form.task_3_score, form.task_4_score]
-      .map(toNumber)
-      .filter((score): score is number => score != null);
-    if (scores.length !== 4) return null;
-    return scores.reduce((sum, score) => sum + score, 0);
-  }, [form]);
+  }, [sections]);
 
   if (loading) {
     return (
@@ -364,12 +555,10 @@ export default function TrainerPracticalAssessmentPage() {
           <div>
             <p className="text-xs uppercase tracking-[0.35em] text-teal-300">TVET CDACC</p>
             <h1 className="mt-2 text-3xl font-bold text-slate-100">
-              {isAdmin ? 'All Practical Assessments' : 'Practical Assessment Entry'}
+              {isAdmin ? 'All Practical Assessments' : 'Practical Assessment Builder'}
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-slate-400">
-              {isAdmin
-                ? 'Browse every student in the database, open any practical assessment, and manage report release.'
-                : 'Record the four task scores, add assessor remarks, and release the completed report to the student portal.'}
+              Build session-based practical assessment reports so the released student view matches the official format more closely.
             </p>
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
@@ -406,34 +595,30 @@ export default function TrainerPracticalAssessmentPage() {
               <p className="rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-500">
                 No students are assigned to your subjects yet.
               </p>
-            ) : (
-              students.map((student) => (
-                <button
-                  key={student.id}
-                  onClick={() => {
-                    setSelectedStudentId(student.id);
-                    setSelectedReportId('');
-                    setForm({ ...DEFAULT_FORM });
-                    setVisibleTaskCount(1);
-                  }}
-                  className={`w-full rounded-2xl border p-4 text-left transition ${
-                    selectedStudentId === student.id
-                      ? 'border-teal-500/40 bg-teal-500/10'
-                      : 'border-slate-800 hover:border-slate-700 hover:bg-slate-800/70'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <p className="font-semibold text-slate-100">{student.name}</p>
-                      <p className="text-xs text-slate-500">{student.student_id}</p>
-                    </div>
-                    <span className="rounded-full bg-slate-800 px-2 py-1 text-xs text-slate-300">
-                      {student.overall_avg.toFixed(1)}%
-                    </span>
+            ) : students.map((student) => (
+              <button
+                key={student.id}
+                onClick={() => {
+                  setSelectedStudentId(student.id);
+                  resetEditor();
+                }}
+                className={`w-full rounded-2xl border p-4 text-left transition ${
+                  selectedStudentId === student.id
+                    ? 'border-teal-500/40 bg-teal-500/10'
+                    : 'border-slate-800 hover:border-slate-700 hover:bg-slate-800/70'
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-slate-100">{student.name}</p>
+                    <p className="text-xs text-slate-500">{student.student_id}</p>
                   </div>
-                </button>
-              ))
-            )}
+                  <span className="rounded-full bg-slate-800 px-2 py-1 text-xs text-slate-300">
+                    {student.overall_avg.toFixed(1)}%
+                  </span>
+                </div>
+              </button>
+            ))}
           </div>
 
           <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
@@ -444,25 +629,25 @@ export default function TrainerPracticalAssessmentPage() {
             <div className="mt-3 space-y-2">
               {reports.length === 0 ? (
                 <p className="text-sm text-slate-500">No practical assessment reports for this student.</p>
-              ) : (
-                reports.map((report) => (
-                  <button
-                    key={report.id}
-                    onClick={() => setSelectedReportId(report.id)}
-                    className={`w-full rounded-xl border px-3 py-2 text-left text-sm transition ${
-                      selectedReportId === report.id
-                        ? 'border-indigo-500/40 bg-indigo-500/10 text-slate-100'
-                        : 'border-slate-800 text-slate-300 hover:border-slate-700 hover:bg-slate-800/70'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="truncate">{report.unit_of_competency}</span>
-                      <span className="text-xs text-slate-500">{report.status}</span>
-                    </div>
-                    <p className="mt-1 text-xs text-slate-500">{report.total_score == null ? 'Incomplete' : `${report.total_score.toFixed(1)} / 100`}</p>
-                  </button>
-                ))
-              )}
+              ) : reports.map((report) => (
+                <button
+                  key={report.id}
+                  onClick={() => setSelectedReportId(report.id)}
+                  className={`w-full rounded-xl border px-3 py-2 text-left text-sm transition ${
+                    selectedReportId === report.id
+                      ? 'border-indigo-500/40 bg-indigo-500/10 text-slate-100'
+                      : 'border-slate-800 text-slate-300 hover:border-slate-700 hover:bg-slate-800/70'
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="truncate">{report.unit_of_competency}</span>
+                    <span className="text-xs text-slate-500">{report.status}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {report.total_score == null ? 'Incomplete' : `${report.total_score.toFixed(1)} / ${(report.total_max_score ?? 100).toFixed(1)}`}
+                  </p>
+                </button>
+              ))}
             </div>
           </div>
         </aside>
@@ -471,16 +656,16 @@ export default function TrainerPracticalAssessmentPage() {
           <section className="rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-lg shadow-slate-950/20">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
-                <h2 className="text-xl font-bold text-slate-100">Report Details</h2>
-                <p className="text-sm text-slate-500">Fill the four task scores, remarks, and the final status.</p>
+                <h2 className="text-xl font-bold text-slate-100">Report Header</h2>
+                <p className="text-sm text-slate-500">Set the overall assessment date and venue, then build instructions, sessions, and oral assessment below.</p>
               </div>
               <div className="flex flex-wrap gap-3">
                 <Button variant="secondary" onClick={() => window.print()}>
                   <Printer size={16} />
                   Print
                 </Button>
-                <Button variant="secondary" onClick={() => setForm({ ...DEFAULT_FORM })}>
-                  <Sparkles size={16} />
+                <Button variant="secondary" onClick={resetEditor}>
+                  <Trash2 size={16} />
                   Reset
                 </Button>
                 <Button isLoading={saving} onClick={() => persistReport('draft')}>
@@ -512,18 +697,17 @@ export default function TrainerPracticalAssessmentPage() {
                 </div>
                 <div className="mt-3 grid gap-3 sm:grid-cols-3">
                   <MiniStat label="Student" value={selectedStudent?.name ?? 'None'} />
-                  <MiniStat label="Total" value={liveTotalScore == null ? 'Incomplete' : `${liveTotalScore.toFixed(1)} / 100`} />
-                  <MiniStat label="Outcome" value={selectedSummary.outcome} />
+                  <MiniStat label="Total" value={summary.totalScore == null ? 'Incomplete' : `${summary.totalScore.toFixed(1)} / ${(summary.totalMax ?? 0).toFixed(1)}`} />
+                  <MiniStat label="Outcome" value={summary.outcome} />
                 </div>
               </div>
 
               <div className="space-y-4">
                 <FormField label="Assessment Date">
-                  <Input
-                    type="date"
-                    value={form.assessment_date}
-                    onChange={(e) => updateField('assessment_date', e.target.value)}
-                  />
+                  <Input type="date" value={form.assessment_date} onChange={(e) => updateField('assessment_date', e.target.value)} />
+                </FormField>
+                <FormField label="Assessment Venue">
+                  <Input value={form.assessment_venue} onChange={(e) => updateField('assessment_venue', e.target.value)} placeholder="Workshop, lab, or field location" />
                 </FormField>
                 <FormField label="Report Status">
                   <Select value={form.status} onChange={(e) => updateField('status', e.target.value as FormState['status'])}>
@@ -537,93 +721,158 @@ export default function TrainerPracticalAssessmentPage() {
           </section>
 
           <section className="rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-lg shadow-slate-950/20">
-            <div className="flex items-center gap-2">
-              <FileText size={18} className="text-teal-300" />
-              <h2 className="text-xl font-bold text-slate-100">Task Scores</h2>
-            </div>
-
-            <div className="mt-4 flex items-center justify-between">
-              <p className="text-sm text-slate-500">Add only the tasks you need for this practical assessment.</p>
-              <button
-                type="button"
-                onClick={handleAddTask}
-                disabled={visibleTaskCount >= MAX_TASKS}
-                className="inline-flex items-center gap-2 rounded-xl bg-teal-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-teal-400 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <Sparkles size={16} />
-                Add Task
-              </button>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-bold text-slate-100">Report Builder</h2>
+                <p className="text-sm text-slate-500">Create narrative instructions, practical brief sections, session checklists, and oral assessment questions.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={loadCdaccTemplate} className="inline-flex items-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-200 transition hover:bg-amber-500/20">
+                  <ClipboardList size={16} />
+                  Load CDACC Template
+                </button>
+                <button type="button" onClick={() => addSection('narrative')} className="inline-flex items-center gap-2 rounded-xl bg-teal-500 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:bg-teal-400">
+                  <Plus size={16} />
+                  Narrative
+                </button>
+                <button type="button" onClick={() => addSection('session')} className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-700">
+                  <ClipboardList size={16} />
+                  Session
+                </button>
+                <button type="button" onClick={() => addSection('oral')} className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-4 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-700">
+                  <Mic size={16} />
+                  Oral
+                </button>
+              </div>
             </div>
 
             <div className="mt-6 space-y-5">
-              {Array.from({ length: visibleTaskCount }).map((_, index) => {
-                const descriptionKey = `task_${index + 1}_description` as keyof FormState;
-                const scoreKey = `task_${index + 1}_score` as keyof FormState;
-                const remarkKey = `task_${index + 1}_remark` as keyof FormState;
-                return (
-                  <div key={index} className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-3">
-                          <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-teal-500/15 text-sm font-bold text-teal-300">
-                            {index + 1}
-                          </span>
-                          <p className="text-sm font-semibold text-slate-100">Task {index + 1}</p>
-                        </div>
-                        <FormField label="Task description">
-                          <TextArea
-                            value={form[descriptionKey]}
-                            onChange={(e) => updateField(descriptionKey, e.target.value as FormState[typeof descriptionKey])}
-                            rows={3}
-                            placeholder="Write your own task description here..."
-                          />
-                        </FormField>
-                      </div>
-                      <div className="grid gap-3 sm:grid-cols-[160px_1fr] lg:min-w-[540px]">
-                        <FormField label="Score / 25">
-                          <Input
-                            type="number"
-                            min="0"
-                            max="25"
-                            step="0.5"
-                            value={form[scoreKey]}
-                            onChange={(e) => updateField(scoreKey, e.target.value as FormState[typeof scoreKey])}
-                          />
-                        </FormField>
-                        <FormField label="Remark">
-                          <div className="space-y-2">
-                            <TextArea
-                              value={form[remarkKey]}
-                              onChange={(e) => updateField(remarkKey, e.target.value as FormState[typeof remarkKey])}
-                              rows={3}
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleAutoRemark(index)}
-                              className="text-xs font-medium text-teal-300 hover:text-teal-200"
-                            >
-                              Auto-generate remark from score
-                            </button>
-                          </div>
-                        </FormField>
-                      </div>
-                    </div>
-                    <div className="mt-4 flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveTask(index)}
-                        disabled={index === 0 || index !== visibleTaskCount - 1}
-                        className="text-xs font-medium text-slate-500 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
-                      >
-                        Remove last task
-                      </button>
-                    </div>
+              {sections.map((section, sectionIndex) => (
+                <div key={`section-${sectionIndex}`} className="rounded-2xl border border-slate-800 bg-slate-950/40 p-5">
+                  <div className="grid gap-4 xl:grid-cols-[1fr_220px]">
+                    <FormField label={`Section ${sectionIndex + 1} Title`}>
+                      <Input value={section.title} onChange={(e) => updateSection(sectionIndex, 'title', e.target.value)} placeholder="Section heading" />
+                    </FormField>
+                    <FormField label="Section Type">
+                      <Select value={section.type} onChange={(e) => changeSectionType(sectionIndex, e.target.value as SectionType)}>
+                        <option value="narrative">Narrative</option>
+                        <option value="session">Session</option>
+                        <option value="oral">Oral</option>
+                      </Select>
+                    </FormField>
                   </div>
-                );
-              })}
+
+                  <div className="mt-4">
+                    <FormField label="Section Description">
+                      <TextArea value={section.description} onChange={(e) => updateSection(sectionIndex, 'description', e.target.value)} rows={2} placeholder="Optional section intro or instruction" />
+                    </FormField>
+                  </div>
+
+                  {section.type === 'narrative' ? (
+                    <div className="mt-4">
+                      <FormField label="Section Content">
+                        <TextArea value={section.content} onChange={(e) => updateSection(sectionIndex, 'content', e.target.value)} rows={6} placeholder="Paste the assessor instructions, practical brief, or any narrative content here." />
+                      </FormField>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mt-4 grid gap-4 xl:grid-cols-4">
+                        <FormField label="Duration (Hours)">
+                          <Input value={section.duration_hours} onChange={(e) => updateSection(sectionIndex, 'duration_hours', e.target.value)} type="number" min="0.5" step="0.5" />
+                        </FormField>
+                        <FormField label="Section Date">
+                          <Input value={section.assessment_date} onChange={(e) => updateSection(sectionIndex, 'assessment_date', e.target.value)} type="date" />
+                        </FormField>
+                        <FormField label="Section Venue">
+                          <Input value={section.assessment_venue} onChange={(e) => updateSection(sectionIndex, 'assessment_venue', e.target.value)} placeholder="Venue" />
+                        </FormField>
+                        <FormField label="Section Note">
+                          <Input value={section.note} onChange={(e) => updateSection(sectionIndex, 'note', e.target.value)} placeholder="NB: Photos and videos..." />
+                        </FormField>
+                      </div>
+
+                      <div className="mt-5 space-y-4">
+                        {section.items.map((item, itemIndex) => (
+                          <div key={`section-${sectionIndex}-item-${itemIndex}`} className="rounded-xl border border-slate-800 bg-slate-900/50 p-4">
+                            <div className="grid gap-4 xl:grid-cols-[1fr_160px_160px]">
+                              <FormField label={section.type === 'oral' ? `Question ${itemIndex + 1}` : `Checklist Item ${itemIndex + 1}`}>
+                                <TextArea value={item.prompt} onChange={(e) => updateItem(sectionIndex, itemIndex, 'prompt', e.target.value)} rows={3} placeholder={section.type === 'oral' ? 'Write the oral question' : 'Write the checklist item title'} />
+                              </FormField>
+                              <FormField label="Max Score">
+                                <Input type="number" min="0.5" step="0.5" value={item.max_score} onChange={(e) => updateItem(sectionIndex, itemIndex, 'max_score', e.target.value)} />
+                              </FormField>
+                              <FormField label="Awarded Score">
+                                <Input type="number" min="0" step="0.5" value={item.score} onChange={(e) => updateItem(sectionIndex, itemIndex, 'score', e.target.value)} />
+                              </FormField>
+                            </div>
+
+                            <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                              <FormField label={section.type === 'oral' ? 'Expected Key Points' : 'Expected Standard'}>
+                                <TextArea value={item.expected_response} onChange={(e) => updateItem(sectionIndex, itemIndex, 'expected_response', e.target.value)} rows={3} placeholder={section.type === 'oral' ? 'Expected answer or key points' : 'Expected standard or result'} />
+                              </FormField>
+                              <FormField label={section.type === 'oral' ? 'Sub points / prompts' : 'Sub items'}>
+                                <TextArea value={item.details} onChange={(e) => updateItem(sectionIndex, itemIndex, 'details', e.target.value)} rows={3} placeholder="One bullet or sub-item per line" />
+                              </FormField>
+                            </div>
+
+                            <div className="mt-4">
+                              <FormField label="Assessor Remark">
+                                <div className="space-y-2">
+                                  <TextArea value={item.remark} onChange={(e) => updateItem(sectionIndex, itemIndex, 'remark', e.target.value)} rows={3} />
+                                  {section.type === 'session' ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => updateItem(sectionIndex, itemIndex, 'remark', autoRemark(toNumber(item.score)))}
+                                      className="text-xs font-medium text-teal-300 hover:text-teal-200"
+                                    >
+                                      Auto-generate remark from score
+                                    </button>
+                                  ) : null}
+                                </div>
+                              </FormField>
+                            </div>
+
+                            <div className="mt-4 flex justify-end">
+                              <button
+                                type="button"
+                                onClick={() => removeItem(sectionIndex, itemIndex)}
+                                disabled={section.items.length === 1}
+                                className="text-xs font-medium text-slate-500 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                Remove item
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="mt-4 flex justify-between">
+                        <button
+                          type="button"
+                          onClick={() => addItem(sectionIndex)}
+                          className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm font-semibold text-slate-200 transition hover:bg-slate-700"
+                        >
+                          <Plus size={16} />
+                          Add {section.type === 'oral' ? 'Question' : 'Checklist Item'}
+                        </button>
+                      </div>
+                    </>
+                  )}
+
+                  <div className="mt-4 flex justify-end">
+                    <button
+                      type="button"
+                      onClick={() => removeSection(sectionIndex)}
+                      disabled={sections.length === 1}
+                      className="text-xs font-medium text-slate-500 hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      Remove section
+                    </button>
+                  </div>
+                </div>
+              ))}
             </div>
           </section>
-
         </main>
       </div>
     </div>

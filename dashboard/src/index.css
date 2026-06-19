@@ -201,3 +201,41 @@ textarea:focus {
 ::-webkit-scrollbar-thumb:hover {
   background: #475569;
 }
+
+@page {
+  size: A4;
+  margin: 12mm;
+}
+
+@media print {
+  html,
+  body,
+  #root {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  [data-print-root],
+  [data-print-root] * {
+    visibility: visible;
+  }
+
+  [data-print-root] {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    background: #ffffff !important;
+  }
+
+  input,
+  select,
+  textarea {
+    color-scheme: light;
+  }
+}

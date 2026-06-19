@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import DateTime, Float, ForeignKey, String, Text, event
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import BaseModel
@@ -43,8 +43,14 @@ class PracticalAssessmentReport(BaseModel):
 
     # ── Assessment date ───────────────────────────────────────────────────────
     assessment_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    assessment_venue: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    practical_brief: Mapped[str | None] = mapped_column(Text, nullable=True)
+    general_remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
+    report_sections: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
 
     # ── Task scores (0–25 each) ───────────────────────────────────────────────
+    task_items: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    oral_questions: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     task_1_description: Mapped[str | None] = mapped_column(Text, nullable=True)
     task_2_description: Mapped[str | None] = mapped_column(Text, nullable=True)
     task_3_description: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -83,6 +89,7 @@ class PracticalAssessmentReport(BaseModel):
 
     # ── Helpers ───────────────────────────────────────────────────────────────
     MAX_TASK_SCORE = 25
+    DEFAULT_ORAL_MAX_SCORE = 1
     TASK_LABELS = [
         "String the two spans",
         "Earth the installation at the correct point",
@@ -92,6 +99,67 @@ class PracticalAssessmentReport(BaseModel):
 
     def compute(self) -> None:
         """Recompute total and competency outcome from task scores."""
+        sections = self.report_sections if isinstance(self.report_sections, list) else []
+        if sections:
+            section_scores: list[float] = []
+            total_max_score = 0.0
+            total_items = 0
+            for section in sections:
+                if not isinstance(section, dict):
+                    continue
+                for item in section.get("items") or []:
+                    if not isinstance(item, dict):
+                        continue
+                    total_items += 1
+                    total_max_score += float(item.get("max_score") or self.MAX_TASK_SCORE)
+                    if item.get("score") is not None:
+                        section_scores.append(float(item.get("score")))
+
+            if not section_scores:
+                self.total_score = None
+                self.competency_outcome = "INCOMPLETE"
+                return
+
+            self.total_score = sum(section_scores)
+            if len(section_scores) < total_items or total_max_score <= 0:
+                self.competency_outcome = "INCOMPLETE"
+                return
+
+            percentage = (self.total_score / total_max_score) * 100
+            if percentage >= 70:
+                self.competency_outcome = "COMPETENT"
+            elif percentage >= 50:
+                self.competency_outcome = "BORDERLINE"
+            else:
+                self.competency_outcome = "NOT YET COMPETENT"
+            return
+
+        items = self.task_items if isinstance(self.task_items, list) else []
+        if items:
+            filled_scores = [float(item.get("score")) for item in items if item.get("score") is not None]
+            total_max_score = sum(
+                float(item.get("max_score") or self.MAX_TASK_SCORE)
+                for item in items
+            )
+            if not filled_scores:
+                self.total_score = None
+                self.competency_outcome = "INCOMPLETE"
+                return
+
+            self.total_score = sum(filled_scores)
+            if len(filled_scores) < len(items) or total_max_score <= 0:
+                self.competency_outcome = "INCOMPLETE"
+                return
+
+            percentage = (self.total_score / total_max_score) * 100
+            if percentage >= 70:
+                self.competency_outcome = "COMPETENT"
+            elif percentage >= 50:
+                self.competency_outcome = "BORDERLINE"
+            else:
+                self.competency_outcome = "NOT YET COMPETENT"
+            return
+
         scores = [self.task_1_score, self.task_2_score, self.task_3_score, self.task_4_score]
         filled_scores = [s for s in scores if s is not None]
         if not filled_scores:
