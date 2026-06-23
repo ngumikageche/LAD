@@ -43,6 +43,7 @@ class PracticalAssessmentReport(BaseModel):
 
     # ── Assessment date ───────────────────────────────────────────────────────
     assessment_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     assessment_venue: Mapped[str | None] = mapped_column(String(255), nullable=True)
     practical_brief: Mapped[str | None] = mapped_column(Text, nullable=True)
     general_remarks: Mapped[str | None] = mapped_column(Text, nullable=True)

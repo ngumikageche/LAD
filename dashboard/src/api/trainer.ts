@@ -91,6 +91,7 @@ export interface PracticalAssessmentReport {
   unit_code: string;
   period: string;
   assessment_date: string | null;
+  company_name?: string | null;
   assessment_venue?: string | null;
   practical_brief?: string | null;
   general_remarks?: string | null;

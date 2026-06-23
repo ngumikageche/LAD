@@ -647,6 +647,7 @@ def _report_payload(report: PracticalAssessmentReport) -> dict:
         "unit_code": _display_context_value(report, "unit_code", context),
         "period": _display_context_value(report, "period", context),
         "assessment_date": report.assessment_date.isoformat() if report.assessment_date else None,
+        "company_name": report.company_name,
         "assessment_venue": report.assessment_venue,
         "practical_brief": report.practical_brief,
         "general_remarks": report.general_remarks,
@@ -681,6 +682,7 @@ def _report_payload(report: PracticalAssessmentReport) -> dict:
 def _apply_payload(report: PracticalAssessmentReport, payload: dict) -> PracticalAssessmentReport:
     for field in (
         "assessment_date",
+        "company_name",
         "assessment_venue",
         "practical_brief",
         "general_remarks",

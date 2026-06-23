@@ -40,12 +40,14 @@ type SectionForm = {
 
 type FormState = {
   assessment_date: string;
+  company_name: string;
   assessment_venue: string;
   status: PracticalAssessmentReport['status'];
 };
 
 const DEFAULT_FORM: FormState = {
   assessment_date: '',
+  company_name: '',
   assessment_venue: '',
   status: 'draft',
 };
@@ -279,6 +281,7 @@ export default function TrainerPracticalAssessmentPage() {
   const loadFormFromReport = (report: PracticalAssessmentReport) => {
     setForm({
       assessment_date: report.assessment_date ? report.assessment_date.slice(0, 10) : '',
+      company_name: report.company_name ?? '',
       assessment_venue: report.assessment_venue ?? '',
       status: report.status,
     });
@@ -409,6 +412,7 @@ export default function TrainerPracticalAssessmentPage() {
     trainer_id: user?.trainer_id ?? undefined,
     status: statusOverride ?? form.status,
     assessment_date: form.assessment_date.trim() || undefined,
+    company_name: form.company_name.trim() || undefined,
     assessment_venue: form.assessment_venue.trim() || undefined,
     report_sections: sections.map((section, sectionIndex) => ({
       number: sectionIndex + 1,
@@ -708,6 +712,9 @@ export default function TrainerPracticalAssessmentPage() {
                 </FormField>
                 <FormField label="Assessment Venue">
                   <Input value={form.assessment_venue} onChange={(e) => updateField('assessment_venue', e.target.value)} placeholder="Workshop, lab, or field location" />
+                </FormField>
+                <FormField label="Company">
+                  <Input value={form.company_name} onChange={(e) => updateField('company_name', e.target.value)} placeholder="Company or partner organization" />
                 </FormField>
                 <FormField label="Report Status">
                   <Select value={form.status} onChange={(e) => updateField('status', e.target.value as FormState['status'])}>

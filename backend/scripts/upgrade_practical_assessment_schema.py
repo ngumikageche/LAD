@@ -17,6 +17,7 @@ REQUIRED_COLUMNS: list[tuple[str, str]] = [
     ("task_2_description", "TEXT"),
     ("task_3_description", "TEXT"),
     ("task_4_description", "TEXT"),
+    ("company_name", "VARCHAR(255)"),
     ("assessment_venue", "VARCHAR(255)"),
     ("practical_brief", "TEXT"),
     ("general_remarks", "TEXT"),
