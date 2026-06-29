@@ -95,6 +95,15 @@ export interface PracticalAssessmentReport {
   assessment_venue?: string | null;
   practical_brief?: string | null;
   general_remarks?: string | null;
+  media_attachments?: Array<{
+    id: string;
+    file_name: string;
+    file_url: string;
+    file_size: number | null;
+    media_type: 'image' | 'video';
+    uploaded_at: string;
+    uploaded_by_user_id?: string | null;
+  }>;
   report_sections?: Array<{
     number: number;
     title: string | null;
@@ -408,6 +417,15 @@ export const trainerPracticalAssessmentsAPI = {
     }
     const response = await apiClient.post('/practical-assessments', body);
     return response.data as PracticalAssessmentReport;
+  },
+
+  async uploadPracticalAssessmentMedia(reportId: string, file: File): Promise<PracticalAssessmentReport> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await apiClient.post(`/practical-assessments/${reportId}/media`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    return response.data.report as PracticalAssessmentReport;
   },
 
   async releasePracticalAssessment(reportId: string): Promise<PracticalAssessmentReport> {

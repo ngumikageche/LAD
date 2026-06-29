@@ -3,6 +3,7 @@
 APP_NAME="lad-dashboard"
 CONTAINER_NAME="lad-dashboard-container"
 PORT_MAPPING="5137:3000"
+API_BASE_URL="${VITE_API_BASE_URL:-}"
 
 print_step() {
   echo -e "\n🔷 \033[1;34m$1...\033[0m"
@@ -24,7 +25,14 @@ echo -e "\n🚀 \033[1;36mStarting Docker Deployment for $APP_NAME\033[0m"
 print_divider
 
 print_step "Step 1/3: Building Docker image [$APP_NAME]"
-if docker build -t "$APP_NAME" .; then
+if [ -z "$API_BASE_URL" ]; then
+  print_error "VITE_API_BASE_URL is not set."
+  echo "Example:"
+  echo "  VITE_API_BASE_URL=https://api.example.com sudo ./deploy.sh"
+  exit 1
+fi
+
+if docker build --build-arg VITE_API_BASE_URL="$API_BASE_URL" -t "$APP_NAME" .; then
   print_success "Image built successfully."
 else
   print_error "Docker build failed."

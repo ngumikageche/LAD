@@ -25,6 +25,12 @@ const formatDateTime = (value: string | null | undefined) => {
   return new Date(value).toLocaleString();
 };
 
+const formatFileSize = (value: number | null | undefined) => {
+  if (!value) return 'Size unavailable';
+  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+};
+
 type Props = {
   report: PracticalAssessmentReport;
   studentName?: string | null;
@@ -52,6 +58,7 @@ const PracticalAssessmentReportView = forwardRef(function PracticalAssessmentRep
   const sessionSections = sections.filter((section) => section.type === 'session' || section.type === 'checklist');
   const oralSections = sections.filter((section) => section.type === 'oral');
   const totalMax = report.total_max_score ?? 0;
+  const mediaAttachments = report.media_attachments ?? [];
 
   return (
     <div
@@ -261,6 +268,28 @@ const PracticalAssessmentReportView = forwardRef(function PracticalAssessmentRep
             </div>
           </div>
         </div>
+
+        {mediaAttachments.length > 0 ? (
+          <div className="mt-8 border-t border-slate-300 pt-5">
+            <h2 className="text-base font-bold uppercase">Captured Practical Evidence</h2>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              {mediaAttachments.map((attachment) => (
+                <div key={attachment.id} className="rounded border border-slate-300 p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="truncate text-sm font-semibold">{attachment.file_name}</p>
+                    <span className="text-xs uppercase text-slate-500">{attachment.media_type}</span>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {formatFileSize(attachment.file_size)} • {formatDateTime(attachment.uploaded_at)}
+                  </p>
+                  <a href={attachment.file_url} target="_blank" rel="noreferrer" className="mt-3 inline-flex text-sm font-medium text-blue-700 underline">
+                    Open evidence
+                  </a>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

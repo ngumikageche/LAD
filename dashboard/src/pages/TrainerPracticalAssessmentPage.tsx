@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, CheckCircle2, ClipboardList, Mic, Plus, Printer, Save, Send, Trash2, Undo2, User } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { ChangeEvent } from 'react';
+import { AlertCircle, BarChart3, Camera, CheckCircle2, ClipboardList, Mic, Plus, Printer, Save, Send, Trash2, Undo2, Upload, User, Video } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { Button } from '../components/ui/Button';
 import { FormField, Input, Select, TextArea } from '../components/ui/Form';
@@ -228,6 +229,7 @@ export default function TrainerPracticalAssessmentPage() {
   const isAdmin = user?.user_type === 'admin';
   const [students, setStudents] = useState<StudentOption[]>([]);
   const [reports, setReports] = useState<PracticalAssessmentReport[]>([]);
+  const [allReports, setAllReports] = useState<PracticalAssessmentReport[]>([]);
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [selectedReportId, setSelectedReportId] = useState('');
   const [form, setForm] = useState<FormState>(DEFAULT_FORM);
@@ -236,8 +238,10 @@ export default function TrainerPracticalAssessmentPage() {
   const [saving, setSaving] = useState(false);
   const [releasing, setReleasing] = useState(false);
   const [mutating, setMutating] = useState(false);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const mediaInputRef = useRef<HTMLInputElement | null>(null);
 
   const selectedStudent = useMemo(
     () => students.find((student) => student.id === selectedStudentId) ?? null,
@@ -317,9 +321,24 @@ export default function TrainerPracticalAssessmentPage() {
     }
   };
 
+  const refreshAnalyticsReports = async () => {
+    try {
+      const data = await trainerPracticalAssessmentsAPI.listPracticalAssessments();
+      setAllReports(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load practical analytics');
+    }
+  };
+
   useEffect(() => {
     refreshReports(selectedStudentId);
   }, [selectedStudentId]);
+
+  useEffect(() => {
+    if (!loading) {
+      refreshAnalyticsReports();
+    }
+  }, [loading]);
 
   useEffect(() => {
     if (selectedReport) {
@@ -454,6 +473,10 @@ export default function TrainerPracticalAssessmentPage() {
         const next = current.filter((item) => item.id !== saved.id);
         return [saved, ...next];
       });
+      setAllReports((current) => {
+        const next = current.filter((item) => item.id !== saved.id);
+        return [saved, ...next];
+      });
       setSelectedReportId(saved.id);
       loadFormFromReport(saved);
       setSuccess(statusOverride === 'complete' ? 'Assessment saved as complete.' : 'Assessment saved.');
@@ -476,6 +499,7 @@ export default function TrainerPracticalAssessmentPage() {
       setError(null);
       const released = await trainerPracticalAssessmentsAPI.releasePracticalAssessment(saved.id);
       setReports((current) => current.map((item) => (item.id === released.id ? released : item)));
+      setAllReports((current) => current.map((item) => (item.id === released.id ? released : item)));
       loadFormFromReport(released);
       setSuccess('Assessment released to the student portal.');
       window.setTimeout(() => setSuccess(null), 2500);
@@ -495,6 +519,7 @@ export default function TrainerPracticalAssessmentPage() {
       setError(null);
       const unsent = await trainerPracticalAssessmentsAPI.unsendPracticalAssessment(selectedReportId);
       await refreshReports(selectedStudentId, unsent.id);
+      await refreshAnalyticsReports();
       setSuccess('Assessment unsent and returned to draft.');
       window.setTimeout(() => setSuccess(null), 2500);
     } catch (err) {
@@ -513,6 +538,7 @@ export default function TrainerPracticalAssessmentPage() {
       setError(null);
       await trainerPracticalAssessmentsAPI.deletePracticalAssessment(selectedReportId);
       await refreshReports(selectedStudentId);
+      await refreshAnalyticsReports();
       setSuccess('Assessment deleted.');
       window.setTimeout(() => setSuccess(null), 2500);
     } catch (err) {
@@ -543,6 +569,120 @@ export default function TrainerPracticalAssessmentPage() {
         percentage == null ? 'INCOMPLETE' : percentage >= 70 ? 'COMPETENT' : percentage >= 50 ? 'BORDERLINE' : 'NOT YET COMPETENT',
     };
   }, [sections]);
+
+  const analytics = useMemo(() => {
+    const latestByStudent = new Map<string, PracticalAssessmentReport>();
+    for (const report of allReports) {
+      const current = latestByStudent.get(report.student_id);
+      const reportDate = new Date(report.updated_at ?? report.created_at ?? 0).getTime();
+      const currentDate = new Date(current?.updated_at ?? current?.created_at ?? 0).getTime();
+      if (!current || reportDate > currentDate) {
+        latestByStudent.set(report.student_id, report);
+      }
+    }
+
+    const latestReports = Array.from(latestByStudent.values());
+    const completedLatest = latestReports.filter((report) => report.score_percentage != null);
+    const averageScore = completedLatest.length
+      ? completedLatest.reduce((sum, report) => sum + (report.score_percentage ?? 0), 0) / completedLatest.length
+      : null;
+    const competentCount = latestReports.filter((report) => report.competency_outcome === 'COMPETENT').length;
+    const atRiskStudents = latestReports
+      .filter((report) => report.score_percentage == null || (report.score_percentage ?? 0) < 50 || report.competency_outcome === 'NOT YET COMPETENT')
+      .map((report) => {
+        const matchedStudent = students.find((student) => student.id === report.student_id);
+        return {
+          id: report.student_id,
+          name: report.student_name ?? matchedStudent?.name ?? 'Unknown student',
+          registration: report.student_registration_number ?? matchedStudent?.student_id ?? 'N/A',
+          outcome: report.competency_outcome ?? 'INCOMPLETE',
+          score: report.score_percentage,
+          status: report.status,
+        };
+      })
+      .sort((a, b) => (a.score ?? -1) - (b.score ?? -1));
+
+    const outcomeCounts = [
+      { label: 'Competent', value: latestReports.filter((report) => report.competency_outcome === 'COMPETENT').length, color: 'bg-emerald-400' },
+      { label: 'Borderline', value: latestReports.filter((report) => report.competency_outcome === 'BORDERLINE').length, color: 'bg-amber-400' },
+      { label: 'Not Yet', value: latestReports.filter((report) => report.competency_outcome === 'NOT YET COMPETENT').length, color: 'bg-rose-400' },
+      { label: 'Incomplete', value: latestReports.filter((report) => report.competency_outcome === 'INCOMPLETE' || report.score_percentage == null).length, color: 'bg-slate-400' },
+    ];
+
+    const sectionMap = new Map<string, { total: number; count: number }>();
+    for (const report of allReports) {
+      for (const section of report.report_sections ?? []) {
+        if (section.type === 'narrative' || section.items.length === 0) continue;
+        const max = section.items.reduce((sum, item) => sum + (item.max_score ?? (section.type === 'oral' ? 1 : 2)), 0);
+        const scored = section.items.every((item) => item.score != null);
+        if (!scored || max <= 0) continue;
+        const score = section.items.reduce((sum, item) => sum + (item.score ?? 0), 0);
+        const key = section.title ?? `${section.type}-${section.number}`;
+        const current = sectionMap.get(key) ?? { total: 0, count: 0 };
+        current.total += (score / max) * 100;
+        current.count += 1;
+        sectionMap.set(key, current);
+      }
+    }
+
+    const sectionPerformance = Array.from(sectionMap.entries())
+      .map(([label, value]) => ({
+        label,
+        average: value.count ? value.total / value.count : 0,
+      }))
+      .sort((a, b) => b.average - a.average)
+      .slice(0, 6);
+
+    return {
+      reportCount: allReports.length,
+      studentCoverage: latestReports.length,
+      averageScore,
+      competentRate: latestReports.length ? (competentCount / latestReports.length) * 100 : null,
+      atRiskStudents,
+      outcomeCounts,
+      sectionPerformance,
+    };
+  }, [allReports, students]);
+
+  const handleMediaSelected = async (event: ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(event.target.files ?? []);
+    event.target.value = '';
+    if (!files.length) return;
+
+    let reportId = selectedReportId;
+    if (!reportId) {
+      const saved = await persistReport('draft');
+      if (!saved) return;
+      reportId = saved.id;
+    }
+
+    try {
+      setUploadingMedia(true);
+      setError(null);
+      let latestReport: PracticalAssessmentReport | null = null;
+      for (const file of files) {
+        latestReport = await trainerPracticalAssessmentsAPI.uploadPracticalAssessmentMedia(reportId, file);
+      }
+      if (latestReport) {
+        setReports((current) => {
+          const existing = current.some((item) => item.id === latestReport.id);
+          if (!existing) return [latestReport, ...current];
+          return current.map((item) => (item.id === latestReport.id ? latestReport : item));
+        });
+        setAllReports((current) => {
+          const next = current.filter((item) => item.id !== latestReport.id);
+          return [latestReport, ...next];
+        });
+        loadFormFromReport(latestReport);
+      }
+      setSuccess(files.length === 1 ? 'Practical evidence uploaded.' : `${files.length} media files uploaded.`);
+      window.setTimeout(() => setSuccess(null), 2500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to upload practical evidence');
+    } finally {
+      setUploadingMedia(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -658,12 +798,113 @@ export default function TrainerPracticalAssessmentPage() {
 
         <main className="space-y-6">
           <section className="rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-lg shadow-slate-950/20">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="flex items-center gap-2">
+                  <BarChart3 size={18} className="text-teal-300" />
+                  <h2 className="text-xl font-bold text-slate-100">Practical Analytics</h2>
+                </div>
+                <p className="mt-2 text-sm text-slate-500">Summary of saved practical assessments, section performance, and latest at-risk students.</p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-4">
+                <Stat label="Reports" value={String(analytics.reportCount)} />
+                <Stat label="Students" value={String(analytics.studentCoverage)} />
+                <Stat label="Avg Score" value={analytics.averageScore == null ? 'N/A' : `${analytics.averageScore.toFixed(1)}%`} />
+                <Stat label="At Risk" value={String(analytics.atRiskStudents.length)} />
+              </div>
+            </div>
+
+            <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_1fr]">
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-slate-200">Outcome Distribution</h3>
+                  <span className="text-xs text-slate-500">
+                    {analytics.competentRate == null ? 'No complete records' : `${analytics.competentRate.toFixed(1)}% competent`}
+                  </span>
+                </div>
+                <div className="mt-4 space-y-3">
+                  {analytics.outcomeCounts.map((item) => {
+                    const max = Math.max(...analytics.outcomeCounts.map((entry) => entry.value), 1);
+                    return (
+                      <div key={item.label}>
+                        <div className="flex items-center justify-between text-sm text-slate-300">
+                          <span>{item.label}</span>
+                          <span>{item.value}</span>
+                        </div>
+                        <div className="mt-1 h-3 rounded-full bg-slate-800">
+                          <div className={`h-3 rounded-full ${item.color}`} style={{ width: `${(item.value / max) * 100}%` }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
+                <h3 className="text-sm font-semibold text-slate-200">Section Performance</h3>
+                <div className="mt-4 space-y-3">
+                  {analytics.sectionPerformance.length === 0 ? (
+                    <p className="text-sm text-slate-500">Complete practical sessions will appear here after scores are entered.</p>
+                  ) : analytics.sectionPerformance.map((item) => (
+                    <div key={item.label}>
+                      <div className="flex items-center justify-between gap-3 text-sm text-slate-300">
+                        <span className="truncate">{item.label}</span>
+                        <span>{item.average.toFixed(1)}%</span>
+                      </div>
+                      <div className="mt-1 h-3 rounded-full bg-slate-800">
+                        <div className="h-3 rounded-full bg-cyan-400" style={{ width: `${Math.min(item.average, 100)}%` }} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-slate-200">At-Risk Students</h3>
+                <span className="text-xs text-slate-500">Latest practical report per student</span>
+              </div>
+              <div className="mt-4 space-y-3">
+                {analytics.atRiskStudents.length === 0 ? (
+                  <p className="text-sm text-slate-500">No at-risk students identified from current practical assessments.</p>
+                ) : analytics.atRiskStudents.slice(0, 8).map((student) => (
+                  <div key={student.id} className="flex flex-col gap-2 rounded-xl border border-slate-800 bg-slate-900/60 p-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="font-semibold text-slate-100">{student.name}</p>
+                      <p className="text-xs text-slate-500">{student.registration}</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 text-xs">
+                      <span className="rounded-full bg-slate-800 px-3 py-1 text-slate-300">{student.score == null ? 'Incomplete' : `${student.score.toFixed(1)}%`}</span>
+                      <span className="rounded-full bg-rose-500/10 px-3 py-1 text-rose-300">{student.outcome}</span>
+                      <span className="rounded-full bg-slate-800 px-3 py-1 text-slate-400">{student.status}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-lg shadow-slate-950/20">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <h2 className="text-xl font-bold text-slate-100">Report Header</h2>
                 <p className="text-sm text-slate-500">Set the overall assessment date and venue, then build instructions, sessions, and oral assessment below.</p>
               </div>
               <div className="flex flex-wrap gap-3">
+                <input
+                  ref={mediaInputRef}
+                  type="file"
+                  accept="image/*,video/*"
+                  capture="environment"
+                  multiple
+                  onChange={handleMediaSelected}
+                  className="hidden"
+                />
+                <Button variant="secondary" isLoading={uploadingMedia} onClick={() => mediaInputRef.current?.click()}>
+                  <Camera size={16} />
+                  Upload Photos / Videos
+                </Button>
                 <Button variant="secondary" onClick={() => window.print()}>
                   <Printer size={16} />
                   Print
@@ -723,6 +964,45 @@ export default function TrainerPracticalAssessmentPage() {
                     <option value="released">Released</option>
                   </Select>
                 </FormField>
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-200">Captured Practical Evidence</p>
+                  <p className="text-xs text-slate-500">Use a phone or laptop camera to capture photos and videos during the practical, then attach them here.</p>
+                </div>
+                <div className="flex gap-2 text-xs text-slate-400">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-800 px-3 py-1"><Camera size={12} /> Photos</span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-800 px-3 py-1"><Video size={12} /> Videos</span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-800 px-3 py-1"><Upload size={12} /> Mobile capture supported</span>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {(selectedReport?.media_attachments ?? []).length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-500">
+                    Save the report, then upload practical evidence from a camera, gallery, or recorded video.
+                  </div>
+                ) : (selectedReport?.media_attachments ?? []).map((attachment) => (
+                  <a
+                    key={attachment.id}
+                    href={attachment.file_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 transition hover:border-slate-700 hover:bg-slate-900"
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="truncate text-sm font-semibold text-slate-100">{attachment.file_name}</p>
+                      <span className="text-xs uppercase text-slate-500">{attachment.media_type}</span>
+                    </div>
+                    <p className="mt-2 text-xs text-slate-500">
+                      {attachment.file_size ? `${(attachment.file_size / 1024 / 1024).toFixed(1)} MB` : 'Size unavailable'}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">{new Date(attachment.uploaded_at).toLocaleString()}</p>
+                  </a>
+                ))}
               </div>
             </div>
           </section>

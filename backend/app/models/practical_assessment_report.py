@@ -48,6 +48,7 @@ class PracticalAssessmentReport(BaseModel):
     practical_brief: Mapped[str | None] = mapped_column(Text, nullable=True)
     general_remarks: Mapped[str | None] = mapped_column(Text, nullable=True)
     report_sections: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    media_attachments: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
 
     # ── Task scores (0–25 each) ───────────────────────────────────────────────
     task_items: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)

@@ -1,5 +1,8 @@
 FROM node:20.19.1
 
+ARG VITE_API_BASE_URL
+ENV VITE_API_BASE_URL=${VITE_API_BASE_URL}
+
 RUN apt-get update && apt-get install -y sudo \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -m web_dev \

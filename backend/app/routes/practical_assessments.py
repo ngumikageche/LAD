@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import os
 import uuid
 from datetime import datetime
 
-from flask import Blueprint, request
+from flask import Blueprint, request, send_from_directory
 from sqlalchemy import exists
+from werkzeug.utils import secure_filename
 
 from ..extensions import db
 from ..models.practical_assessment_report import PracticalAssessmentReport
@@ -24,6 +26,12 @@ from .permissions import get_current_user, _is_admin, _is_student, _is_trainer
 
 bp = Blueprint("practical_assessments", __name__)
 
+PRACTICAL_MEDIA_UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "..", "..", "uploads", "practical_assessments")
+PRACTICAL_MEDIA_ALLOWED_EXTENSIONS = {
+    "png", "jpg", "jpeg", "gif", "webp", "bmp", "heic", "heif",
+    "mp4", "mov", "avi", "mkv", "webm", "mpeg", "mpg", "m4v",
+}
+
 _STATIC_CONTEXT_VALUES = {
     "institution_name": "Thika Technical Training Institute",
     "department_name": "Electrical and Electronics Engineering Department",
@@ -41,6 +49,15 @@ def _parse_uuid(value: str | None, field: str) -> uuid.UUID:
         return uuid.UUID(str(value))
     except (TypeError, ValueError) as exc:
         raise ValueError(f"Invalid '{field}'") from exc
+
+
+def _allowed_media_file(filename: str) -> bool:
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in PRACTICAL_MEDIA_ALLOWED_EXTENSIONS
+
+
+def _media_kind(filename: str) -> str:
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    return "video" if ext in {"mp4", "mov", "avi", "mkv", "webm", "mpeg", "mpg", "m4v"} else "image"
 
 
 def _load_current_user():
@@ -652,6 +669,7 @@ def _report_payload(report: PracticalAssessmentReport) -> dict:
         "practical_brief": report.practical_brief,
         "general_remarks": report.general_remarks,
         "report_sections": report_sections,
+        "media_attachments": report.media_attachments if isinstance(report.media_attachments, list) else [],
         "task_items": task_rows,
         "oral_questions": oral_questions,
         "task_1_description": report.task_1_description,
@@ -1055,6 +1073,63 @@ def update_practical_assessment(report_id: str):
     db.session.commit()
     db.session.refresh(report)
     return _report_payload(report), 200
+
+
+@bp.post("/practical-assessments/<report_id>/media")
+def upload_practical_assessment_media(report_id: str):
+    user, error, status = _load_current_user()
+    if error:
+        return error, status
+
+    if not (_is_admin(user) or _is_trainer(user)):
+        return {"error": "Trainer or admin access required"}, 403
+
+    try:
+        report_uuid = _parse_uuid(report_id, "report_id")
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+
+    report = db.session.get(PracticalAssessmentReport, report_uuid)
+    if not report or report.deleted_at:
+        return {"error": "Report not found"}, 404
+
+    if _is_trainer(user):
+        trainer = _trainer_profile(user)
+        if not trainer or report.trainer_id != trainer.id:
+            return {"error": "Access denied"}, 403
+
+    media_file = request.files.get("file")
+    if not media_file or not media_file.filename:
+        return {"error": "No media file provided"}, 400
+    if not _allowed_media_file(media_file.filename):
+        allowed = ", ".join(sorted(PRACTICAL_MEDIA_ALLOWED_EXTENSIONS))
+        return {"error": f"File type not allowed. Allowed: {allowed}"}, 400
+
+    os.makedirs(PRACTICAL_MEDIA_UPLOAD_FOLDER, exist_ok=True)
+    safe_name = secure_filename(media_file.filename)
+    unique_name = f"{uuid.uuid4().hex}_{safe_name}"
+    save_path = os.path.join(PRACTICAL_MEDIA_UPLOAD_FOLDER, unique_name)
+    media_file.save(save_path)
+
+    attachments = report.media_attachments if isinstance(report.media_attachments, list) else []
+    attachment = {
+        "id": uuid.uuid4().hex,
+        "file_name": safe_name,
+        "file_url": f"/practical-assessments/media/{unique_name}",
+        "file_size": os.path.getsize(save_path),
+        "media_type": _media_kind(safe_name),
+        "uploaded_at": datetime.utcnow().isoformat(),
+        "uploaded_by_user_id": str(user.id),
+    }
+    report.media_attachments = [*attachments, attachment]
+    db.session.commit()
+    db.session.refresh(report)
+    return {"attachment": attachment, "report": _report_payload(report)}, 201
+
+
+@bp.get("/practical-assessments/media/<path:filename>")
+def serve_practical_assessment_media(filename: str):
+    return send_from_directory(os.path.abspath(PRACTICAL_MEDIA_UPLOAD_FOLDER), filename)
 
 
 @bp.post("/practical-assessments/<report_id>/release")
