@@ -30,6 +30,7 @@ PRACTICAL_MEDIA_UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "..", ".
 PRACTICAL_MEDIA_ALLOWED_EXTENSIONS = {
     "png", "jpg", "jpeg", "gif", "webp", "bmp", "heic", "heif",
     "mp4", "mov", "avi", "mkv", "webm", "mpeg", "mpg", "m4v",
+    "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "rtf",
 }
 
 _STATIC_CONTEXT_VALUES = {
@@ -57,7 +58,11 @@ def _allowed_media_file(filename: str) -> bool:
 
 def _media_kind(filename: str) -> str:
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
-    return "video" if ext in {"mp4", "mov", "avi", "mkv", "webm", "mpeg", "mpg", "m4v"} else "image"
+    if ext in {"mp4", "mov", "avi", "mkv", "webm", "mpeg", "mpg", "m4v"}:
+        return "video"
+    if ext in {"pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "rtf"}:
+        return "document"
+    return "image"
 
 
 def _load_current_user():
@@ -486,9 +491,17 @@ def _normalize_report_sections(raw_sections) -> list[dict]:
 
 
 def _legacy_report_sections(report: PracticalAssessmentReport) -> list[dict]:
-    sections = []
     task_rows = _task_rows(report)
     oral_questions = _normalize_oral_questions(report.oral_questions) if isinstance(report.oral_questions, list) else []
+    return _legacy_report_sections_from_data(report, task_rows, oral_questions)
+
+
+def _legacy_report_sections_from_data(
+    report: PracticalAssessmentReport,
+    task_rows: list[dict],
+    oral_questions: list[dict],
+) -> list[dict]:
+    sections = []
 
     if report.practical_brief:
         sections.append(
@@ -629,15 +642,47 @@ def _section_score_summary(sections: list[dict]) -> tuple[float | None, float | 
     return total_score, total_max, (total_score / total_max) * 100
 
 
+def _safe_computed_scores(report: PracticalAssessmentReport) -> tuple[float | None, str | None]:
+    try:
+        return _computed_scores(report)
+    except (AttributeError, TypeError, ValueError):
+        return report.total_score, report.competency_outcome
+
+
+def _safe_task_rows(report: PracticalAssessmentReport) -> list[dict]:
+    try:
+        return _task_rows(report)
+    except (AttributeError, TypeError, ValueError):
+        return _legacy_task_rows(report)
+
+
+def _safe_oral_questions(report: PracticalAssessmentReport) -> list[dict]:
+    if not isinstance(report.oral_questions, list):
+        return []
+    try:
+        return _normalize_oral_questions(report.oral_questions)
+    except (AttributeError, TypeError, ValueError):
+        return []
+
+
+def _safe_report_sections(
+    report: PracticalAssessmentReport,
+    task_rows: list[dict],
+    oral_questions: list[dict],
+) -> list[dict]:
+    if isinstance(report.report_sections, list) and report.report_sections:
+        try:
+            return _normalize_report_sections(report.report_sections)
+        except (AttributeError, TypeError, ValueError):
+            pass
+    return _legacy_report_sections_from_data(report, task_rows, oral_questions)
+
+
 def _report_payload(report: PracticalAssessmentReport) -> dict:
-    total_score, competency_outcome = _computed_scores(report)
-    task_rows = _task_rows(report)
-    oral_questions = _normalize_oral_questions(report.oral_questions) if isinstance(report.oral_questions, list) else []
-    report_sections = (
-        _normalize_report_sections(report.report_sections)
-        if isinstance(report.report_sections, list) and report.report_sections
-        else _legacy_report_sections(report)
-    )
+    total_score, competency_outcome = _safe_computed_scores(report)
+    task_rows = _safe_task_rows(report)
+    oral_questions = _safe_oral_questions(report)
+    report_sections = _safe_report_sections(report, task_rows, oral_questions)
     section_total_score, section_total_max, section_percentage = _section_score_summary(report_sections)
     total_max_score = (
         section_total_max

@@ -19,6 +19,7 @@ from .permissions import log_view, require_permission
 
 
 bp = Blueprint("notifications", __name__, url_prefix="/notifications")
+ALLOWED_DELIVERY_CHANNELS = {"system", "email", "sms"}
 
 
 def _parse_uuid(value: str | None, field: str) -> uuid.UUID:
@@ -49,6 +50,28 @@ def _recipient_payload(user: User) -> dict:
         "phone": user.phone,
         "role_name": user.role.role_name if user.role else None,
     }
+
+
+def _normalize_delivery_channels(payload: dict) -> list[str]:
+    raw_channels = payload.get("delivery_channels")
+    if raw_channels is None:
+        return ["system"]
+    if not isinstance(raw_channels, list):
+        raise ValueError("'delivery_channels' must be an array")
+
+    channels: list[str] = []
+    for item in raw_channels:
+        if not isinstance(item, str):
+            raise ValueError("'delivery_channels' entries must be strings")
+        value = item.strip().lower()
+        if value not in ALLOWED_DELIVERY_CHANNELS:
+            raise ValueError("Invalid delivery channel")
+        if value not in channels:
+            channels.append(value)
+
+    if not channels:
+        raise ValueError("Select at least one delivery channel")
+    return channels
 
 
 def _bulk_recipient_query(filters: dict):
@@ -115,27 +138,60 @@ def create_notification():
 
     try:
         user_id = _parse_uuid(payload.get("user_id"), "user_id")
+        delivery_channels = _normalize_delivery_channels(payload)
     except ValueError as exc:
         return {"error": str(exc)}, 400
 
-    if not db.session.get(User, user_id):
+    recipient = db.session.get(User, user_id)
+    if not recipient:
         return {"error": "Invalid 'user_id'"}, 400
 
-    notification = Notification(
-        user_id=user_id,
-        title=title.strip(),
-        message=message.strip(),
-        is_read=bool(payload.get("is_read", False)),
-    )
+    notification = None
+    if "system" in delivery_channels:
+        notification = Notification(
+            user_id=user_id,
+            title=title.strip(),
+            message=message.strip(),
+            is_read=bool(payload.get("is_read", False)),
+        )
+        db.session.add(notification)
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            return {"error": "Unable to create notification"}, 409
 
-    db.session.add(notification)
-    try:
-        db.session.commit()
-    except IntegrityError:
-        db.session.rollback()
-        return {"error": "Unable to create notification"}, 409
-
-    return _notification_payload(notification), 201
+    return {
+        **(
+            _notification_payload(notification)
+            if notification
+            else {
+                "id": None,
+                "user_id": str(recipient.id),
+                "title": title.strip(),
+                "message": message.strip(),
+                "is_read": False,
+                "created_at": None,
+            }
+        ),
+        "delivery_channels": delivery_channels,
+        "delivery_summary": {
+            "system": {
+                "enabled": "system" in delivery_channels,
+                "created": notification is not None,
+            },
+            "email": {
+                "enabled": "email" in delivery_channels,
+                "recipient": recipient.email,
+                "status": "ready" if "email" in delivery_channels and recipient.email else "disabled" if "email" not in delivery_channels else "missing_email",
+            },
+            "sms": {
+                "enabled": "sms" in delivery_channels,
+                "recipient": recipient.phone,
+                "status": "ready" if "sms" in delivery_channels and recipient.phone else "disabled" if "sms" not in delivery_channels else "missing_phone",
+            },
+        },
+    }, 201
 
 
 @bp.post("/bulk")
@@ -161,6 +217,7 @@ def create_bulk_notifications():
 
     try:
         recipient_query = _bulk_recipient_query(filters)
+        delivery_channels = _normalize_delivery_channels(payload)
     except ValueError as exc:
         return {"error": str(exc)}, 400
 
@@ -168,21 +225,24 @@ def create_bulk_notifications():
     if not recipient_ids:
         return {"error": "No recipients match this target"}, 400
 
-    notifications = [
-        Notification(user_id=recipient_id, title=title.strip(), message=message.strip(), is_read=False)
-        for recipient_id in recipient_ids
-    ]
-    db.session.add_all(notifications)
+    notifications = []
+    if "system" in delivery_channels:
+        notifications = [
+            Notification(user_id=recipient_id, title=title.strip(), message=message.strip(), is_read=False)
+            for recipient_id in recipient_ids
+        ]
+        db.session.add_all(notifications)
 
-    try:
-        db.session.commit()
-    except IntegrityError:
-        db.session.rollback()
-        return {"error": "Unable to create bulk notifications"}, 409
+        try:
+            db.session.commit()
+        except IntegrityError:
+            db.session.rollback()
+            return {"error": "Unable to create bulk notifications"}, 409
 
     sms_enabled = bool(sms_config.get("enabled"))
     recipients = db.session.query(User).filter(User.id.in_(recipient_ids)).all()
     phone_ready = [recipient for recipient in recipients if recipient.phone]
+    email_ready = [recipient for recipient in recipients if recipient.email]
 
     log_view(
         user,
@@ -190,7 +250,8 @@ def create_bulk_notifications():
         metadata={
             "target": filters.get("target", "all"),
             "recipient_count": len(recipient_ids),
-            "sms_enabled": sms_enabled,
+            "delivery_channels": delivery_channels,
+            "sms_enabled": sms_enabled and "sms" in delivery_channels,
             "sms_provider": sms_config.get("provider"),
         },
     )
@@ -200,14 +261,25 @@ def create_bulk_notifications():
         "notifications_sent": len(notifications),
         "recipients": [_recipient_payload(recipient) for recipient in recipients[:25]],
         "recipient_count": len(recipient_ids),
+        "delivery_channels": delivery_channels,
+        "system": {
+            "enabled": "system" in delivery_channels,
+            "created_count": len(notifications),
+        },
+        "email": {
+            "enabled": "email" in delivery_channels,
+            "email_ready_count": len(email_ready),
+            "skipped_no_email_count": len(recipient_ids) - len(email_ready),
+            "status": "ready" if "email" in delivery_channels else "disabled",
+        },
         "sms": {
-            "enabled": sms_enabled,
+            "enabled": sms_enabled and "sms" in delivery_channels,
             "provider": sms_config.get("provider") or "manual",
             "sender_id": sms_config.get("sender_id") or None,
             "dry_run": bool(sms_config.get("dry_run", True)),
             "phone_ready_count": len(phone_ready),
             "skipped_no_phone_count": len(recipient_ids) - len(phone_ready),
-            "status": "preview" if sms_enabled else "disabled",
+            "status": "preview" if sms_enabled and "sms" in delivery_channels else "disabled",
         },
     }, 201
 

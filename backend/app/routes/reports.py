@@ -17,6 +17,7 @@ from ..models.term import Term
 from ..models.trainer_subject import TrainerSubject
 from ..models.student_subject import StudentSubject
 from ..models.institution import Institution
+from ..models.student_report import StudentReport
 from .permissions import get_current_user, log_view, _is_admin, _is_trainer, _is_student
 from ..services.report_permissions import check_report_permission
 from ..services import report_queries
@@ -48,6 +49,46 @@ def _school_info(user) -> dict:
 def _can_access_student(user, student: Student) -> bool:
     """Return True if the requesting user may view this student's reports."""
     return check_report_permission(user, "student_term", student.id).canView
+
+
+def _parse_behaviour_report_body(body: str | None) -> dict[str, str | None]:
+    content = (body or "").strip()
+    if not content:
+        return {"incident_date": None, "category": None, "action_taken": None, "notes": None}
+
+    parsed = {"incident_date": None, "category": None, "action_taken": None, "notes": None}
+    note_lines: list[str] = []
+    in_notes = False
+
+    for raw_line in content.splitlines():
+        line = raw_line.strip()
+        lower = line.lower()
+        if lower.startswith("incident date:"):
+            parsed["incident_date"] = line.split(":", 1)[1].strip() or None
+            in_notes = False
+            continue
+        if lower.startswith("category:"):
+            parsed["category"] = line.split(":", 1)[1].strip() or None
+            in_notes = False
+            continue
+        if lower.startswith("action taken:"):
+            parsed["action_taken"] = line.split(":", 1)[1].strip() or None
+            in_notes = False
+            continue
+        if lower == "notes:":
+            in_notes = True
+            continue
+
+        if in_notes or (not parsed["incident_date"] and not parsed["category"] and not parsed["action_taken"]):
+            if raw_line.strip():
+                note_lines.append(raw_line.strip())
+
+    if note_lines:
+        parsed["notes"] = "\n".join(note_lines).strip()
+    elif content:
+        parsed["notes"] = content
+
+    return parsed
 
 
 # ─────────────────────────────────────────────────────────────
@@ -349,14 +390,64 @@ def discipline(student_id: str):
     user, error, status = get_current_user()
     if error:
         return error, status
+    try:
+        sid = _parse_uuid(student_id, "student_id")
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+
+    student = db.session.get(Student, sid)
+    if not student or student.deleted_at:
+        return {"error": "Student not found"}, 404
+
     access = check_report_permission(user, "student_discipline", student_id)
     if not access.canView:
         return {"error": access.reason}, 403
+
+    query = db.session.query(StudentReport).filter(
+        StudentReport.student_id == sid,
+        StudentReport.report_type == "behaviour",
+        StudentReport.deleted_at.is_(None),
+    )
+    if _is_trainer(user) and user.trainer and not _is_admin(user):
+        query = query.filter(StudentReport.trainer_id == user.trainer.id)
+
+    reports = query.order_by(StudentReport.created_at.desc()).all()
+    incidents = []
+    actions = []
+    for report in reports:
+        parsed = _parse_behaviour_report_body(report.body)
+        incident = {
+            "id": str(report.id),
+            "title": report.title,
+            "category": parsed["category"] or "General",
+            "incident_date": parsed["incident_date"] or (report.created_at.date().isoformat() if report.created_at else None),
+            "subject_id": str(report.subject_id) if report.subject_id else None,
+            "subject_name": report.subject.name if report.subject else None,
+            "recorded_by": report.author.name if report.author else None,
+            "notes": parsed["notes"],
+            "action_taken": parsed["action_taken"],
+            "created_at": report.created_at.isoformat() if report.created_at else None,
+        }
+        incidents.append(incident)
+        if parsed["action_taken"]:
+            actions.append(
+                {
+                    "report_id": str(report.id),
+                    "title": report.title,
+                    "incident_date": incident["incident_date"],
+                    "action_taken": parsed["action_taken"],
+                    "recorded_by": incident["recorded_by"],
+                    "created_at": incident["created_at"],
+                }
+            )
+
+    log_view(user, "student_discipline", entity_id=student_id, metadata={"count": len(incidents)})
     return {
         "student_id": student_id,
-        "incidents": [],
-        "actions": [],
-        "note": "No discipline/behaviour table exists in the current schema.",
+        "student_name": student.user.name if student.user else student.registration_number,
+        "incidents": incidents,
+        "actions": actions,
+        "note": "Generated from existing behaviour records.",
         "permissions": {"canPrint": access.canPrint, "canExport": access.canExport},
         "generated_at": datetime.utcnow().isoformat(),
     }, 200

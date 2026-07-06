@@ -281,6 +281,11 @@ def add_syllabus_topic(trainer_id: str):
         sub_uuid = parse_uuid(payload.get("subject_id"), "subject_id")
     except ValueError as exc:
         return {"error": str(exc)}, 400
+    subject = db.session.get(Subject, sub_uuid)
+    if not subject or subject.deleted_at:
+        return {"error": "Subject not found"}, 404
+    if trainer and sub_uuid not in get_trainer_subject_ids(trainer):
+        return {"error": "Subject not found in your assigned subjects"}, 403
 
     term_id_str = payload.get("term_id")
     term_uuid = None
@@ -336,6 +341,8 @@ def update_syllabus_topic(trainer_id: str, plan_id: str):
 
     plan = db.session.get(LessonPlan, p_uuid)
     if not plan or plan.deleted_at:
+        return {"error": "Topic not found"}, 404
+    if plan.trainer_id != t_uuid:
         return {"error": "Topic not found"}, 404
 
     payload = request.get_json(silent=True) or {}

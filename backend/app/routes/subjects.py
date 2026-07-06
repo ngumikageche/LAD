@@ -26,10 +26,18 @@ def _parse_uuid(value: str | None, field: str) -> uuid.UUID:
         raise ValueError(f"Invalid '{field}'") from exc
 
 def _subject_payload(subject: Subject) -> dict:
+    module = getattr(subject, "module", None)
+    course = getattr(module, "course", None)
+    department = getattr(course, "department", None)
     return {
         "id": str(subject.id),
         "code": subject.code,
         "module_id": str(subject.module_id),
+        "module_name": module.name if module else None,
+        "course_id": str(course.id) if course else None,
+        "course_name": course.name if course else None,
+        "department_id": str(department.id) if department else None,
+        "department_name": department.name if department else None,
         "name": subject.name,
         "description": subject.description,
         "created_at": subject.created_at.isoformat() if subject.created_at else None,

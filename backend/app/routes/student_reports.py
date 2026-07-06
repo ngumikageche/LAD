@@ -17,6 +17,7 @@ from .permissions import _has_permission, _is_admin, _is_trainer, get_current_us
 
 
 bp = Blueprint("student_reports", __name__, url_prefix="/trainers/students")
+ALLOWED_DELIVERY_CHANNELS = {"system", "email", "sms"}
 
 
 def _parse_uuid(value: str | None, field: str) -> uuid.UUID:
@@ -69,6 +70,28 @@ def _require_report_writer():
         return None, None, {"error": "Trainer profile not found"}, 404
 
     return user, trainer, None, None
+
+
+def _normalize_delivery_channels(payload: dict) -> list[str]:
+    raw_channels = payload.get("delivery_channels")
+    if raw_channels is None:
+        return ["system"]
+    if not isinstance(raw_channels, list):
+        raise ValueError("'delivery_channels' must be an array")
+
+    channels: list[str] = []
+    for item in raw_channels:
+        if not isinstance(item, str):
+            raise ValueError("'delivery_channels' entries must be strings")
+        value = item.strip().lower()
+        if value not in ALLOWED_DELIVERY_CHANNELS:
+            raise ValueError("Invalid delivery channel")
+        if value not in channels:
+            channels.append(value)
+
+    if not channels:
+        raise ValueError("Select at least one delivery channel")
+    return channels
 
 
 def _payload(report: StudentReport) -> dict:
@@ -139,6 +162,10 @@ def create_student_report(student_id: str):
     body = (payload.get("body") or payload.get("feedback") or "").strip()
     report_type = (payload.get("report_type") or "general").strip().lower()
     subject_uuid = None
+    try:
+        delivery_channels = _normalize_delivery_channels(payload)
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
 
     if not title:
         return {"error": "'title' is required"}, 400
@@ -146,7 +173,7 @@ def create_student_report(student_id: str):
         return {"error": "'body' is required"}, 400
     if len(body) > 5000:
         return {"error": "'body' must be 5000 characters or fewer"}, 400
-    if report_type not in {"general", "academic", "attendance", "behaviour", "support", "progress"}:
+    if report_type not in {"general", "academic", "attendance", "behaviour", "support", "progress", "message"}:
         return {"error": "Invalid report_type"}, 400
 
     if payload.get("subject_id"):
@@ -173,17 +200,44 @@ def create_student_report(student_id: str):
     db.session.add(report)
     db.session.flush()
 
-    if student.user_id:
+    created_system_notification = False
+    recipient_email = student.user.email if student.user else None
+    recipient_phone = student.user.phone if student.user else None
+    if student.user_id and "system" in delivery_channels:
         author_name = trainer.user.name if trainer and trainer.user else user.name
         db.session.add(
             Notification(
                 user_id=student.user_id,
-                title=f"New report: {title}",
-                message=f"{author_name or 'Your school'} wrote a new {report_type} report for you.",
+                title=f"{'New message' if report_type == 'message' else 'New report'}: {title}",
+                message=(
+                    f"{author_name or 'Your school'} sent you a new message."
+                    if report_type == "message"
+                    else f"{author_name or 'Your school'} wrote a new {report_type} report for you."
+                ),
                 is_read=False,
             )
         )
+        created_system_notification = True
 
     db.session.commit()
     db.session.refresh(report)
-    return _payload(report), 201
+    return {
+        **_payload(report),
+        "delivery_channels": delivery_channels,
+        "delivery_summary": {
+            "system": {
+                "enabled": "system" in delivery_channels,
+                "created": created_system_notification,
+            },
+            "email": {
+                "enabled": "email" in delivery_channels,
+                "recipient": recipient_email,
+                "status": "ready" if "email" in delivery_channels and recipient_email else "disabled" if "email" not in delivery_channels else "missing_email",
+            },
+            "sms": {
+                "enabled": "sms" in delivery_channels,
+                "recipient": recipient_phone,
+                "status": "ready" if "sms" in delivery_channels and recipient_phone else "disabled" if "sms" not in delivery_channels else "missing_phone",
+            },
+        },
+    }, 201

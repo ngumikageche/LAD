@@ -9,10 +9,12 @@ from sqlalchemy import case, func
 
 from ..extensions import cache, db
 from ..models.assessment import Assessment
+from ..models.course import Course
 from ..models.attendance import Attendance
 from ..models.competency import Competency
 from ..models.portfolio_evidence import PortfolioEvidence
 from ..models.score import Score
+from ..models.module import Module
 from ..models.student import Student
 from ..models.student_subject import StudentSubject
 from ..models.subject import Subject
@@ -31,6 +33,96 @@ def _iso(dt: datetime | None) -> str | None:
 
 def _round(value: float | None, digits: int = 2) -> float:
     return round(float(value or 0), digits)
+
+
+def _uuid_or_none(value: str | None) -> uuid.UUID | None:
+    if not value:
+        return None
+    return uuid.UUID(str(value))
+
+
+def _resolve_subject_ids(
+    course_id: str | None = None,
+    module_id: str | None = None,
+    subject_id: str | None = None,
+    trainer_id: str | None = None,
+    student_id: str | None = None,
+) -> list[uuid.UUID] | None:
+    query = db.session.query(Subject.id).filter(Subject.deleted_at.is_(None))
+
+    if course_id:
+        query = query.join(Module, Module.id == Subject.module_id).filter(Module.course_id == _uuid_or_none(course_id))
+    if module_id:
+        query = query.filter(Subject.module_id == _uuid_or_none(module_id))
+    if subject_id:
+        query = query.filter(Subject.id == _uuid_or_none(subject_id))
+    if trainer_id:
+        query = query.join(TrainerSubject, TrainerSubject.subject_id == Subject.id).filter(
+            TrainerSubject.trainer_id == _uuid_or_none(trainer_id)
+        )
+    if student_id:
+        query = query.join(StudentSubject, StudentSubject.subject_id == Subject.id).filter(
+            StudentSubject.student_id == _uuid_or_none(student_id)
+        )
+
+    return [row[0] for row in query.distinct().all()]
+
+
+def _resolve_student_ids(
+    course_id: str | None = None,
+    module_id: str | None = None,
+    subject_id: str | None = None,
+    trainer_id: str | None = None,
+    student_id: str | None = None,
+) -> list[uuid.UUID] | None:
+    query = db.session.query(Student.id).filter(Student.deleted_at.is_(None))
+
+    if course_id:
+        query = query.filter(Student.course_id == _uuid_or_none(course_id))
+    if module_id or subject_id or trainer_id:
+        query = query.join(StudentSubject, StudentSubject.student_id == Student.id).join(
+            Subject, Subject.id == StudentSubject.subject_id
+        )
+    if module_id:
+        query = query.filter(Subject.module_id == _uuid_or_none(module_id))
+    if subject_id:
+        query = query.filter(StudentSubject.subject_id == _uuid_or_none(subject_id))
+    if trainer_id:
+        query = query.join(TrainerSubject, TrainerSubject.subject_id == Subject.id).filter(
+            TrainerSubject.trainer_id == _uuid_or_none(trainer_id)
+        )
+    if student_id:
+        query = query.filter(Student.id == _uuid_or_none(student_id))
+
+    return [row[0] for row in query.distinct().all()]
+
+
+def _scope_subject_filter(
+    query,
+    course_id: str | None = None,
+    module_id: str | None = None,
+    subject_id: str | None = None,
+    trainer_id: str | None = None,
+    student_id: str | None = None,
+):
+    subject_ids = _resolve_subject_ids(course_id, module_id, subject_id, trainer_id, student_id)
+    if subject_ids is not None:
+        query = query.filter(Subject.id.in_(subject_ids))
+    return query
+
+
+def _scope_student_filter(
+    query,
+    course_id: str | None = None,
+    module_id: str | None = None,
+    subject_id: str | None = None,
+    trainer_id: str | None = None,
+    student_id: str | None = None,
+):
+    student_ids = _resolve_student_ids(course_id, module_id, subject_id, trainer_id, student_id)
+    if student_ids is not None:
+        query = query.filter(Student.id.in_(student_ids))
+    return query
 
 
 def mastery_label(score: float) -> str:
@@ -52,7 +144,13 @@ def _student_name_expr():
 
 
 @cache.memoize(timeout=60)
-def get_heatmap(subject_id: str | None = None, student_id: str | None = None) -> dict:
+def get_heatmap(
+    course_id: str | None = None,
+    module_id: str | None = None,
+    subject_id: str | None = None,
+    trainer_id: str | None = None,
+    student_id: str | None = None,
+) -> dict:
     query = (
         db.session.query(
             Student.id.label("student_id"),
@@ -82,10 +180,8 @@ def get_heatmap(subject_id: str | None = None, student_id: str | None = None) ->
         )
     )
 
-    if subject_id:
-        query = query.filter(Subject.id == uuid.UUID(subject_id))
-    if student_id:
-        query = query.filter(Student.id == uuid.UUID(student_id))
+    query = _scope_subject_filter(query, course_id, module_id, subject_id, trainer_id, student_id)
+    query = _scope_student_filter(query, course_id, module_id, subject_id, trainer_id, student_id)
 
     rows = (
         query.group_by(Student.id, User.name, Competency.id, Competency.name)
@@ -120,7 +216,13 @@ def get_heatmap(subject_id: str | None = None, student_id: str | None = None) ->
 
 
 @cache.memoize(timeout=60)
-def get_mastery_progress(subject_id: str | None = None, student_id: str | None = None) -> dict:
+def get_mastery_progress(
+    course_id: str | None = None,
+    module_id: str | None = None,
+    subject_id: str | None = None,
+    trainer_id: str | None = None,
+    student_id: str | None = None,
+) -> dict:
     query = (
         db.session.query(
             Score.student_id.label("student_id"),
@@ -138,10 +240,12 @@ def get_mastery_progress(subject_id: str | None = None, student_id: str | None =
         .filter(Score.deleted_at.is_(None), Student.deleted_at.is_(None))
     )
 
-    if subject_id:
-        query = query.filter(Score.subject_id == uuid.UUID(subject_id))
-    if student_id:
-        query = query.filter(Score.student_id == uuid.UUID(student_id))
+    subject_ids = _resolve_subject_ids(course_id, module_id, subject_id, trainer_id, student_id)
+    student_ids = _resolve_student_ids(course_id, module_id, subject_id, trainer_id, student_id)
+    if subject_ids is not None:
+        query = query.filter(Score.subject_id.in_(subject_ids))
+    if student_ids is not None:
+        query = query.filter(Score.student_id.in_(student_ids))
 
     rows = (
         query.group_by(
@@ -203,7 +307,13 @@ def _pearson(xs: list[float], ys: list[float]) -> float:
 
 
 @cache.memoize(timeout=60)
-def get_attendance_performance(subject_id: str | None = None, student_id: str | None = None) -> dict:
+def get_attendance_performance(
+    course_id: str | None = None,
+    module_id: str | None = None,
+    subject_id: str | None = None,
+    trainer_id: str | None = None,
+    student_id: str | None = None,
+) -> dict:
     attendance_rate = _attendance_rate_expr()
     query = (
         db.session.query(
@@ -227,10 +337,12 @@ def get_attendance_performance(subject_id: str | None = None, student_id: str | 
         .filter(Student.deleted_at.is_(None))
     )
 
-    if subject_id:
-        query = query.filter(Score.subject_id == uuid.UUID(subject_id))
-    if student_id:
-        query = query.filter(Student.id == uuid.UUID(student_id))
+    subject_ids = _resolve_subject_ids(course_id, module_id, subject_id, trainer_id, student_id)
+    student_ids = _resolve_student_ids(course_id, module_id, subject_id, trainer_id, student_id)
+    if subject_ids is not None:
+        query = query.filter(Score.subject_id.in_(subject_ids))
+    if student_ids is not None:
+        query = query.filter(Student.id.in_(student_ids))
 
     rows = query.group_by(Student.id, User.name).order_by(User.name.asc()).all()
     items = [
@@ -263,7 +375,13 @@ def get_attendance_performance(subject_id: str | None = None, student_id: str | 
 
 
 @cache.memoize(timeout=60)
-def get_portfolio_tracking(subject_id: str | None = None, student_id: str | None = None) -> dict:
+def get_portfolio_tracking(
+    course_id: str | None = None,
+    module_id: str | None = None,
+    subject_id: str | None = None,
+    trainer_id: str | None = None,
+    student_id: str | None = None,
+) -> dict:
     query = (
         db.session.query(
             Student.id.label("student_id"),
@@ -287,10 +405,8 @@ def get_portfolio_tracking(subject_id: str | None = None, student_id: str | None
             Competency.deleted_at.is_(None),
         )
     )
-    if subject_id:
-        query = query.filter(Subject.id == uuid.UUID(subject_id))
-    if student_id:
-        query = query.filter(Student.id == uuid.UUID(student_id))
+    query = _scope_subject_filter(query, course_id, module_id, subject_id, trainer_id, student_id)
+    query = _scope_student_filter(query, course_id, module_id, subject_id, trainer_id, student_id)
 
     rows = query.group_by(Student.id, User.name).order_by(User.name.asc()).all()
     items = []
@@ -317,12 +433,21 @@ def get_portfolio_tracking(subject_id: str | None = None, student_id: str | None
 
 @cache.memoize(timeout=60)
 def get_at_risk_analytics(
+    course_id: str | None = None,
+    module_id: str | None = None,
     subject_id: str | None = None,
+    trainer_id: str | None = None,
     student_id: str | None = None,
     score_threshold: float = 50.0,
     attendance_threshold: float = 75.0,
 ) -> dict:
-    attendance = get_attendance_performance(subject_id=subject_id, student_id=student_id)["items"]
+    attendance = get_attendance_performance(
+        course_id=course_id,
+        module_id=module_id,
+        subject_id=subject_id,
+        trainer_id=trainer_id,
+        student_id=student_id,
+    )["items"]
     attendance_by_student = {item["student_id"]: item for item in attendance}
 
     query = (
@@ -336,10 +461,12 @@ def get_at_risk_analytics(
         .join(Score, (Score.student_id == Student.id) & (Score.deleted_at.is_(None)))
         .filter(Student.deleted_at.is_(None))
     )
-    if subject_id:
-        query = query.filter(Score.subject_id == uuid.UUID(subject_id))
-    if student_id:
-        query = query.filter(Student.id == uuid.UUID(student_id))
+    subject_ids = _resolve_subject_ids(course_id, module_id, subject_id, trainer_id, student_id)
+    student_ids = _resolve_student_ids(course_id, module_id, subject_id, trainer_id, student_id)
+    if subject_ids is not None:
+        query = query.filter(Score.subject_id.in_(subject_ids))
+    if student_ids is not None:
+        query = query.filter(Student.id.in_(student_ids))
 
     rows = query.group_by(Student.id, User.name).order_by(func.avg(Score.marks_obtained).asc()).all()
     items = []
@@ -375,9 +502,27 @@ def get_at_risk_analytics(
 
 
 @cache.memoize(timeout=60)
-def get_recommendations(subject_id: str | None = None, student_id: str | None = None) -> dict:
-    heatmap = get_heatmap(subject_id=subject_id, student_id=student_id)["items"]
-    at_risk = get_at_risk_analytics(subject_id=subject_id, student_id=student_id)["items"]
+def get_recommendations(
+    course_id: str | None = None,
+    module_id: str | None = None,
+    subject_id: str | None = None,
+    trainer_id: str | None = None,
+    student_id: str | None = None,
+) -> dict:
+    heatmap = get_heatmap(
+        course_id=course_id,
+        module_id=module_id,
+        subject_id=subject_id,
+        trainer_id=trainer_id,
+        student_id=student_id,
+    )["items"]
+    at_risk = get_at_risk_analytics(
+        course_id=course_id,
+        module_id=module_id,
+        subject_id=subject_id,
+        trainer_id=trainer_id,
+        student_id=student_id,
+    )["items"]
     recommendations = []
 
     low_cells = [item for item in heatmap if item["mastery_level"] == "low"]
@@ -416,7 +561,15 @@ def get_recommendations(subject_id: str | None = None, student_id: str | None = 
 
 
 @cache.memoize(timeout=60)
-def get_cohort_comparison(subject_a_id: str | None = None, subject_b_id: str | None = None, trainer_id: str | None = None) -> dict:
+def get_cohort_comparison(
+    subject_a_id: str | None = None,
+    subject_b_id: str | None = None,
+    course_id: str | None = None,
+    module_id: str | None = None,
+    subject_id: str | None = None,
+    trainer_id: str | None = None,
+    student_id: str | None = None,
+) -> dict:
     ids: list[uuid.UUID] = []
     if subject_a_id and subject_b_id:
         ids = [uuid.UUID(subject_a_id), uuid.UUID(subject_b_id)]
@@ -429,10 +582,7 @@ def get_cohort_comparison(subject_a_id: str | None = None, subject_b_id: str | N
             .join(Score, (Score.subject_id == Subject.id) & (Score.deleted_at.is_(None)))
             .filter(Subject.deleted_at.is_(None))
         )
-        if trainer_id:
-            query = query.join(TrainerSubject, TrainerSubject.subject_id == Subject.id).filter(
-                TrainerSubject.trainer_id == uuid.UUID(trainer_id)
-            )
+        query = _scope_subject_filter(query, course_id, module_id, subject_id, trainer_id, student_id)
         rows = (
             query.group_by(Subject.id)
             .order_by(func.count(Score.id).desc(), Subject.id.asc())
@@ -484,7 +634,13 @@ def get_cohort_comparison(subject_a_id: str | None = None, subject_b_id: str | N
 
 
 @cache.memoize(timeout=60)
-def get_cohort_drilldown(subject_id: str) -> dict:
+def get_cohort_drilldown(
+    subject_id: str,
+    course_id: str | None = None,
+    module_id: str | None = None,
+    trainer_id: str | None = None,
+    student_id: str | None = None,
+) -> dict:
     sid = uuid.UUID(subject_id)
     subject = db.session.get(Subject, sid)
     students = (
@@ -512,19 +668,61 @@ def get_cohort_drilldown(subject_id: str) -> dict:
             for student, name in students
         ],
         "summary": {
-            "heatmap": get_heatmap(subject_id=subject_id),
-            "progress": get_mastery_progress(subject_id=subject_id),
-            "attendance_correlation": get_attendance_performance(subject_id=subject_id),
-            "portfolio": get_portfolio_tracking(subject_id=subject_id),
-            "at_risk": get_at_risk_analytics(subject_id=subject_id),
-            "recommendations": get_recommendations(subject_id=subject_id),
+            "heatmap": get_heatmap(
+                course_id=course_id,
+                module_id=module_id,
+                subject_id=subject_id,
+                trainer_id=trainer_id,
+                student_id=student_id,
+            ),
+            "progress": get_mastery_progress(
+                course_id=course_id,
+                module_id=module_id,
+                subject_id=subject_id,
+                trainer_id=trainer_id,
+                student_id=student_id,
+            ),
+            "attendance_correlation": get_attendance_performance(
+                course_id=course_id,
+                module_id=module_id,
+                subject_id=subject_id,
+                trainer_id=trainer_id,
+                student_id=student_id,
+            ),
+            "portfolio": get_portfolio_tracking(
+                course_id=course_id,
+                module_id=module_id,
+                subject_id=subject_id,
+                trainer_id=trainer_id,
+                student_id=student_id,
+            ),
+            "at_risk": get_at_risk_analytics(
+                course_id=course_id,
+                module_id=module_id,
+                subject_id=subject_id,
+                trainer_id=trainer_id,
+                student_id=student_id,
+            ),
+            "recommendations": get_recommendations(
+                course_id=course_id,
+                module_id=module_id,
+                subject_id=subject_id,
+                trainer_id=trainer_id,
+                student_id=student_id,
+            ),
         },
         "last_updated": datetime.utcnow().isoformat(),
     }
 
 
 @cache.memoize(timeout=60)
-def get_student_drilldown(student_id: str) -> dict:
+def get_student_drilldown(
+    student_id: str,
+    course_id: str | None = None,
+    module_id: str | None = None,
+    subject_id: str | None = None,
+    trainer_id: str | None = None,
+) -> dict:
     sid = uuid.UUID(student_id)
     student = db.session.get(Student, sid)
     user = student.user if student else None
@@ -534,12 +732,48 @@ def get_student_drilldown(student_id: str) -> dict:
             "name": user.name if user else "Unknown student",
             "registration_number": student.registration_number if student else None,
         },
-        "heatmap": get_heatmap(student_id=student_id),
-        "progress": get_mastery_progress(student_id=student_id),
-        "attendance_correlation": get_attendance_performance(student_id=student_id),
-        "portfolio": get_portfolio_tracking(student_id=student_id),
-        "at_risk": get_at_risk_analytics(student_id=student_id),
-        "recommendations": get_recommendations(student_id=student_id),
+        "heatmap": get_heatmap(
+            course_id=course_id,
+            module_id=module_id,
+            subject_id=subject_id,
+            trainer_id=trainer_id,
+            student_id=student_id,
+        ),
+        "progress": get_mastery_progress(
+            course_id=course_id,
+            module_id=module_id,
+            subject_id=subject_id,
+            trainer_id=trainer_id,
+            student_id=student_id,
+        ),
+        "attendance_correlation": get_attendance_performance(
+            course_id=course_id,
+            module_id=module_id,
+            subject_id=subject_id,
+            trainer_id=trainer_id,
+            student_id=student_id,
+        ),
+        "portfolio": get_portfolio_tracking(
+            course_id=course_id,
+            module_id=module_id,
+            subject_id=subject_id,
+            trainer_id=trainer_id,
+            student_id=student_id,
+        ),
+        "at_risk": get_at_risk_analytics(
+            course_id=course_id,
+            module_id=module_id,
+            subject_id=subject_id,
+            trainer_id=trainer_id,
+            student_id=student_id,
+        ),
+        "recommendations": get_recommendations(
+            course_id=course_id,
+            module_id=module_id,
+            subject_id=subject_id,
+            trainer_id=trainer_id,
+            student_id=student_id,
+        ),
         "last_updated": datetime.utcnow().isoformat(),
     }
 
@@ -569,8 +803,15 @@ def get_competency_drilldown(competency_id: str) -> dict:
     }
 
 
-def build_role_dashboard(role: str, student_id: str | None = None, trainer_id: str | None = None) -> dict:
-    subject_id = None
+def build_role_dashboard(
+    role: str,
+    student_id: str | None = None,
+    trainer_id: str | None = None,
+    course_id: str | None = None,
+    module_id: str | None = None,
+    subject_id: str | None = None,
+) -> dict:
+    resolved_subject_id = subject_id
     if role == "student" and student_id:
         student_subject = (
             db.session.query(StudentSubject)
@@ -578,7 +819,8 @@ def build_role_dashboard(role: str, student_id: str | None = None, trainer_id: s
             .order_by(StudentSubject.created_at.asc())
             .first()
         )
-        subject_id = str(student_subject.subject_id) if student_subject else None
+        if not resolved_subject_id:
+            resolved_subject_id = str(student_subject.subject_id) if student_subject else None
     elif role == "trainer" and trainer_id:
         trainer_subject = (
             db.session.query(Subject.id)
@@ -586,13 +828,44 @@ def build_role_dashboard(role: str, student_id: str | None = None, trainer_id: s
             .filter(TrainerSubject.trainer_id == uuid.UUID(trainer_id))
             .first()
         )
-        subject_id = str(trainer_subject[0]) if trainer_subject else None
+        if not resolved_subject_id:
+            resolved_subject_id = str(trainer_subject[0]) if trainer_subject else None
 
-    at_risk = get_at_risk_analytics(subject_id=subject_id, student_id=student_id)
-    attendance = get_attendance_performance(subject_id=subject_id, student_id=student_id)
-    portfolio = get_portfolio_tracking(subject_id=subject_id, student_id=student_id)
-    heatmap = get_heatmap(subject_id=subject_id, student_id=student_id)
-    progress = get_mastery_progress(subject_id=subject_id, student_id=student_id)
+    at_risk = get_at_risk_analytics(
+        course_id=course_id,
+        module_id=module_id,
+        subject_id=resolved_subject_id,
+        trainer_id=trainer_id,
+        student_id=student_id,
+    )
+    attendance = get_attendance_performance(
+        course_id=course_id,
+        module_id=module_id,
+        subject_id=resolved_subject_id,
+        trainer_id=trainer_id,
+        student_id=student_id,
+    )
+    portfolio = get_portfolio_tracking(
+        course_id=course_id,
+        module_id=module_id,
+        subject_id=resolved_subject_id,
+        trainer_id=trainer_id,
+        student_id=student_id,
+    )
+    heatmap = get_heatmap(
+        course_id=course_id,
+        module_id=module_id,
+        subject_id=resolved_subject_id,
+        trainer_id=trainer_id,
+        student_id=student_id,
+    )
+    progress = get_mastery_progress(
+        course_id=course_id,
+        module_id=module_id,
+        subject_id=resolved_subject_id,
+        trainer_id=trainer_id,
+        student_id=student_id,
+    )
 
     heatmap_items = heatmap["items"]
     mastery_pct = _round(
@@ -632,12 +905,18 @@ def build_role_dashboard(role: str, student_id: str | None = None, trainer_id: s
         "portfolio": portfolio,
         "at_risk": at_risk,
         "cohort_comparison": (
-            get_cohort_comparison(trainer_id=trainer_id)
+            get_cohort_comparison(trainer_id=trainer_id, course_id=course_id, module_id=module_id, subject_id=resolved_subject_id, student_id=student_id)
             if role == "trainer"
-            else get_cohort_comparison()
+            else get_cohort_comparison(course_id=course_id, module_id=module_id, subject_id=resolved_subject_id, trainer_id=trainer_id, student_id=student_id)
             if role == "admin"
             else {"cohorts": [], "cohort_a_avg": 0.0, "cohort_b_avg": 0.0, "last_updated": datetime.utcnow().isoformat()}
         ),
-        "recommendations": get_recommendations(subject_id=subject_id, student_id=student_id),
+        "recommendations": get_recommendations(
+            course_id=course_id,
+            module_id=module_id,
+            subject_id=resolved_subject_id,
+            trainer_id=trainer_id,
+            student_id=student_id,
+        ),
         "last_updated": datetime.utcnow().isoformat(),
     }

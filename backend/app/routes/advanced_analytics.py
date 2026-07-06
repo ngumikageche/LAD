@@ -31,6 +31,19 @@ def _optional_uuid(value: str | None, field: str) -> str | None:
         raise ValueError(f"Invalid '{field}'") from exc
 
 
+def _scope_args(*, include_trainer: bool = False, include_student: bool = False) -> dict[str, str | None]:
+    scope = {
+        "course_id": _optional_uuid(request.args.get("course_id"), "course_id"),
+        "module_id": _optional_uuid(request.args.get("module_id"), "module_id"),
+        "subject_id": _optional_uuid(request.args.get("subject_id"), "subject_id"),
+    }
+    if include_trainer:
+        scope["trainer_id"] = _optional_uuid(request.args.get("trainer_id"), "trainer_id")
+    if include_student:
+        scope["student_id"] = _optional_uuid(request.args.get("student_id"), "student_id")
+    return scope
+
+
 @bp.errorhandler(ValueError)
 def handle_value_error(error: ValueError):
     return {"error": str(error)}, 400
@@ -39,36 +52,26 @@ def handle_value_error(error: ValueError):
 @bp.get("/heatmap")
 @trainer_required("scores.read")
 def heatmap():
-    return get_heatmap(
-        subject_id=_optional_uuid(request.args.get("subject_id"), "subject_id"),
-        student_id=_optional_uuid(request.args.get("student_id"), "student_id"),
-    ), 200
+    return get_heatmap(**_scope_args(include_trainer=True)), 200
 
 
 @bp.get("/progress")
 @trainer_required("scores.read")
 def progress():
-    return get_mastery_progress(
-        subject_id=_optional_uuid(request.args.get("subject_id"), "subject_id"),
-        student_id=_optional_uuid(request.args.get("student_id"), "student_id"),
-    ), 200
+    return get_mastery_progress(**_scope_args(include_trainer=True)), 200
 
 
 @bp.get("/attendance-correlation")
 @trainer_required("scores.read")
 def attendance_correlation():
-    return get_attendance_performance(
-        subject_id=_optional_uuid(request.args.get("subject_id"), "subject_id"),
-        student_id=_optional_uuid(request.args.get("student_id"), "student_id"),
-    ), 200
+    return get_attendance_performance(**_scope_args(include_trainer=True)), 200
 
 
 @bp.get("/at-risk")
 @trainer_required("scores.read")
 def at_risk():
     return get_at_risk_analytics(
-        subject_id=_optional_uuid(request.args.get("subject_id"), "subject_id"),
-        student_id=_optional_uuid(request.args.get("student_id"), "student_id"),
+        **_scope_args(include_trainer=True),
         score_threshold=float(request.args.get("score_threshold", 50)),
         attendance_threshold=float(request.args.get("attendance_threshold", 75)),
     ), 200
@@ -77,10 +80,7 @@ def at_risk():
 @bp.get("/recommendations")
 @trainer_required("scores.read")
 def recommendations():
-    return get_recommendations(
-        subject_id=_optional_uuid(request.args.get("subject_id"), "subject_id"),
-        student_id=_optional_uuid(request.args.get("student_id"), "student_id"),
-    ), 200
+    return get_recommendations(**_scope_args(include_trainer=True)), 200
 
 
 @bp.get("/cohort")
@@ -89,13 +89,15 @@ def cohort():
     subject_id = _optional_uuid(request.args.get("subject_id"), "subject_id")
     if not subject_id:
         return {"error": "Missing 'subject_id'"}, 400
-    return get_cohort_drilldown(subject_id), 200
+    scope = _scope_args(include_trainer=True)
+    return get_cohort_drilldown(subject_id, **scope), 200
 
 
 @bp.get("/student/<student_id>")
 @trainer_required("students.read")
 def student_detail(student_id: str):
-    return get_student_drilldown(_optional_uuid(student_id, "student_id") or student_id), 200
+    scope = _scope_args(include_trainer=True)
+    return get_student_drilldown(_optional_uuid(student_id, "student_id") or student_id, **scope), 200
 
 
 @bp.get("/competency/<competency_id>")
@@ -109,22 +111,22 @@ def competency_detail(competency_id: str):
 def cohort_comparison():
     cohort_a = _optional_uuid(request.args.get("cohort_a"), "cohort_a")
     cohort_b = _optional_uuid(request.args.get("cohort_b"), "cohort_b")
-    return get_cohort_comparison(cohort_a, cohort_b, trainer_id=str(g.current_trainer.id)), 200
+    return get_cohort_comparison(cohort_a, cohort_b, trainer_id=str(g.current_trainer.id), **_scope_args()), 200
 
 
 @bp.get("/student-dashboard")
 @student_required()
 def student_dashboard():
-    return build_role_dashboard("student", student_id=str(g.current_student.id)), 200
+    return build_role_dashboard("student", student_id=str(g.current_student.id), **_scope_args(include_trainer=True)), 200
 
 
 @bp.get("/trainer-dashboard")
 @trainer_required("scores.read")
 def trainer_dashboard():
-    return build_role_dashboard("trainer", trainer_id=str(g.current_trainer.id)), 200
+    return build_role_dashboard("trainer", trainer_id=str(g.current_trainer.id), **_scope_args(include_student=True)), 200
 
 
 @bp.get("/admin-dashboard")
 @admin_required("admin.analytics.read")
 def admin_dashboard():
-    return build_role_dashboard("admin"), 200
+    return build_role_dashboard("admin", **_scope_args(include_trainer=True, include_student=True)), 200

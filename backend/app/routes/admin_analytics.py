@@ -10,14 +10,17 @@ from ..models.score import Score
 from ..models.assessment import Assessment
 from ..models.enrollment import Enrollment
 from ..models.course import Course
+from ..models.module import Module
+from ..models.subject import Subject
 from ..models.student import Student
 from ..models.trainer import Trainer
+from ..models.trainer_subject import TrainerSubject
 from ..models.user import User
 from ..models.institution import Institution
 from ..models.department import Department
 from ..models.term import Term
 from .permissions import require_permission, log_view
-from ..services.learning_analytics import build_role_dashboard
+from ..services.learning_analytics import build_role_dashboard, _resolve_student_ids, _resolve_subject_ids
 
 bp = Blueprint("admin_analytics", __name__, url_prefix="/admin/analytics")
 
@@ -45,31 +48,102 @@ def _score_agg(filter_clause):
     return total, passed, avg, pass_rate
 
 
+def _scope_args() -> dict[str, str | None]:
+    return {
+        "course_id": request.args.get("course_id"),
+        "module_id": request.args.get("module_id"),
+        "subject_id": request.args.get("subject_id"),
+        "trainer_id": request.args.get("trainer_id"),
+        "student_id": request.args.get("student_id"),
+    }
+
+
+def _scope_ids() -> tuple[list[uuid.UUID] | None, list[uuid.UUID] | None]:
+    scope = _scope_args()
+    return (
+        _resolve_subject_ids(**scope),
+        _resolve_student_ids(**scope),
+    )
+
+
+def _apply_scope_filters(query, subject_ids: list[uuid.UUID] | None, student_ids: list[uuid.UUID] | None):
+    if subject_ids is not None:
+        query = query.filter(Score.subject_id.in_(subject_ids))
+    if student_ids is not None:
+        query = query.filter(Score.student_id.in_(student_ids))
+    return query
+
+
 @bp.get("/dashboard")
 def admin_dashboard():
     user, error, status = require_permission("admin.analytics.read")
     if error:
         return error, status
 
-    total_students = db.session.query(func.count(Student.id)).filter(Student.deleted_at.is_(None)).scalar() or 0
-    total_trainers = db.session.query(func.count(Trainer.id)).filter(Trainer.deleted_at.is_(None)).scalar() or 0
+    scope = _scope_args()
+    subject_ids, student_ids = _scope_ids()
+
+    student_query = db.session.query(func.count(Student.id)).filter(Student.deleted_at.is_(None))
+    if student_ids is not None:
+        student_query = student_query.filter(Student.id.in_(student_ids))
+    total_students = student_query.scalar() or 0
+
+    trainer_query = db.session.query(func.count(func.distinct(TrainerSubject.trainer_id)))
+    if subject_ids is not None:
+        trainer_query = trainer_query.filter(TrainerSubject.subject_id.in_(subject_ids))
+    total_trainers = trainer_query.scalar() or 0
+
+    if subject_ids is not None:
+        total_courses = (
+            db.session.query(func.count(func.distinct(Course.id)))
+            .join(Module, Module.course_id == Course.id)
+            .join(Subject, Subject.module_id == Module.id)
+            .filter(Subject.id.in_(subject_ids), Course.deleted_at.is_(None))
+            .scalar()
+            or 0
+        )
+    elif student_ids is not None:
+        total_courses = (
+            db.session.query(func.count(func.distinct(Course.id)))
+            .join(Student, Student.course_id == Course.id)
+            .filter(Student.id.in_(student_ids), Course.deleted_at.is_(None))
+            .scalar()
+            or 0
+        )
+    else:
+        total_courses = db.session.query(func.count(Course.id)).filter(Course.deleted_at.is_(None)).scalar() or 0
+
     total_institutions = db.session.query(func.count(Institution.id)).filter(Institution.deleted_at.is_(None)).scalar() or 0
     total_departments = db.session.query(func.count(Department.id)).filter(Department.deleted_at.is_(None)).scalar() or 0
-    total_courses = db.session.query(func.count(Course.id)).filter(Course.deleted_at.is_(None)).scalar() or 0
     active_terms = db.session.query(func.count(Term.id)).filter(Term.is_active == True, Term.deleted_at.is_(None)).scalar() or 0
 
-    total_scores, passed_count, overall_avg, overall_pass_rate = _score_agg(Score.id.isnot(None))
+    score_query = db.session.query(
+        func.count(Score.id).label("total"),
+        func.sum(case((Score.is_passed == True, 1), else_=0)).label("passed"),
+        func.avg(Score.marks_obtained).label("avg_marks"),
+    ).filter(Score.deleted_at.is_(None))
+    if subject_ids is not None:
+        score_query = score_query.filter(Score.subject_id.in_(subject_ids))
+    if student_ids is not None:
+        score_query = score_query.filter(Score.student_id.in_(student_ids))
+    score_row = score_query.one()
+    total_scores = int(score_row.total or 0)
+    passed_count = int(score_row.passed or 0)
+    overall_avg = round(float(score_row.avg_marks or 0), 2)
+    overall_pass_rate = round(passed_count / total_scores * 100, 2) if total_scores > 0 else 0.0
     failed_count = total_scores - passed_count
 
     seven_days_ago = datetime.utcnow() - timedelta(days=7)
-    recent_count = db.session.query(func.count(Score.id)).filter(
-        Score.created_at >= seven_days_ago, Score.deleted_at.is_(None)
-    ).scalar() or 0
+    recent_query = db.session.query(func.count(Score.id)).filter(Score.created_at >= seven_days_ago, Score.deleted_at.is_(None))
+    recent_query = _apply_scope_filters(recent_query, subject_ids, student_ids)
+    recent_count = recent_query.scalar() or 0
 
     # Recent score activity list (last 10)
     recent_scores = (
         db.session.query(Score)
         .filter(Score.created_at >= seven_days_ago, Score.deleted_at.is_(None))
+        .filter(Score.subject_id.in_(subject_ids) if subject_ids is not None else True)
+        .filter(Score.student_id.in_(student_ids) if student_ids is not None else True)
         .order_by(Score.created_at.desc())
         .limit(10)
         .all()
@@ -95,6 +169,8 @@ def admin_dashboard():
         .join(User, User.id == Student.user_id)
         .join(Score, Score.student_id == Student.id)
         .filter(Score.deleted_at.is_(None), Student.deleted_at.is_(None))
+        .filter(Score.subject_id.in_(subject_ids) if subject_ids is not None else True)
+        .filter(Student.id.in_(student_ids) if student_ids is not None else True)
         .group_by(Student.id, User.name)
         .having(func.avg(Score.marks_obtained) < 50)
         .order_by(func.avg(Score.marks_obtained).asc())
@@ -115,6 +191,8 @@ def admin_dashboard():
             func.sum(case((Score.is_passed == True, 1), else_=0)).label("passed"),
         )
         .filter(Score.deleted_at.is_(None), Score.term.isnot(None))
+        .filter(Score.subject_id.in_(subject_ids) if subject_ids is not None else True)
+        .filter(Score.student_id.in_(student_ids) if student_ids is not None else True)
         .group_by(Score.term)
         .order_by(Score.term.asc())
         .all()
@@ -131,7 +209,7 @@ def admin_dashboard():
 
     log_view(user, "admin_dashboard", metadata={"scope": "system_overview"})
 
-    advanced = build_role_dashboard("admin")
+    advanced = build_role_dashboard("admin", **scope)
 
     return {
         "system_overview": {
@@ -224,6 +302,8 @@ def list_department_analytics():
     if error:
         return error, status
 
+    subject_ids, student_ids = _scope_ids()
+
     dept_courses = dict(
         db.session.query(Department.id, func.count(Course.id))
         .join(Course, Course.department_id == Department.id)
@@ -252,6 +332,8 @@ def list_department_analytics():
         .join(Student, Student.course_id == Course.id)
         .join(Score, Score.student_id == Student.id)
         .filter(Department.deleted_at.is_(None), Score.deleted_at.is_(None))
+        .filter(Score.subject_id.in_(subject_ids) if subject_ids is not None else True)
+        .filter(Student.id.in_(student_ids) if student_ids is not None else True)
         .group_by(Department.id)
         .all()
     )
@@ -287,6 +369,8 @@ def list_course_analytics():
     if error:
         return error, status
 
+    subject_ids, student_ids = _scope_ids()
+
     course_enrolled = dict(
         db.session.query(Course.id, func.count(func.distinct(Student.id)))
         .join(Student, Student.course_id == Course.id)
@@ -305,6 +389,8 @@ def list_course_analytics():
         .join(Student, Student.course_id == Course.id)
         .join(Score, Score.student_id == Student.id)
         .filter(Course.deleted_at.is_(None), Score.deleted_at.is_(None))
+        .filter(Score.subject_id.in_(subject_ids) if subject_ids is not None else True)
+        .filter(Student.id.in_(student_ids) if student_ids is not None else True)
         .group_by(Course.id)
         .all()
     )
@@ -339,6 +425,8 @@ def analytics_comparisons():
     if error:
         return error, status
 
+    subject_ids, student_ids = _scope_ids()
+
     inst_rows = (
         db.session.query(
             Institution.id, Institution.name,
@@ -350,6 +438,8 @@ def analytics_comparisons():
         .join(Student, Student.course_id == Course.id)
         .join(Score, Score.student_id == Student.id)
         .filter(Institution.deleted_at.is_(None), Score.deleted_at.is_(None))
+        .filter(Score.subject_id.in_(subject_ids) if subject_ids is not None else True)
+        .filter(Student.id.in_(student_ids) if student_ids is not None else True)
         .group_by(Institution.id, Institution.name)
         .order_by(func.avg(Score.marks_obtained).desc())
         .all()
@@ -366,6 +456,8 @@ def analytics_comparisons():
         .join(Student, Student.course_id == Course.id)
         .join(Score, Score.student_id == Student.id)
         .filter(Department.deleted_at.is_(None), Score.deleted_at.is_(None))
+        .filter(Score.subject_id.in_(subject_ids) if subject_ids is not None else True)
+        .filter(Student.id.in_(student_ids) if student_ids is not None else True)
         .group_by(Department.id, Department.name)
         .order_by(func.avg(Score.marks_obtained).desc())
         .all()
@@ -387,6 +479,8 @@ def system_wide_report():
     if error:
         return error, status
 
+    subject_ids, student_ids = _scope_ids()
+
     total_students = db.session.query(func.count(Student.id)).filter(Student.deleted_at.is_(None)).scalar() or 0
     total_trainers = db.session.query(func.count(Trainer.id)).filter(Trainer.deleted_at.is_(None)).scalar() or 0
     total_users = db.session.query(func.count(User.id)).filter(User.deleted_at.is_(None)).scalar() or 0
@@ -407,6 +501,8 @@ def system_wide_report():
             func.sum(case((Score.is_passed == True, 1), else_=0)).label("passed"),
         )
         .filter(Score.deleted_at.is_(None), Score.term.isnot(None))
+        .filter(Score.subject_id.in_(subject_ids) if subject_ids is not None else True)
+        .filter(Score.student_id.in_(student_ids) if student_ids is not None else True)
         .group_by(Score.term)
         .order_by(Score.term.asc())
         .all()
