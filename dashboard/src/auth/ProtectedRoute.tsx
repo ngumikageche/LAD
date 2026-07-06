@@ -55,8 +55,12 @@ export const PermissionRoute = ({
     return <Outlet />;
   }
 
-  // Check specific permission key
-  if (!user.permissions[permissionKey]) {
+  const hasPermission =
+    user.permissions[permissionKey] === true
+    || user.permissions[`${permissionKey}.view`] === true
+    || user.permissions[`${permissionKey}.read`] === true;
+
+  if (!hasPermission) {
     return <Navigate to="/" replace />;
   }
 

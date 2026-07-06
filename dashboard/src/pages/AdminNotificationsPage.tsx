@@ -55,6 +55,8 @@ interface SmsConfig {
   dry_run: boolean;
 }
 
+type DeliveryChannel = 'system' | 'email' | 'sms';
+
 const emptyForm: NotificationForm = { title: '', message: '', user_id: '' };
 const emptyFilters: BulkFilters = {
   target: 'all',
@@ -93,6 +95,11 @@ export default function AdminNotificationsPage() {
     } catch {
       return defaultSmsConfig;
     }
+  });
+  const [deliveryChannels, setDeliveryChannels] = useState<Record<DeliveryChannel, boolean>>({
+    system: true,
+    email: false,
+    sms: false,
   });
 
   const [formData, setFormData] = useState<NotificationForm>(emptyForm);
@@ -158,6 +165,13 @@ export default function AdminNotificationsPage() {
       setError('Title and message are required');
       return;
     }
+    const selectedChannels = (Object.entries(deliveryChannels)
+      .filter(([, enabled]) => enabled)
+      .map(([channel]) => channel) as DeliveryChannel[]);
+    if (selectedChannels.length === 0) {
+      setError('Select at least one delivery channel');
+      return;
+    }
     try {
       setError(null);
       if (editingId) {
@@ -175,16 +189,25 @@ export default function AdminNotificationsPage() {
             subject_id: bulkFilters.subject_id || undefined,
             enrollment_year: bulkFilters.enrollment_year || undefined,
           },
+          delivery_channels: selectedChannels,
           sms_config: smsConfig,
-        }) as { recipient_count?: number; sms?: { phone_ready_count?: number; skipped_no_phone_count?: number } };
+        }) as { recipient_count?: number; delivery_channels?: string[]; system?: { created_count?: number }; email?: { email_ready_count?: number; skipped_no_email_count?: number }; sms?: { phone_ready_count?: number; skipped_no_phone_count?: number } };
         const recipientCount = result.recipient_count ?? 0;
+        const systemCreated = result.system?.created_count ?? 0;
+        const emailReady = result.email?.email_ready_count ?? 0;
+        const noEmail = result.email?.skipped_no_email_count ?? 0;
         const phoneReady = result.sms?.phone_ready_count ?? 0;
         const noPhone = result.sms?.skipped_no_phone_count ?? 0;
-        setSuccess(`Bulk message created for ${recipientCount} users. SMS-ready: ${phoneReady}; missing phone: ${noPhone}.`);
+        setSuccess(`Bulk message processed for ${recipientCount} users via ${(result.delivery_channels || selectedChannels).join(', ')}. System: ${systemCreated}; email-ready: ${emailReady}/${recipientCount}; SMS-ready: ${phoneReady}/${recipientCount}. Missing email: ${noEmail}; missing phone: ${noPhone}.`);
       } else {
         if (!formData.user_id.trim()) { setError('User ID is required'); return; }
-        await adminNotificationsAPI.createNotification({ title: formData.title, message: formData.message, user_id: formData.user_id });
-        setSuccess('Notification created successfully!');
+        const result = await adminNotificationsAPI.createNotification({
+          title: formData.title,
+          message: formData.message,
+          user_id: formData.user_id,
+          delivery_channels: selectedChannels,
+        }) as { delivery_channels?: string[]; delivery_summary?: { system?: { created?: boolean } } };
+        setSuccess(`Message processed via ${(result.delivery_channels || selectedChannels).join(', ')}${result.delivery_summary?.system?.created ? ' with an in-app notification created.' : '.'}`);
       }
       resetForm();
       await loadNotifications();
@@ -198,6 +221,7 @@ export default function AdminNotificationsPage() {
     setFormData(emptyForm);
     setBulkFilters(emptyFilters);
     setComposeMode('single');
+    setDeliveryChannels({ system: true, email: false, sms: false });
     setShowForm(false);
     setEditingId(null);
   };
@@ -477,6 +501,27 @@ export default function AdminNotificationsPage() {
                     className="w-full px-4 py-2 bg-slate-800 text-slate-200 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                   />
                 </div>
+                {!editingId && (
+                  <div className="rounded-lg border border-slate-800 bg-slate-950/40 p-4">
+                    <p className="mb-3 text-sm font-medium text-slate-200">Delivery Channels</p>
+                    <div className="grid gap-3 md:grid-cols-3">
+                      {(['system', 'email', 'sms'] as const).map((channel) => (
+                        <label key={channel} className="flex items-center gap-2 text-sm text-slate-300 capitalize">
+                          <input
+                            type="checkbox"
+                            checked={deliveryChannels[channel]}
+                            onChange={(e) => setDeliveryChannels((current) => ({ ...current, [channel]: e.target.checked }))}
+                            className="h-4 w-4 rounded accent-purple-500"
+                          />
+                          {channel}
+                        </label>
+                      ))}
+                    </div>
+                    <p className="mt-2 text-xs text-slate-400">
+                      `System` creates in-app notifications. `Email` and `SMS` use the recipient contact data on file.
+                    </p>
+                  </div>
+                )}
                 </div>
                 <div className="flex gap-4 p-6 border-t border-slate-800 shrink-0">
                   <button type="submit" className="flex-1 px-6 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition font-medium">

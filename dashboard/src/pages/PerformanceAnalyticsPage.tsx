@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { BarChart3, TrendingDown, Users, AlertCircle, Filter } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, Label } from 'recharts';
 import { trainerPerformanceAPI, trainerSubjectsAPI } from '../api/trainer';
 import { useAuth } from '../auth/AuthContext';
 
@@ -174,8 +174,12 @@ export default function PerformanceAnalyticsPage() {
             <ResponsiveContainer width="100%" height={300}>
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis />
+                <XAxis dataKey="name">
+                  <Label value="Week" position="insideBottom" offset={-5} />
+                </XAxis>
+                <YAxis>
+                  <Label value="Percentage (%)" angle={-90} position="insideLeft" />
+                </YAxis>
                 <Tooltip />
                 <Legend />
                 <Line type="monotone" dataKey="average" stroke="#8b5cf6" strokeWidth={2} />
@@ -198,8 +202,12 @@ export default function PerformanceAnalyticsPage() {
                 ]}
               >
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="range" />
-                <YAxis />
+                <XAxis dataKey="range">
+                  <Label value="Score Range" position="insideBottom" offset={-5} />
+                </XAxis>
+                <YAxis>
+                  <Label value="Students" angle={-90} position="insideLeft" />
+                </YAxis>
                 <Tooltip />
                 <Bar dataKey="count" fill="#8b5cf6" />
               </BarChart>

@@ -100,7 +100,7 @@ export interface PracticalAssessmentReport {
     file_name: string;
     file_url: string;
     file_size: number | null;
-    media_type: 'image' | 'video';
+    media_type: 'image' | 'video' | 'document';
     uploaded_at: string;
     uploaded_by_user_id?: string | null;
   }>;
@@ -185,11 +185,12 @@ export interface StudentWrittenReport {
   author_name: string | null;
   subject_id: string | null;
   subject_name: string | null;
-  report_type: 'general' | 'academic' | 'attendance' | 'behaviour' | 'support' | 'progress';
+  report_type: 'general' | 'academic' | 'attendance' | 'behaviour' | 'support' | 'progress' | 'message';
   title: string;
   body: string;
   visibility: string;
   created_at: string | null;
+  delivery_channels?: Array<'system' | 'email' | 'sms'>;
 }
 
 // API Service Objects
@@ -269,6 +270,7 @@ export const trainerStudentsAPI = {
       body: string;
       report_type: StudentWrittenReport['report_type'];
       subject_id?: string;
+      delivery_channels?: Array<'system' | 'email' | 'sms'>;
     }
   ): Promise<StudentWrittenReport> {
     const response = await apiClient.post(`/trainers/students/${studentId}/reports`, data);

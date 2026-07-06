@@ -14,6 +14,10 @@ type Subject = {
   code?: string;
   name: string;
   module_id: string;
+  course_id?: string | null;
+  course_name?: string | null;
+  department_id?: string | null;
+  department_name?: string | null;
   description?: string;
 };
 
@@ -167,6 +171,7 @@ const SubjectsPage = () => {
       return (
         item.name.toLowerCase().includes(search) ||
         (item.description?.toLowerCase().includes(search) ?? false) ||
+        (item.department_name?.toLowerCase().includes(search) ?? false) ||
         (moduleObj?.name.toLowerCase().includes(search) ?? false) ||
         (courseObj?.name.toLowerCase().includes(search) ?? false)
       );
@@ -181,6 +186,7 @@ const SubjectsPage = () => {
         const mod = modules.find(m => m.id === item.module_id);
         return mod ? courses.find(c => c.id === mod.course_id)?.name ?? '' : '';
       }
+      if (key === 'department') return item.department_name ?? '';
       return (item as any)[key];
     },
   );
@@ -287,7 +293,7 @@ const SubjectsPage = () => {
         <div className="p-6 border-b border-slate-700">
           <input
             type="text"
-            placeholder="Search by name, description, course..."
+            placeholder="Search by name, description, course, or department..."
             className="w-full max-w-md px-4 py-2.5 rounded-lg border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
@@ -300,6 +306,7 @@ const SubjectsPage = () => {
                 <SortableTh label="ID" sortKey="code" sort={tc.sort} onSort={tc.setSort} />
                 <SortableTh label="Name" sortKey="name" sort={tc.sort} onSort={tc.setSort} />
                 <SortableTh label="Course" sortKey="course" sort={tc.sort} onSort={tc.setSort} />
+                <SortableTh label="Department" sortKey="department" sort={tc.sort} onSort={tc.setSort} />
                 <SortableTh label="Description" sortKey="description" sort={tc.sort} onSort={tc.setSort} />
                 <th className="px-6 py-3"></th>
               </tr>
@@ -307,11 +314,11 @@ const SubjectsPage = () => {
             <tbody className="bg-slate-900 divide-y divide-slate-800">
               {isLoading ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-4 text-center text-slate-500">Loading...</td>
+                  <td colSpan={6} className="px-6 py-4 text-center text-slate-500">Loading...</td>
                 </tr>
               ) : tc.paged.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-6 py-4 text-center text-slate-500">No subjects found.</td>
+                  <td colSpan={6} className="px-6 py-4 text-center text-slate-500">No subjects found.</td>
                 </tr>
               ) : (
                 tc.paged.map((item) => {
@@ -322,6 +329,7 @@ const SubjectsPage = () => {
                       <td className="px-6 py-4"><span className="font-mono text-xs bg-slate-700 text-indigo-300 px-2 py-0.5 rounded">{item.code ?? '—'}</span></td>
                       <td className="px-6 py-4 whitespace-nowrap">{item.name}</td>
                       <td className="px-6 py-4 whitespace-nowrap">{courseObj?.name ?? '-'}</td>
+                      <td className="px-6 py-4 whitespace-nowrap">{item.department_name ?? '-'}</td>
                       <td className="px-6 py-4 whitespace-nowrap">{item.description ?? '-'}</td>
                       <td className="px-6 py-4 whitespace-nowrap text-right space-x-2">
                         <button

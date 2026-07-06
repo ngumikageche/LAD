@@ -1,19 +1,29 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertTriangle, Bell, BookOpen, ChartColumnBig, Sparkles, TrendingUp } from 'lucide-react';
 import {
-  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer,
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from 'recharts';
-import { studentApi, type StudentAnnouncement, type StudentAttendanceRecord, type StudentDashboardResponse, type StudentSubject } from '../services/studentApi';
 import CompetencyHeatmap from '../components/charts/CompetencyHeatmap';
+import { AnalyticsHero, AnalyticsMetricTile, AnalyticsNarrative, AnalyticsSection } from '../components/analytics/AnalyticsSurface';
 import AttendanceCorrelationChart from '../components/charts/AttendanceCorrelationChart';
 import InsightsPanel from '../components/ui/InsightsPanel';
 import PortfolioStatusPanel from '../components/ui/PortfolioStatusPanel';
 import WidgetHelp from '../components/ui/WidgetHelp';
-import { loadCachedDashboard, saveCachedDashboard } from '../utils/dashboardCache';
+import { studentApi, type StudentAnnouncement, type StudentAttendanceRecord, type StudentDashboardResponse, type StudentSubject } from '../services/studentApi';
 import type { HeatmapCell } from '../services/analyticsApi';
+import { loadCachedDashboard, saveCachedDashboard } from '../utils/dashboardCache';
 
 const CACHE_KEY = 'lad.student.dashboard.v2';
+
+const fmtPct = (value: number | null | undefined) => `${Number(value ?? 0).toFixed(1)}%`;
 
 const StudentDashboardPage = () => {
   const [dashboard, setDashboard] = useState<StudentDashboardResponse | null>(null);
@@ -30,6 +40,7 @@ const StudentDashboardPage = () => {
       announcements: StudentAnnouncement[];
       attendance: StudentAttendanceRecord[];
     }>(CACHE_KEY);
+
     if (cached) {
       setDashboard(cached.dashboard);
       setSubjects(cached.subjects);
@@ -48,6 +59,7 @@ const StudentDashboardPage = () => {
           studentApi.getAnnouncements(1, 5),
           studentApi.getAttendance(),
         ]);
+
         setDashboard(dashboardRes);
         setSubjects(subjectsRes.items);
         setAnnouncements(announcementsRes.items);
@@ -64,19 +76,29 @@ const StudentDashboardPage = () => {
         setLoading(false);
       }
     };
+
     load();
   }, []);
 
   const lowPerformingSubjects = useMemo(
-    () => (dashboard?.subject_performance || []).filter((s) => s.average_score < 50),
+    () => (dashboard?.subject_performance || []).filter((subject) => subject.average_score < 50),
+    [dashboard]
+  );
+
+  const strongestSubject = useMemo(
+    () => [...(dashboard?.subject_performance || [])].sort((a, b) => b.average_score - a.average_score)[0] ?? null,
+    [dashboard]
+  );
+
+  const weakestSubject = useMemo(
+    () => [...(dashboard?.subject_performance || [])].sort((a, b) => a.average_score - b.average_score)[0] ?? null,
     [dashboard]
   );
 
   const scoreHeatmapItems = useMemo<HeatmapCell[]>(() => {
-    const studentName = 'Me';
     return (dashboard?.subject_performance || []).map((subject) => ({
       student_id: 'me',
-      student_name: studentName,
+      student_name: 'Me',
       competency_id: subject.subject_name,
       competency_name: subject.subject_name,
       score: subject.average_score,
@@ -85,7 +107,6 @@ const StudentDashboardPage = () => {
   }, [dashboard]);
 
   const attendanceHeatmapItems = useMemo<HeatmapCell[]>(() => {
-    const studentName = 'Me';
     const subjectBuckets = new Map<string, { total: number; present: number }>();
 
     attendance.forEach((record) => {
@@ -102,7 +123,7 @@ const StudentDashboardPage = () => {
       const score = bucket.total > 0 ? (bucket.present / bucket.total) * 100 : 0;
       return {
         student_id: 'me',
-        student_name: studentName,
+        student_name: 'Me',
         competency_id: subjectName,
         competency_name: subjectName,
         score,
@@ -111,166 +132,238 @@ const StudentDashboardPage = () => {
     });
   }, [attendance]);
 
+  const trendDirection = useMemo(() => {
+    const trend = dashboard?.trend || [];
+    if (trend.length < 2) {
+      return null;
+    }
+    return trend[trend.length - 1].average_score - trend[0].average_score;
+  }, [dashboard]);
+
+  const attendanceRate = dashboard?.summary_panel?.attendance_rate ?? 0;
+  const masteryRate = dashboard?.summary_panel?.mastery_rate ?? 0;
+  const portfolioRate = dashboard?.summary_panel?.portfolio_completion_rate ?? 0;
+  const unreadAlerts = dashboard?.summary_panel?.alerts ?? dashboard?.notifications_summary.unread_count ?? 0;
+  const recentScoresCount = dashboard?.recent_scores.length ?? 0;
+
+  const pulseItems = [
+    `${fmtPct(dashboard?.average_score)} overall average across ${dashboard?.enrolled_subjects_count ?? 0} enrolled subjects shows your current academic position.`,
+    trendDirection === null
+      ? 'Trend direction is not established yet because there are not enough term records.'
+      : trendDirection >= 0
+        ? `Your term trend is improving by ${fmtPct(trendDirection)} from the first visible term to the latest one.`
+        : `Your term trend has dropped by ${fmtPct(Math.abs(trendDirection))}. Review the recent subject-level declines before they compound.`,
+    `${fmtPct(attendanceRate)} attendance and ${fmtPct(portfolioRate)} portfolio completion help explain whether weaker performance is caused by revision gaps, missed classes, or unfinished evidence.`,
+  ];
+
+  const actionItems = [
+    weakestSubject
+      ? `${weakestSubject.subject_name} is your weakest subject at ${fmtPct(weakestSubject.average_score)}. Make it the next revision priority.`
+      : 'No weak-subject signal is available yet.',
+    lowPerformingSubjects.length > 0
+      ? `${lowPerformingSubjects.length} subject${lowPerformingSubjects.length === 1 ? '' : 's'} are below 50%. Focus on those first before spreading effort too widely.`
+      : 'No subject is currently below 50%, which means your immediate risk level is contained.',
+    unreadAlerts > 0
+      ? `${unreadAlerts} unread alert${unreadAlerts === 1 ? '' : 's'} may contain deadline or performance warnings that need action.`
+      : 'No unread alerts are pending right now.',
+  ];
+
   if (loading) {
     return (
       <div className="flex h-64 items-center justify-center">
-        <div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-700 border-t-slate-700" />
+        <div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-700 border-t-cyan-400" />
       </div>
     );
   }
 
   return (
     <div className="space-y-8">
-      {/* Hero */}
-      <div className="rounded-[2rem] bg-[radial-gradient(circle_at_top_left,_#0f172a,_#1d4ed8_45%,_#bfdbfe_120%)] p-8 text-white shadow-xl">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <p className="text-sm uppercase tracking-[0.3em] text-blue-100">Student Portal</p>
-            <h1 className="mt-3 text-4xl font-bold">Your academic snapshot</h1>
-            <p className="mt-3 max-w-2xl text-blue-100">
-              Track your scores, stay on top of subjects, and catch important alerts early.
-            </p>
-          </div>
-          <div className="rounded-3xl bg-slate-900/10 px-6 py-4 backdrop-blur">
-            <p className="text-sm text-blue-100">Current average</p>
-            <p className="mt-1 text-4xl font-bold">{(dashboard?.average_score || 0).toFixed(1)}%</p>
-          </div>
+      <AnalyticsHero
+        eyebrow="Student Dashboard"
+        title="Academic Progress Studio"
+        description="Understand how your scores, attendance, and portfolio evidence connect so you can decide where to focus next with confidence."
+      >
+        <div className="rounded-3xl border border-white/10 bg-white/[0.06] px-6 py-4 backdrop-blur">
+          <p className="text-sm text-slate-300">Snapshot updated</p>
+          <p className="mt-1 text-lg font-semibold text-white">
+            {dashboard?.last_updated ? new Date(dashboard.last_updated).toLocaleString() : 'Live'}
+          </p>
         </div>
+      </AnalyticsHero>
+
+      {error ? (
+        <div className="rounded-3xl border border-red-400/20 bg-red-500/10 px-5 py-4 text-sm text-red-200">
+          {error}
+        </div>
+      ) : null}
+
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <AnalyticsMetricTile
+          label="Average Score"
+          value={fmtPct(dashboard?.average_score)}
+          helper={`${recentScoresCount} recent scored records`}
+          icon={Sparkles}
+          accent="cyan"
+        />
+        <AnalyticsMetricTile
+          label="Enrolled Subjects"
+          value={dashboard?.enrolled_subjects_count ?? 0}
+          helper="Subjects currently shaping your learning load"
+          icon={BookOpen}
+          accent="emerald"
+        />
+        <AnalyticsMetricTile
+          label="Mastery Rate"
+          value={fmtPct(masteryRate)}
+          helper="Competency cells rated at strong mastery"
+          icon={ChartColumnBig}
+          accent="amber"
+        />
+        <AnalyticsMetricTile
+          label="Attendance Rate"
+          value={fmtPct(attendanceRate)}
+          helper={`${attendance.length} attendance records tracked`}
+          icon={TrendingUp}
+          accent="violet"
+        />
+        <AnalyticsMetricTile
+          label="Unread Alerts"
+          value={unreadAlerts}
+          helper="Notifications or support warnings awaiting review"
+          icon={Bell}
+          accent={unreadAlerts > 0 ? 'rose' : 'slate'}
+        />
       </div>
 
-      {error && <div className="rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-red-300">{error}</div>}
-
-      {/* KPI Cards */}
-      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-        {[
-          { label: 'Average score', value: `${(dashboard?.average_score || 0).toFixed(1)}%`, icon: Sparkles, color: 'text-indigo-400', description: 'Shows your mean score across recorded assessments. Higher values indicate stronger overall performance.' },
-          { label: 'Enrolled subjects', value: dashboard?.enrolled_subjects_count ?? 0, icon: BookOpen, color: 'text-emerald-600', description: 'Shows how many subjects are currently attached to your learning plan or registration.' },
-          { label: 'Mastery rate', value: `${dashboard?.summary_panel?.mastery_rate?.toFixed(1) ?? '0.0'}%`, icon: ChartColumnBig, color: 'text-amber-600', description: 'Shows the share of competency cells marked as high mastery. It summarizes how consistently you are meeting competency expectations.' },
-          { label: 'Unread alerts', value: dashboard?.summary_panel?.alerts ?? dashboard?.notifications_summary.unread_count ?? 0, icon: Bell, color: 'text-rose-600', description: 'Shows how many warnings, support flags, or unread learning alerts need your attention.' },
-        ].map(({ label, value, icon: Icon, color, description }) => (
-          <div key={label} className="rounded-3xl border border-slate-700 bg-slate-900 border border-slate-800 p-6 shadow-sm">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <p className="text-sm font-medium text-slate-500">{label}</p>
-                <WidgetHelp title={label} description={description} />
-              </div>
-              <Icon className={`h-5 w-5 ${color}`} />
-            </div>
-            <p className="mt-4 text-3xl font-bold text-slate-100">{value}</p>
-          </div>
-        ))}
+      <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <AnalyticsNarrative title="Learning Pulse" items={pulseItems} tone="neutral" />
+        <AnalyticsNarrative title="Next Best Actions" items={actionItems} tone={lowPerformingSubjects.length > 0 ? 'warn' : 'good'} />
       </div>
 
-      {/* Trend Chart + At-Risk */}
-      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        {/* Performance trend by term */}
-        <div className="rounded-3xl border border-slate-700 bg-slate-900 border border-slate-800 p-6 shadow-sm">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <TrendingUp className="h-5 w-5 text-indigo-400" />
-              <h2 className="text-xl font-semibold text-slate-100">Performance by Term</h2>
-            </div>
-            <WidgetHelp title="Performance by Term" description="Shows how your average score changes over different terms or reporting periods. Use it to see whether performance is improving, stable, or declining over time." />
-          </div>
+      <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <AnalyticsSection
+          title="Performance by Term"
+          description="See whether your average score is rising, flattening, or slipping across reporting periods."
+          action={<WidgetHelp title="Performance by Term" description="Shows how your average score changes over different terms or reporting periods so you can tell whether your performance is improving, stable, or declining." />}
+        >
           {(dashboard?.trend || []).length === 0 ? (
-            <div className="flex h-48 items-center justify-center rounded-2xl border border-dashed border-slate-300 text-slate-400">
-              No term data yet
+            <div className="flex h-56 items-center justify-center rounded-2xl border border-dashed border-slate-700 text-sm text-slate-500">
+              No term data yet.
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={220}>
+            <ResponsiveContainer width="100%" height={240}>
               <LineChart data={dashboard?.trend || []}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis dataKey="term" tick={{ fontSize: 12 }} />
-                <YAxis domain={[0, 100]} tick={{ fontSize: 12 }} />
-                <Tooltip formatter={(v) => `${Number(v ?? 0).toFixed(1)}%`} />
-                <Line type="monotone" dataKey="average_score" stroke="#6366f1" strokeWidth={2} dot={{ r: 4 }} name="Avg Score" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                <XAxis dataKey="term" tick={{ fontSize: 12, fill: '#94a3b8' }} />
+                <YAxis domain={[0, 100]} tick={{ fontSize: 12, fill: '#94a3b8' }} />
+                <Tooltip formatter={(value) => fmtPct(Number(value ?? 0))} />
+                <Line
+                  type="monotone"
+                  dataKey="average_score"
+                  stroke="#22d3ee"
+                  strokeWidth={3}
+                  dot={{ r: 4, fill: '#22d3ee' }}
+                  name="Average Score"
+                />
               </LineChart>
             </ResponsiveContainer>
           )}
-        </div>
+        </AnalyticsSection>
 
-        {/* Subject performance bars */}
-        <div className="rounded-3xl border border-slate-700 bg-slate-900 border border-slate-800 p-6 shadow-sm">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="text-xl font-semibold text-slate-100">By Subject</h2>
-            <WidgetHelp title="By Subject" description="Shows your average score in each subject. It helps you spot stronger areas and subjects that may need extra support." />
+        <AnalyticsSection
+          title="Subject Performance Map"
+          description="Compare all subjects side by side to spot where your strongest and weakest outcomes sit."
+          action={<WidgetHelp title="Subject Performance Map" description="Shows your average score in each subject so you can identify the areas that are strongest and the ones that need more effort." />}
+        >
+          <div className="mb-5 grid gap-4 md:grid-cols-2">
+            <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4">
+              <p className="text-xs uppercase tracking-[0.2em] text-emerald-200">Strongest Subject</p>
+              <p className="mt-2 text-lg font-semibold text-slate-100">{strongestSubject?.subject_name ?? 'No data yet'}</p>
+              <p className="mt-1 text-sm text-slate-300">
+                {strongestSubject ? `${fmtPct(strongestSubject.average_score)} average` : 'Waiting for recorded scores.'}
+              </p>
+            </div>
+            <div className="rounded-2xl border border-amber-400/20 bg-amber-500/10 p-4">
+              <p className="text-xs uppercase tracking-[0.2em] text-amber-200">Needs Attention</p>
+              <p className="mt-2 text-lg font-semibold text-slate-100">{weakestSubject?.subject_name ?? 'No data yet'}</p>
+              <p className="mt-1 text-sm text-slate-300">
+                {weakestSubject ? `${fmtPct(weakestSubject.average_score)} average` : 'Waiting for recorded scores.'}
+              </p>
+            </div>
           </div>
+
           {(dashboard?.subject_performance || []).length === 0 ? (
-            <div className="flex h-48 items-center justify-center rounded-2xl border border-dashed border-slate-300 text-slate-400">
-              No subject data yet
+            <div className="flex h-56 items-center justify-center rounded-2xl border border-dashed border-slate-700 text-sm text-slate-500">
+              No subject data yet.
             </div>
           ) : (
-            <ResponsiveContainer width="100%" height={220}>
+            <ResponsiveContainer width="100%" height={240}>
               <BarChart data={dashboard?.subject_performance || []} layout="vertical">
-                <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
-                <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 11 }} />
-                <YAxis dataKey="subject_name" type="category" tick={{ fontSize: 11 }} width={90} />
-                <Tooltip formatter={(v) => `${Number(v ?? 0).toFixed(1)}%`} />
-                <Bar dataKey="average_score" fill="#10b981" name="Avg Score" radius={[0, 4, 4, 0]} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 11, fill: '#94a3b8' }} />
+                <YAxis dataKey="subject_name" type="category" tick={{ fontSize: 11, fill: '#94a3b8' }} width={110} />
+                <Tooltip formatter={(value) => fmtPct(Number(value ?? 0))} />
+                <Bar dataKey="average_score" fill="#34d399" radius={[0, 8, 8, 0]} name="Average Score" />
               </BarChart>
             </ResponsiveContainer>
           )}
-        </div>
+        </AnalyticsSection>
       </div>
 
-      {/* Recent scores + watchlist */}
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <section className="rounded-3xl border border-slate-700 bg-slate-900 border border-slate-800 p-6 shadow-sm">
-          <div className="mb-5 flex items-start justify-between gap-3">
-            <div>
-              <h2 className="mb-1 text-2xl font-semibold text-slate-100">Recent results</h2>
-              <p className="text-slate-600">Your latest recorded scores and feedback.</p>
-            </div>
-            <WidgetHelp title="Recent results" description="Lists your newest assessment outcomes, including subject, assessment name, term, score, and grade." />
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[560px]">
-              <thead>
-                <tr className="border-b border-slate-700 text-left text-sm text-slate-500">
-                  <th className="pb-3">Subject</th>
-                  <th className="pb-3">Assessment</th>
-                  <th className="pb-3">Term</th>
-                  <th className="pb-3">Score</th>
-                  <th className="pb-3">Grade</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(dashboard?.recent_scores || []).map((score) => (
-                  <tr key={score.id} className="border-b border-slate-100 text-sm text-slate-700">
-                    <td className="py-3">{score.subject?.name || '—'}</td>
-                    <td className="py-3">{score.assessment?.name || 'Direct entry'}</td>
-                    <td className="py-3">{score.term || '—'}</td>
-                    <td className="py-3 font-semibold">{score.score.toFixed(1)}%</td>
-                    <td className="py-3">{score.grade || '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {(dashboard?.recent_scores.length || 0) === 0 && (
-            <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-slate-500">
+      <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+        <AnalyticsSection
+          title="Recent Results"
+          description="Your latest assessments, grades, and recorded score entries."
+          action={<WidgetHelp title="Recent Results" description="Lists your latest assessment outcomes including subject, assessment, score, grade, and term so you can review what changed most recently." />}
+        >
+          {(dashboard?.recent_scores.length || 0) === 0 ? (
+            <div className="rounded-2xl border border-dashed border-slate-700 p-8 text-center text-sm text-slate-500">
               No scores recorded yet.
             </div>
-          )}
-        </section>
-
-        <section className="space-y-6">
-          {/* At-risk watchlist */}
-          <div className="rounded-3xl border border-slate-700 bg-slate-900 border border-slate-800 p-6 shadow-sm">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <h2 className="text-xl font-semibold text-slate-100">Support watchlist</h2>
-              <WidgetHelp title="Support watchlist" description="Highlights subjects where your average score is currently below the preferred performance range, so you can focus your revision effort." />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[560px]">
+                <thead>
+                  <tr className="border-b border-slate-800 text-left text-sm text-slate-400">
+                    <th className="pb-3">Subject</th>
+                    <th className="pb-3">Assessment</th>
+                    <th className="pb-3">Term</th>
+                    <th className="pb-3">Score</th>
+                    <th className="pb-3">Grade</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(dashboard?.recent_scores || []).map((score) => (
+                    <tr key={score.id} className="border-b border-slate-800 text-sm text-slate-200">
+                      <td className="py-3">{score.subject?.name || '—'}</td>
+                      <td className="py-3">{score.assessment?.name || 'Direct entry'}</td>
+                      <td className="py-3">{score.term || '—'}</td>
+                      <td className="py-3 font-semibold">{fmtPct(score.score)}</td>
+                      <td className="py-3">{score.grade || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
+          )}
+        </AnalyticsSection>
+
+        <div className="space-y-6">
+          <AnalyticsSection
+            title="Support Watchlist"
+            description="Subjects currently below the preferred performance range."
+            action={<WidgetHelp title="Support Watchlist" description="Highlights subjects where your average score is below the preferred performance range so you can focus revision time where it matters most." />}
+          >
             {lowPerformingSubjects.length > 0 ? (
               <div className="space-y-3">
                 {lowPerformingSubjects.map((item) => (
-                  <div key={item.subject_name} className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
+                  <div key={item.subject_name} className="rounded-2xl border border-amber-400/20 bg-amber-500/10 p-4">
                     <div className="flex items-start gap-3">
                       <AlertTriangle className="mt-0.5 h-5 w-5 text-amber-300" />
                       <div>
                         <p className="font-semibold text-slate-100">{item.subject_name}</p>
-                        <p className="mt-1 text-sm text-slate-700">
-                          Average: {item.average_score.toFixed(1)}% across {item.scores_count} score{item.scores_count === 1 ? '' : 's'}
+                        <p className="mt-1 text-sm text-slate-300">
+                          {fmtPct(item.average_score)} across {item.scores_count} score{item.scores_count === 1 ? '' : 's'}
                         </p>
                       </div>
                     </div>
@@ -278,116 +371,109 @@ const StudentDashboardPage = () => {
                 ))}
               </div>
             ) : (
-              <div className="rounded-2xl bg-emerald-50 p-4 text-sm text-emerald-700">
-                No at-risk subjects right now. Keep going.
+              <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4 text-sm text-emerald-100">
+                No subject is currently on the watchlist.
               </div>
             )}
-          </div>
+          </AnalyticsSection>
 
-          {/* Announcements */}
-          <div className="rounded-3xl border border-slate-700 bg-slate-900 border border-slate-800 p-6 shadow-sm">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <h2 className="text-xl font-semibold text-slate-100">Announcements</h2>
-              <WidgetHelp title="Announcements" description="Shows recent updates, notices, and urgent communications relevant to your classes or learning environment." />
-            </div>
+          <AnalyticsSection
+            title="Announcements"
+            description="Recent notices, support messages, and urgent updates relevant to your learning."
+            action={<WidgetHelp title="Announcements" description="Shows recent updates, notices, and urgent communications that may affect your classes, deadlines, or required actions." />}
+          >
             <div className="space-y-3">
-              {announcements.map((a) => (
-                <article key={a.id} className="rounded-2xl border border-slate-700 p-4">
+              {announcements.map((announcement) => (
+                <article key={announcement.id} className="rounded-2xl border border-slate-800 bg-slate-950/60 p-4">
                   <div className="flex items-center justify-between gap-3">
-                    <h3 className="font-semibold text-slate-100">{a.title}</h3>
-                    {a.is_important && (
-                      <span className="rounded-full bg-rose-100 px-3 py-1 text-xs font-semibold text-rose-700">Important</span>
-                    )}
+                    <h3 className="font-semibold text-slate-100">{announcement.title}</h3>
+                    {announcement.is_important ? (
+                      <span className="rounded-full bg-rose-500/15 px-3 py-1 text-xs font-semibold text-rose-200">
+                        Important
+                      </span>
+                    ) : null}
                   </div>
-                  <p className="mt-2 text-sm text-slate-700">{a.message}</p>
+                  <p className="mt-2 text-sm text-slate-300">{announcement.message}</p>
                 </article>
               ))}
-              {announcements.length === 0 && <p className="text-sm text-slate-500">No announcements.</p>}
+              {announcements.length === 0 ? <p className="text-sm text-slate-500">No announcements.</p> : null}
             </div>
-          </div>
-        </section>
+          </AnalyticsSection>
+        </div>
       </div>
 
-      {/* Heatmaps */}
       <div className="grid gap-6 xl:grid-cols-2">
-        <section className="rounded-3xl border border-slate-700 bg-slate-900 border border-slate-800 p-6 shadow-sm">
-          <div className="mb-4 flex items-center justify-between gap-4">
-            <div>
-              <h2 className="text-2xl font-semibold text-slate-100">Scores Heatmap</h2>
-              <p className="text-sm text-slate-600">A quick view of your average scores by subject.</p>
-            </div>
-            <div className="flex items-center gap-3">
-              <WidgetHelp title="Scores Heatmap" description="Shows your subject score averages using color-coded cells. Red means low mastery, yellow means developing, and green means strong performance." />
-              <span className="text-xs text-slate-400">Updated {dashboard?.last_updated ? new Date(dashboard.last_updated).toLocaleString() : 'recently'}</span>
-            </div>
-          </div>
+        <AnalyticsSection
+          title="Scores Heatmap"
+          description="A compact view of your score strength across all recorded subjects."
+          action={<WidgetHelp title="Scores Heatmap" description="Uses color-coded cells to show which subjects are strong, developing, or currently weak based on your average scores." />}
+        >
           <CompetencyHeatmap items={scoreHeatmapItems} limitRows={1} />
-        </section>
+        </AnalyticsSection>
 
-        <section className="rounded-3xl border border-slate-700 bg-slate-900 border border-slate-800 p-6 shadow-sm">
-          <div className="mb-4 flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-2xl font-semibold text-slate-100">Attendance Heatmap</h2>
-              <p className="text-sm text-slate-600">
-                Attendance rate {dashboard?.summary_panel?.attendance_rate?.toFixed(1) ?? '0.0'}% across your recorded sessions.
-              </p>
-            </div>
-            <WidgetHelp title="Attendance Heatmap" description="Shows attendance by subject using color-coded cells. Green means strong attendance and red means attendance needs attention." />
-          </div>
+        <AnalyticsSection
+          title="Attendance Heatmap"
+          description={`Attendance is currently ${fmtPct(attendanceRate)} across recorded sessions.`}
+          action={<WidgetHelp title="Attendance Heatmap" description="Uses color-coded cells to show attendance consistency by subject, helping you spot where presence may be affecting outcomes." />}
+        >
           {attendanceHeatmapItems.length === 0 ? (
-            <div className="flex h-48 items-center justify-center rounded-2xl border border-dashed border-slate-300 text-slate-400">
-              No attendance data yet
+            <div className="flex h-48 items-center justify-center rounded-2xl border border-dashed border-slate-700 text-sm text-slate-500">
+              No attendance data yet.
             </div>
           ) : (
             <CompetencyHeatmap items={attendanceHeatmapItems} limitRows={1} />
           )}
-        </section>
+        </AnalyticsSection>
       </div>
 
-      <div className="rounded-3xl border border-slate-700 bg-slate-900 border border-slate-800 p-6 shadow-sm">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <h2 className="text-2xl font-semibold text-slate-100">Learning Signals</h2>
-          <WidgetHelp title="Learning Signals" description="Shows the relationship between attendance and academic performance. It helps you see whether stronger attendance aligns with stronger scores." />
-        </div>
+      <AnalyticsSection
+        title="Attendance vs Performance"
+        description="See whether class attendance is closely connected to your academic results."
+        action={<WidgetHelp title="Attendance vs Performance" description="Shows the relationship between attendance and academic performance so you can tell whether missing classes is likely contributing to weaker scores." />}
+      >
         <AttendanceCorrelationChart items={dashboard?.analytics?.attendance_correlation?.items || []} />
-      </div>
+      </AnalyticsSection>
 
       <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
-        <section className="rounded-3xl border border-slate-700 bg-slate-900 border border-slate-800 p-6 shadow-sm">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="text-2xl font-semibold text-slate-100">Instructional Recommendations</h2>
-            <WidgetHelp title="Instructional Recommendations" description="Shows rule-based suggestions generated from your competency and risk patterns, such as areas that need extra revision or support." />
-          </div>
+        <AnalyticsSection
+          title="Instructional Recommendations"
+          description="Rule-based suggestions generated from your score, attendance, and competency patterns."
+          action={<WidgetHelp title="Instructional Recommendations" description="Shows suggestions generated from your current performance patterns, such as where to revise more or where support may be useful." />}
+        >
           <InsightsPanel items={dashboard?.analytics?.recommendations?.items || []} />
-        </section>
+        </AnalyticsSection>
 
-        <section className="rounded-3xl border border-slate-700 bg-slate-900 border border-slate-800 p-6 shadow-sm">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="text-2xl font-semibold text-slate-100">Portfolio Tracking</h2>
-            <WidgetHelp title="Portfolio Tracking" description="Shows how much evidence or portfolio work has been submitted compared with what is expected for the tracked competencies." />
-          </div>
+        <AnalyticsSection
+          title="Portfolio Tracking"
+          description={`Portfolio completion currently sits at ${fmtPct(portfolioRate)}.`}
+          action={<WidgetHelp title="Portfolio Tracking" description="Shows how much portfolio evidence or practical documentation has been submitted compared with what is expected." />}
+        >
           <PortfolioStatusPanel portfolio={dashboard?.analytics?.portfolio || { items: [], last_updated: '' }} />
-        </section>
+        </AnalyticsSection>
       </div>
 
-      <section className="rounded-3xl border border-slate-700 bg-slate-900 border border-slate-800 p-6 shadow-sm">
-        <div className="mb-5 flex items-center justify-between gap-3">
-          <h2 className="text-2xl font-semibold text-slate-100">Enrolled subjects</h2>
-          <WidgetHelp title="Enrolled subjects" description="Lists the subjects currently assigned to you, along with module and trainer context where available." />
-        </div>
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {subjects.map((subject) => (
-            <article key={subject.id} className="rounded-2xl bg-slate-800 p-5">
-              <p className="text-lg font-semibold text-slate-100">{subject.name}</p>
-              <p className="mt-1 text-sm text-slate-600">{subject.module?.name || 'Unassigned module'}</p>
-              <p className="mt-3 text-sm text-slate-700">
-                Trainers: {subject.trainers.map((t) => t.name).filter(Boolean).join(', ') || 'Not assigned'}
-              </p>
-            </article>
-          ))}
-        </div>
-        {subjects.length === 0 && <p className="text-sm text-slate-500">No subjects enrolled yet.</p>}
-      </section>
+      <AnalyticsSection
+        title="Enrolled Subjects"
+        description="Your current subject set, including module and trainer context where available."
+        action={<WidgetHelp title="Enrolled Subjects" description="Lists the subjects assigned to you together with supporting module and trainer context." />}
+      >
+        {subjects.length === 0 ? (
+          <p className="text-sm text-slate-500">No subjects enrolled yet.</p>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {subjects.map((subject) => (
+              <article key={subject.id} className="rounded-2xl border border-slate-800 bg-slate-950/60 p-5">
+                <p className="text-lg font-semibold text-slate-100">{subject.name}</p>
+                <p className="mt-1 text-sm text-slate-400">{subject.module?.name || 'Unassigned module'}</p>
+                <p className="mt-1 text-sm text-slate-500">{subject.course?.name || 'Unmapped course'}</p>
+                <p className="mt-4 text-sm text-slate-300">
+                  Trainers: {subject.trainers.map((trainer) => trainer.name).filter(Boolean).join(', ') || 'Not assigned'}
+                </p>
+              </article>
+            ))}
+          </div>
+        )}
+      </AnalyticsSection>
     </div>
   );
 };

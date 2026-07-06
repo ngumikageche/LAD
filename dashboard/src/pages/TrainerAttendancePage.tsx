@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, LineChart, Line, PieChart, Pie, Cell,
+  Tooltip, Legend, LineChart, Line, PieChart, Pie, Cell, Label,
 } from 'recharts';
 import { apiRequest } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
@@ -150,8 +150,12 @@ export default function TrainerAttendancePage() {
               <ResponsiveContainer width="100%" height={260}>
                 <BarChart data={analytics.per_session} margin={{ top: 4, right: 16, left: 0, bottom: 60 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                  <XAxis dataKey="label" tick={{ fill: '#94a3b8', fontSize: 10 }} angle={-35} textAnchor="end" interval={0} />
-                  <YAxis tick={{ fill: '#64748b', fontSize: 11 }} allowDecimals={false} />
+                  <XAxis dataKey="label" tick={{ fill: '#94a3b8', fontSize: 10 }} angle={-35} textAnchor="end" interval={0}>
+                    <Label value="Session" position="insideBottom" offset={-5} />
+                  </XAxis>
+                  <YAxis tick={{ fill: '#64748b', fontSize: 11 }} allowDecimals={false}>
+                    <Label value="Check-ins" angle={-90} position="insideLeft" />
+                  </YAxis>
                   <Tooltip {...CHART_TOOLTIP} />
                   <Legend wrapperStyle={{ color: '#94a3b8', fontSize: 12 }} />
                   <Bar dataKey="present" stackId="a" fill="#6366f1" radius={[0, 0, 0, 0]} name="Present" />
@@ -174,8 +178,12 @@ export default function TrainerAttendancePage() {
                 <ResponsiveContainer width="100%" height={200}>
                   <LineChart data={analytics.daily} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                    <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 11 }} tickFormatter={(v) => v.slice(5)} />
-                    <YAxis tick={{ fill: '#64748b', fontSize: 11 }} allowDecimals={false} />
+                    <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 11 }} tickFormatter={(v) => v.slice(5)}>
+                      <Label value="Date" position="insideBottom" offset={-5} />
+                    </XAxis>
+                    <YAxis tick={{ fill: '#64748b', fontSize: 11 }} allowDecimals={false}>
+                      <Label value="Check-ins" angle={-90} position="insideLeft" />
+                    </YAxis>
                     <Tooltip {...CHART_TOOLTIP} />
                     <Line type="monotone" dataKey="checkins" stroke="#6366f1" strokeWidth={2} dot={false} name="Check-ins" />
                   </LineChart>

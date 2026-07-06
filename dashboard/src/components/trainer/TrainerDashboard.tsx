@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { AlertTriangle, BookOpen, ClipboardList, Users } from 'lucide-react';
+import { Activity, BookOpen, ClipboardList, ShieldAlert, Users } from 'lucide-react';
 import ScoreForm from './ScoreForm';
 import ScoresTable from './ScoresTable';
 import { trainerApi, type AtRiskStudent, type TrainerDashboardResponse, type TrainerSubject } from '../../services/trainerApi';
@@ -11,8 +11,11 @@ import PortfolioStatusPanel from '../ui/PortfolioStatusPanel';
 import WidgetHelp from '../ui/WidgetHelp';
 import { loadCachedDashboard, saveCachedDashboard } from '../../utils/dashboardCache';
 import type { CohortComparisonResponse } from '../../services/analyticsApi';
+import { AnalyticsHero, AnalyticsMetricTile, AnalyticsNarrative, AnalyticsSection } from '../analytics/AnalyticsSurface';
 
 const CACHE_KEY = 'lad.trainer.dashboard.v2';
+
+const fmtPct = (value: number | null | undefined) => `${Number(value ?? 0).toFixed(1)}%`;
 
 const TrainerDashboard = () => {
   const [dashboard, setDashboard] = useState<TrainerDashboardResponse | null>(null);
@@ -62,81 +65,102 @@ const TrainerDashboard = () => {
     loadDashboard();
   }, [refreshToken]);
 
+  const strongestSubject = [...subjects].sort((a, b) => b.average_score - a.average_score)[0] ?? null;
+  const weakestSubject = [...subjects].sort((a, b) => a.average_score - b.average_score)[0] ?? null;
+  const recentScoreCount = dashboard?.recent_scores.length ?? 0;
+  const passRate = dashboard?.pass_rate ?? 0;
+  const attendanceRate = dashboard?.summary_panel?.attendance_rate ?? 0;
+  const masteryRate = dashboard?.summary_panel?.mastery_rate ?? 0;
+  const portfolioRate = dashboard?.summary_panel?.portfolio_completion_rate ?? 0;
+
+  const pulseItems = [
+    `${fmtPct(dashboard?.average_score)} class average across ${dashboard?.total_students ?? 0} students gives the current academic baseline for your teaching scope.`,
+    `${fmtPct(passRate)} pass rate and ${atRiskStudents.length} at-risk students show whether underperformance is isolated or starting to spread through the cohort.`,
+    `${fmtPct(attendanceRate)} attendance and ${fmtPct(portfolioRate)} portfolio completion help explain whether the issue is knowledge, participation, or missing evidence.`,
+  ];
+
+  const actionItems = [
+    weakestSubject
+      ? `${weakestSubject.name} is the weakest subject at ${fmtPct(weakestSubject.average_score)}. Start your next intervention cycle there.`
+      : 'No subject benchmark is available yet.',
+    atRiskStudents.length > 0
+      ? `${atRiskStudents.length} learners need immediate attention. Use the watchlist and feedback tools before adding more scores.`
+      : 'No at-risk learners are currently flagged.',
+    recentScoreCount > 0
+      ? `${recentScoreCount} recent scores were captured. The dashboard signals are based on fresh data.`
+      : 'No recent score entries yet. Capture new scores to improve dashboard confidence.',
+  ];
+
+  if (isLoading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <div className="h-12 w-12 animate-spin rounded-full border-4 border-slate-700 border-t-cyan-400" />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-8">
-      <div className="relative overflow-hidden rounded-[2rem] border border-slate-700/80 bg-[radial-gradient(circle_at_top_left,rgba(20,184,166,0.22),transparent_34%),radial-gradient(circle_at_85%_15%,rgba(59,130,246,0.18),transparent_28%),linear-gradient(135deg,#020617_0%,#0f172a_48%,#111827_100%)] p-8 shadow-[0_24px_80px_-28px_rgba(15,23,42,0.75)]">
-        <div className="pointer-events-none absolute inset-0 opacity-70">
-          <div className="absolute -left-16 top-0 h-40 w-40 rounded-full bg-teal-400/10 blur-3xl" />
-          <div className="absolute right-0 top-6 h-44 w-44 rounded-full bg-blue-500/10 blur-3xl" />
-          <div className="absolute bottom-0 left-1/3 h-36 w-36 rounded-full bg-amber-400/10 blur-3xl" />
-        </div>
-        <div className="relative">
-          <p className="text-xs uppercase tracking-[0.35em] text-teal-300">Trainer Dashboard</p>
-          <h1 className="mt-3 text-4xl font-bold tracking-tight text-slate-50">Trainer Dashboard</h1>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">
-            Manage assigned subjects, upload validated scores, review recent grading activity, and intervene early for at-risk students.
+      <AnalyticsHero
+        eyebrow="Trainer Dashboard"
+        title="Teaching Performance Hub"
+        description="Track learner outcomes, identify where performance is slipping, and move directly from signal to intervention without leaving the dashboard."
+      >
+        <div className="rounded-3xl border border-white/10 bg-white/[0.06] px-6 py-4 backdrop-blur">
+          <p className="text-sm text-slate-300">Snapshot updated</p>
+          <p className="mt-1 text-lg font-semibold text-white">
+            {dashboard?.last_updated ? new Date(dashboard.last_updated).toLocaleString() : 'Live'}
           </p>
         </div>
-      </div>
+      </AnalyticsHero>
 
       {error ? (
-        <div className="rounded-3xl border border-red-200 bg-red-50 px-5 py-4 text-sm text-red-700">
+        <div className="rounded-3xl border border-red-400/20 bg-red-500/10 px-5 py-4 text-sm text-red-200">
           {error}
         </div>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-4">
-        <div className="rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <p className="text-sm text-slate-500">Assigned Subjects</p>
-                <WidgetHelp title="Assigned Subjects" description="Shows how many subjects are currently assigned to you for teaching, grading, and monitoring." />
-              </div>
-              <p className="mt-3 text-4xl font-bold text-slate-100">{dashboard?.subjects_assigned ?? 0}</p>
-            </div>
-            <BookOpen className="text-emerald-500" size={28} />
-          </div>
-        </div>
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <AnalyticsMetricTile
+          label="Assigned Subjects"
+          value={dashboard?.subjects_assigned ?? 0}
+          helper="Teaching subjects currently in scope"
+          icon={BookOpen}
+          accent="emerald"
+        />
+        <AnalyticsMetricTile
+          label="Total Students"
+          value={dashboard?.total_students ?? 0}
+          helper="Distinct learners attached to your subjects"
+          icon={Users}
+          accent="cyan"
+        />
+        <AnalyticsMetricTile
+          label="Class Average"
+          value={fmtPct(dashboard?.average_score)}
+          helper={`${dashboard?.recent_scores.length ?? 0} recent scored records`}
+          icon={ClipboardList}
+          accent="amber"
+        />
+        <AnalyticsMetricTile
+          label="Mastery Rate"
+          value={fmtPct(masteryRate)}
+          helper="High-mastery competency share"
+          icon={ShieldAlert}
+          accent="violet"
+        />
+        <AnalyticsMetricTile
+          label="Attendance Signal"
+          value={fmtPct(attendanceRate)}
+          helper="Attendance pattern for this teaching scope"
+          icon={Activity}
+          accent="slate"
+        />
+      </div>
 
-        <div className="rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <p className="text-sm text-slate-500">Total Students</p>
-                <WidgetHelp title="Total Students" description="Shows the total number of distinct learners across your currently assigned subjects." />
-              </div>
-              <p className="mt-3 text-4xl font-bold text-slate-100">{dashboard?.total_students ?? 0}</p>
-            </div>
-            <Users className="text-sky-500" size={28} />
-          </div>
-        </div>
-
-        <div className="rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <p className="text-sm text-slate-500">Class Average</p>
-                <WidgetHelp title="Class Average" description="Shows the mean score across the scores recorded in your teaching scope. It is a quick snapshot of current class performance." />
-              </div>
-              <p className="mt-3 text-4xl font-bold text-slate-100">{(dashboard?.average_score ?? 0).toFixed(1)}%</p>
-            </div>
-            <ClipboardList className="text-amber-500" size={28} />
-          </div>
-        </div>
-
-        <div className="rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <div className="flex items-center gap-2">
-                <p className="text-sm text-slate-500">Mastery Rate</p>
-                <WidgetHelp title="Mastery Rate" description="Shows the share of competency observations that are currently classified as high mastery in your dashboard scope." />
-              </div>
-              <p className="mt-3 text-4xl font-bold text-slate-100">{(dashboard?.summary_panel?.mastery_rate ?? 0).toFixed(1)}%</p>
-            </div>
-            <AlertTriangle className="text-green-500" size={28} />
-          </div>
-        </div>
+      <div className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
+        <AnalyticsNarrative title="Teaching Pulse" items={pulseItems} tone="neutral" />
+        <AnalyticsNarrative title="Priority Actions" items={actionItems} tone={atRiskStudents.length > 0 ? 'warn' : 'good'} />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
@@ -147,116 +171,101 @@ const TrainerDashboard = () => {
           }}
         />
 
-        <div className="rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-sm">
-          <div className="mb-6 flex items-start justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="rounded-2xl bg-red-50 p-3 text-red-600">
-                <AlertTriangle size={20} />
-              </div>
-              <div>
-                <h2 className="text-2xl font-semibold text-slate-100">At-Risk Students</h2>
-                <p className="text-sm text-slate-400">Students below the pass threshold.</p>
-              </div>
-            </div>
-            <WidgetHelp title="At-Risk Students" description="Shows learners whose performance and attendance signals suggest they may need early intervention, remediation, or closer follow-up." />
-          </div>
-
-          {isLoading ? (
-            <p className="text-sm text-slate-500">Loading risk analysis...</p>
-          ) : atRiskStudents.length === 0 ? (
+        <AnalyticsSection
+          title="At-Risk Students"
+          description="Learners below the pass threshold or trending weak across subjects."
+          action={<WidgetHelp title="At-Risk Students" description="Shows learners whose performance and attendance signals suggest they may need early intervention, remediation, or closer follow-up." />}
+        >
+          {atRiskStudents.length === 0 ? (
             <p className="text-sm text-slate-500">No at-risk students detected for your current subject set.</p>
           ) : (
             <div className="space-y-3">
               {atRiskStudents.slice(0, 6).map((student) => (
-                <div key={student.student_id} className="rounded-2xl border border-red-100 bg-red-50/70 p-4">
+                <div key={student.student_id} className="rounded-2xl border border-rose-400/20 bg-rose-500/10 p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="font-semibold text-slate-100">{student.student_name}</p>
                       <p className="text-xs text-slate-400">{student.student_email}</p>
                     </div>
-                    <span className="rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold text-red-700 shadow-sm">
-                      {student.average_score.toFixed(2)}%
+                    <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-semibold text-rose-200">
+                      {fmtPct(student.average_score)}
                     </span>
                   </div>
-                  <p className="mt-3 text-xs text-slate-400">
+                  <p className="mt-3 text-xs text-slate-300">
                     Weak subjects: {student.weak_subjects.length > 0 ? student.weak_subjects.join(', ') : 'None listed'}
                   </p>
                 </div>
               ))}
             </div>
           )}
-        </div>
+        </AnalyticsSection>
       </div>
 
       <ScoresTable subjects={subjects} refreshToken={refreshToken} />
 
       <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
-        <section className="rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-sm">
-          <div className="mb-4 flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-2xl font-semibold text-slate-100">Competency Heatmap</h2>
-              <p className="text-sm text-slate-400">Student by competency mastery at a glance.</p>
-            </div>
-            <WidgetHelp title="Competency Heatmap" description="Maps students against competencies with color-coded mastery levels. It helps you quickly identify learning gaps by competency and by learner." />
-          </div>
+        <AnalyticsSection
+          title="Competency Heatmap"
+          description="Student by competency mastery at a glance."
+          action={<WidgetHelp title="Competency Heatmap" description="Maps students against competencies with color-coded mastery levels. It helps you quickly identify learning gaps by competency and by learner." />}
+        >
           <CompetencyHeatmap items={dashboard?.analytics?.heatmap?.items || []} />
-        </section>
+        </AnalyticsSection>
 
-        <section className="rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-sm">
-          <div className="mb-4 flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-2xl font-semibold text-slate-100">Instructional Recommendations</h2>
-              <p className="text-sm text-slate-400">Rule-based interventions from performance and attendance signals.</p>
-            </div>
-            <WidgetHelp title="Instructional Recommendations" description="Shows suggested teaching actions based on low competency scores, at-risk patterns, and wider cohort learning signals." />
-          </div>
+        <AnalyticsSection
+          title="Instructional Recommendations"
+          description="Rule-based actions generated from performance, attendance, and competency signals."
+          action={<WidgetHelp title="Instructional Recommendations" description="Shows suggested teaching actions based on low competency scores, at-risk patterns, and wider cohort learning signals." />}
+        >
           <InsightsPanel items={dashboard?.analytics?.recommendations?.items || []} />
-        </section>
+        </AnalyticsSection>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
-        <section className="rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-sm">
-          <div className="mb-4 flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-2xl font-semibold text-slate-100">Attendance vs Performance</h2>
-              <span className="text-xs text-slate-500">
-                Correlation {dashboard?.analytics?.attendance_correlation?.correlation?.value ?? 0}
-              </span>
-            </div>
-            <WidgetHelp title="Attendance vs Performance" description="Plots attendance rates against average scores so you can see whether attendance is strongly linked to learning outcomes in your cohort." />
-          </div>
+        <AnalyticsSection
+          title="Attendance vs Performance"
+          description={`Correlation ${dashboard?.analytics?.attendance_correlation?.correlation?.value ?? 0}`}
+          action={<WidgetHelp title="Attendance vs Performance" description="Plots attendance rates against average scores so you can see whether attendance is strongly linked to learning outcomes in your cohort." />}
+        >
           <AttendanceCorrelationChart items={dashboard?.analytics?.attendance_correlation?.items || []} />
-        </section>
+        </AnalyticsSection>
 
-        <section className="rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-sm">
-          <div className="mb-4 flex items-center justify-between gap-3">
-            <h2 className="text-2xl font-semibold text-slate-100">Portfolio Completion</h2>
-            <WidgetHelp title="Portfolio Completion" description="Shows submitted evidence versus expected portfolio items, helping you monitor missing learner submissions." />
-          </div>
+        <AnalyticsSection
+          title="Portfolio Completion"
+          description="Submitted evidence versus expected portfolio items."
+          action={<WidgetHelp title="Portfolio Completion" description="Shows submitted evidence versus expected portfolio items, helping you monitor missing learner submissions." />}
+        >
           <PortfolioStatusPanel portfolio={dashboard?.analytics?.portfolio || { items: [], last_updated: '' }} />
-        </section>
+        </AnalyticsSection>
       </div>
 
-      <section className="rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-sm">
-        <div className="mb-4 flex items-start justify-between gap-3">
-          <div>
-            <h2 className="text-2xl font-semibold text-slate-100">Cohort Comparison</h2>
-            <p className="text-sm text-slate-400">Compare the first two assigned subjects by average score.</p>
-          </div>
-          <WidgetHelp title="Cohort Comparison" description="Compares two cohorts or subjects side by side using average score so you can spot relative strengths and weaker groups." />
-        </div>
+      <AnalyticsSection
+        title="Cohort Comparison"
+        description="Compare the first two assigned subjects by average score to understand whether a weak outcome is subject-specific or cohort-wide."
+        action={<WidgetHelp title="Cohort Comparison" description="Compares two cohorts or subjects side by side using average score so you can spot relative strengths and weaker groups." />}
+      >
         <CohortComparisonChart items={(comparison?.cohorts || []).map((cohort) => ({ subject_name: cohort.subject_name, average_score: cohort.average_score }))} />
-      </section>
+      </AnalyticsSection>
 
-      <div className="rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-sm">
-        <div className="mb-6 flex items-center justify-between gap-3">
-          <h2 className="text-2xl font-semibold text-slate-100">Assigned Subjects</h2>
-          <WidgetHelp title="Assigned Subjects" description="Lists your teaching subjects together with their student counts and current average performance." />
+      <AnalyticsSection
+        title="Assigned Subjects"
+        description="A quick performance inventory across your teaching load."
+        action={<WidgetHelp title="Assigned Subjects" description="Lists your teaching subjects together with their student counts and current average performance." />}
+      >
+        <div className="mb-5 grid gap-4 md:grid-cols-2">
+          <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 p-4">
+            <p className="text-xs uppercase tracking-[0.2em] text-emerald-200">Strongest Subject</p>
+            <p className="mt-2 text-lg font-semibold text-slate-100">{strongestSubject?.name ?? 'No data yet'}</p>
+            <p className="mt-1 text-sm text-slate-300">{strongestSubject ? `${fmtPct(strongestSubject.average_score)} average` : 'Waiting for score data.'}</p>
+          </div>
+          <div className="rounded-2xl border border-amber-400/20 bg-amber-500/10 p-4">
+            <p className="text-xs uppercase tracking-[0.2em] text-amber-200">Needs Focus</p>
+            <p className="mt-2 text-lg font-semibold text-slate-100">{weakestSubject?.name ?? 'No data yet'}</p>
+            <p className="mt-1 text-sm text-slate-300">{weakestSubject ? `${fmtPct(weakestSubject.average_score)} average` : 'Waiting for score data.'}</p>
+          </div>
         </div>
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {isLoading ? (
-            <p className="text-sm text-slate-500">Loading assigned subjects...</p>
-          ) : subjects.length === 0 ? (
+          {subjects.length === 0 ? (
             <p className="text-sm text-slate-500">No subjects assigned to this trainer.</p>
           ) : (
             subjects.map((subject) => (
@@ -265,13 +274,13 @@ const TrainerDashboard = () => {
                 <p className="mt-1 text-sm text-slate-400">{subject.course_name ?? 'Unmapped course'}</p>
                 <div className="mt-4 flex items-center justify-between text-sm text-slate-400">
                   <span>{subject.students_count} students</span>
-                  <span>{subject.average_score.toFixed(2)} avg</span>
+                  <span>{fmtPct(subject.average_score)}</span>
                 </div>
               </div>
             ))
           )}
         </div>
-      </div>
+      </AnalyticsSection>
     </div>
   );
 };

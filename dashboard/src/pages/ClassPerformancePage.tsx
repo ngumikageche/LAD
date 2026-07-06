@@ -1,7 +1,17 @@
-import { useState, useEffect } from 'react';
-import { Printer, AlertCircle, TrendingUp, Users, Award } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { AlertCircle, Award, BarChart3, Printer, TrendingUp, Users } from 'lucide-react';
 import { trainerReportCardsAPI, trainerSubjectsAPI } from '../api/trainer';
-import { useAuth } from '../auth/AuthContext';
+import {
+  ReportActionButton,
+  ReportEmptyState,
+  ReportMetricCard,
+  ReportNotice,
+  ReportPage,
+  ReportPrintStyles,
+  ReportSectionTitle,
+  ReportSurface,
+  ReportToolbar,
+} from '../components/reports/PremiumReportLayout';
 
 interface StudentRow {
   rank: number | null;
@@ -42,7 +52,6 @@ function exportCSV(data: ClassPerfReport) {
 }
 
 export default function ClassPerformancePage() {
-  const { user } = useAuth();
   const [subjects, setSubjects] = useState<{ id: string; subject_name: string; subject_code: string }[]>([]);
   const [subjectId, setSubjectId] = useState('');
   const [data, setData] = useState<ClassPerfReport | null>(null);
@@ -79,155 +88,177 @@ export default function ClassPerformancePage() {
   };
 
   const maxGradeCount = data ? Math.max(...Object.values(data.grade_distribution), 1) : 1;
+  const selectedSubject = subjects.find((subject) => subject.id === subjectId);
 
   return (
-    <div className="min-h-screen bg-blue-950 p-6 print:bg-slate-900 print:p-0">
-      {/* Toolbar */}
-      <div className="max-w-5xl mx-auto mb-4 flex items-center gap-3 print:hidden">
-        <select
-          value={subjectId}
-          onChange={e => setSubjectId(e.target.value)}
-          className="px-3 py-2 bg-slate-800 text-slate-200 border border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 flex-1 max-w-xs"
-        >
-          <option value="">— Select Subject —</option>
-          {subjects.map(s => (
-            <option key={s.id} value={s.id}>{s.subject_name} ({s.subject_code})</option>
-          ))}
-        </select>
-        <button
-          onClick={load}
-          disabled={loading || !subjectId.trim()}
-          className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium disabled:opacity-50"
-        >
-          {loading ? 'Loading…' : 'Load Report'}
-        </button>
-        {data && (
-          <>
-            <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition font-medium">
-              <Printer size={16} /> Print
-            </button>
-            <button onClick={() => exportCSV(data)} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium">
-              Export CSV
-            </button>
-          </>
-        )}
-      </div>
-
-      {error && (
-        <div className="max-w-5xl mx-auto mb-4 p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2 text-red-300">
-          <AlertCircle size={18} />{error}
-        </div>
-      )}
-
-      {!data && !loading && (
-        <div className="max-w-5xl mx-auto text-center py-20 text-slate-500">
-          Select a subject above to load the class performance report.
-        </div>
-      )}
-
-      {data && (
-        <div className="max-w-5xl mx-auto bg-slate-900 shadow-lg print:shadow-none" style={{ padding: '16mm' }}>
-          {/* Header */}
-          <div className="text-center border-b-2 border-slate-700 pb-4 mb-6">
-            <h1 className="text-2xl font-bold text-slate-100 uppercase">{data.school.name}</h1>
-            <p className="text-sm text-slate-400">{data.school.location}</p>
-            <h2 className="text-lg font-bold text-slate-200 mt-2 uppercase">Class Performance Report</h2>
-            <p className="text-sm text-slate-400">
-              {data.subject.name}{data.term.name ? ` — ${data.term.name}` : ''}
-            </p>
-          </div>
-
-          {/* Summary Cards */}
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            {[
-              { icon: TrendingUp, label: 'Class Average', value: `${data.summary.class_average}%`, color: 'text-blue-400' },
-              { icon: Users, label: 'Pass Rate', value: `${data.summary.pass_rate}%`, color: 'text-green-400' },
-              { icon: Award, label: 'Top Mark', value: `${data.summary.top_mark}`, color: 'text-purple-400' },
-            ].map(({ icon: Icon, label, value, color }) => (
-              <div key={label} className="p-4 bg-slate-800 border border-slate-700 rounded text-center">
-                <Icon size={20} className={`mx-auto mb-1 ${color}`} />
-                <p className="text-xs text-slate-500">{label}</p>
-                <p className={`text-2xl font-bold ${color}`}>{value}</p>
-              </div>
+    <ReportPage>
+      <ReportToolbar
+        maxWidth="max-w-5xl"
+        title="Class Performance"
+        description="Load a subject report with ranking, grade distribution, pass-rate analysis, and export-ready print formatting."
+        eyebrow="Trainer Reports"
+      >
+        <div className="w-full sm:min-w-[300px]">
+          <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">
+            Subject
+          </label>
+          <select
+            value={subjectId}
+            onChange={e => setSubjectId(e.target.value)}
+            className="w-full rounded-2xl border border-white/10 bg-slate-950/80 px-4 py-3 text-sm text-slate-100 outline-none transition focus:border-cyan-400/40 focus:bg-slate-900"
+          >
+            <option value="">Select Subject</option>
+            {subjects.map(s => (
+              <option key={s.id} value={s.id}>{s.subject_name} ({s.subject_code})</option>
             ))}
+          </select>
+        </div>
+        <ReportActionButton onClick={load} disabled={loading || !subjectId.trim()} variant="primary">
+          {loading ? 'Loading…' : 'Load Report'}
+        </ReportActionButton>
+        {data ? (
+          <>
+            <ReportActionButton onClick={() => window.print()} icon={Printer}>
+              Print
+            </ReportActionButton>
+            <ReportActionButton onClick={() => exportCSV(data)} variant="success">
+              Export CSV
+            </ReportActionButton>
+          </>
+        ) : null}
+      </ReportToolbar>
+
+      {error ? (
+        <div className="mx-auto mb-4 max-w-5xl">
+          <ReportNotice icon={AlertCircle} tone="error">{error}</ReportNotice>
+        </div>
+      ) : null}
+
+      {!data && !loading ? (
+        <ReportEmptyState
+          maxWidth="max-w-5xl"
+          icon={BarChart3}
+          title={selectedSubject ? `${selectedSubject.subject_name} is ready to load` : 'Select a subject to begin'}
+          description={
+            selectedSubject
+              ? 'Load the report to review class averages, grade spread, student ranking, and pass-fail breakdown in a print-ready layout.'
+              : 'Choose a subject above to open the class performance report. The view is optimized for desktop review, tablet reading, and clean printing.'
+          }
+        />
+      ) : null}
+
+      {data ? (
+        <ReportSurface maxWidth="max-w-5xl">
+          <div className="border-b border-white/10 pb-6 text-center">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-cyan-200/70">Class Performance Report</p>
+            <h1 className="mt-3 text-2xl font-semibold uppercase tracking-[0.18em] text-white sm:text-3xl">{data.school.name}</h1>
+            <p className="mt-2 text-sm text-slate-400">{data.school.location}</p>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-2 text-xs font-medium uppercase tracking-[0.18em] text-slate-300">
+              <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1">{data.subject.name}</span>
+              {data.term.name ? <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1">{data.term.name}</span> : null}
+            </div>
           </div>
 
-          {/* Grade Distribution */}
-          <div className="mb-6 p-4 bg-slate-800 border border-slate-700 rounded">
-            <h3 className="font-semibold text-slate-300 mb-3 text-sm uppercase">Grade Distribution</h3>
-            <div className="flex gap-3 items-end h-20">
+          <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            <ReportMetricCard
+              label="Class Average"
+              value={`${data.summary.class_average}%`}
+              icon={TrendingUp}
+              accent="cyan"
+              helper={`${data.summary.scored_count} scored students`}
+            />
+            <ReportMetricCard
+              label="Pass Rate"
+              value={`${data.summary.pass_rate}%`}
+              icon={Users}
+              accent="emerald"
+              helper={`${data.summary.pass_count} pass / ${data.summary.fail_count} fail`}
+            />
+            <ReportMetricCard
+              label="Top Mark"
+              value={data.summary.top_mark}
+              icon={Award}
+              accent="violet"
+              helper={`${data.summary.total_students} students in class`}
+            />
+          </div>
+
+          <div className="mt-6 rounded-[28px] border border-white/10 bg-white/[0.03] p-4 sm:p-5">
+            <ReportSectionTitle>Grade Distribution</ReportSectionTitle>
+            <div className="flex min-h-28 items-end gap-3">
               {Object.entries(data.grade_distribution).sort().map(([grade, count]) => (
-                <div key={grade} className="flex flex-col items-center gap-1 flex-1">
-                  <span className="text-xs font-bold text-slate-300">{count}</span>
-                  <div
-                    className={`w-full rounded-t ${gradeColors[grade] ?? 'bg-gray-400'}`}
-                    style={{ height: `${Math.round(count / maxGradeCount * 60)}px`, minHeight: '4px' }}
-                  />
-                  <span className="text-xs font-semibold text-slate-400">{grade}</span>
+                <div key={grade} className="flex flex-1 flex-col items-center gap-2">
+                  <span className="text-xs font-semibold text-slate-300">{count}</span>
+                  <div className="flex h-24 w-full items-end rounded-2xl bg-slate-950/60 p-1">
+                    <div
+                      className={`w-full rounded-xl ${gradeColors[grade] ?? 'bg-gray-400'}`}
+                      style={{ height: `${Math.round((count / maxGradeCount) * 100)}%`, minHeight: '6px' }}
+                    />
+                  </div>
+                  <span className="text-xs font-semibold tracking-[0.16em] text-slate-500">{grade}</span>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* Students Table */}
-          <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="bg-slate-800 text-white">
-                <th className="px-3 py-2 text-center w-12">Rank</th>
-                <th className="px-3 py-2 text-left">Student</th>
-                <th className="px-3 py-2 text-left">Reg No</th>
-                <th className="px-3 py-2 text-center">Marks</th>
-                <th className="px-3 py-2 text-center">Grade</th>
-                <th className="px-3 py-2 text-center">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.students.length === 0 ? (
-                <tr><td colSpan={6} className="px-3 py-6 text-center text-slate-500">No data for this term</td></tr>
-              ) : data.students.map((row, i) => (
-                <tr
-                  key={row.student_id}
-                  className={`border-b ${row.is_passed === false ? 'bg-red-500/10' : i % 2 === 0 ? 'bg-slate-900' : 'bg-slate-800'}`}
-                >
-                  <td className="px-3 py-2 text-center font-bold text-slate-500">{row.rank ?? '—'}</td>
-                  <td className="px-3 py-2 font-medium text-slate-100">{row.name}</td>
-                  <td className="px-3 py-2 text-slate-500 text-xs">{row.registration_number}</td>
-                  <td className="px-3 py-2 text-center font-bold">
-                    {row.marks != null ? `${row.marks}${row.total_marks ? `/${row.total_marks}` : ''}` : '—'}
-                  </td>
-                  <td className="px-3 py-2 text-center font-bold">{row.grade ?? '—'}</td>
-                  <td className="px-3 py-2 text-center">
-                    {row.is_passed === true
-                      ? <span className="px-2 py-0.5 bg-green-500/15 text-green-300 rounded text-xs font-medium">✓ Pass</span>
-                      : row.is_passed === false
-                        ? <span className="px-2 py-0.5 bg-red-500/15 text-red-300 rounded text-xs font-medium">✗ Fail</span>
-                        : <span className="text-slate-500 text-xs">—</span>}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="mt-6">
+            <ReportSectionTitle>Student Ranking</ReportSectionTitle>
+            <div className="overflow-x-auto rounded-[28px] border border-white/10">
+              <table className="min-w-full border-collapse text-sm">
+                <thead>
+                  <tr className="bg-slate-800/90 text-white">
+                    <th className="w-16 px-3 py-3 text-center">Rank</th>
+                    <th className="px-3 py-3 text-left">Student</th>
+                    <th className="px-3 py-3 text-left">Reg No</th>
+                    <th className="px-3 py-3 text-center">Marks</th>
+                    <th className="px-3 py-3 text-center">Grade</th>
+                    <th className="px-3 py-3 text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.students.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-3 py-8 text-center text-slate-500">No data for this term</td>
+                    </tr>
+                  ) : data.students.map((row, i) => (
+                    <tr
+                      key={row.student_id}
+                      className={`border-t border-white/5 ${row.is_passed === false ? 'bg-red-500/10' : i % 2 === 0 ? 'bg-slate-950/40' : 'bg-white/[0.02]'}`}
+                    >
+                      <td className="px-3 py-3 text-center font-semibold text-slate-500">{row.rank ?? '—'}</td>
+                      <td className="px-3 py-3 font-medium text-slate-100">{row.name}</td>
+                      <td className="px-3 py-3 text-xs text-slate-500">{row.registration_number}</td>
+                      <td className="px-3 py-3 text-center font-semibold text-slate-100">
+                        {row.marks != null ? `${row.marks}${row.total_marks ? `/${row.total_marks}` : ''}` : '—'}
+                      </td>
+                      <td className="px-3 py-3 text-center font-semibold text-slate-200">{row.grade ?? '—'}</td>
+                      <td className="px-3 py-3 text-center">
+                        {row.is_passed === true
+                          ? <span className="rounded-full border border-emerald-400/20 bg-emerald-400/10 px-2.5 py-1 text-xs font-medium text-emerald-200">Pass</span>
+                          : row.is_passed === false
+                            ? <span className="rounded-full border border-red-400/20 bg-red-500/10 px-2.5 py-1 text-xs font-medium text-red-200">Fail</span>
+                            : <span className="text-xs text-slate-500">—</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
 
-          <div className="mt-4 flex gap-6 text-xs text-slate-500">
+          <div className="mt-5 flex flex-wrap gap-3 text-xs font-medium uppercase tracking-[0.16em] text-slate-500">
             <span>Total: {data.summary.total_students}</span>
-            <span className="text-green-300">Pass: {data.summary.pass_count}</span>
+            <span className="text-emerald-300">Pass: {data.summary.pass_count}</span>
             <span className="text-red-300">Fail: {data.summary.fail_count}</span>
           </div>
 
-          <p className="text-xs text-slate-500 text-right mt-4">
+          <p className="mt-5 text-right text-xs text-slate-500">
             Generated: {new Date(data.generated_at).toLocaleString()}
           </p>
-        </div>
-      )}
+        </ReportSurface>
+      ) : null}
 
-      <style>{`
-        @media print {
-          body * { visibility: hidden; }
-          .print\\:shadow-none, .print\\:shadow-none * { visibility: visible; }
-          .print\\:shadow-none { position: absolute; left: 0; top: 0; width: 100%; }
-          .print\\:hidden { display: none !important; }
-        }
-      `}</style>
-    </div>
+      <ReportPrintStyles />
+    </ReportPage>
   );
 }

@@ -1,4 +1,4 @@
-import { CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from 'recharts';
+import { CartesianGrid, Label, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from 'recharts';
 import type { AttendancePerformancePoint } from '../../services/analyticsApi';
 
 type Props = {
@@ -14,8 +14,12 @@ export default function AttendanceCorrelationChart({ items }: Props) {
     <ResponsiveContainer width="100%" height={240}>
       <ScatterChart>
         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-        <XAxis dataKey="attendance_rate" type="number" unit="%" domain={[0, 100]} tick={{ fontSize: 12 }} name="Attendance" />
-        <YAxis dataKey="average_score" type="number" unit="%" domain={[0, 100]} tick={{ fontSize: 12 }} name="Score" />
+        <XAxis dataKey="attendance_rate" type="number" unit="%" domain={[0, 100]} tick={{ fontSize: 12 }} name="Attendance">
+          <Label value="Attendance Rate (%)" position="insideBottom" offset={-5} />
+        </XAxis>
+        <YAxis dataKey="average_score" type="number" unit="%" domain={[0, 100]} tick={{ fontSize: 12 }} name="Score">
+          <Label value="Average Score (%)" angle={-90} position="insideLeft" />
+        </YAxis>
         <Tooltip cursor={{ strokeDasharray: '3 3' }} formatter={(value) => `${Number(value ?? 0).toFixed(1)}%`} />
         <Scatter data={items} fill="#0f766e" />
       </ScatterChart>

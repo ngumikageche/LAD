@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { FileText, Send, AlertCircle, CheckCircle2, User, Mail, BarChart3 } from 'lucide-react';
-import { trainerStudentsAPI, type StudentWrittenReport } from '../api/trainer';
+import { apiRequest } from '../api/client';
+import { trainerStudentsAPI, trainerSubjectsAPI, type StudentWrittenReport } from '../api/trainer';
 import { useAuth } from '../auth/AuthContext';
 
 interface Student {
@@ -11,19 +12,41 @@ interface Student {
   overall_avg: number;
 }
 
+interface SubjectOption {
+  id: string;
+  label: string;
+}
+
+type AdminSubjectRow = {
+  id: string;
+  name: string;
+};
+
+type TrainerSubjectRow = {
+  id: string;
+  subject_name: string;
+};
+
 export default function ProvideFeedbackPage() {
-  const { user } = useAuth();
+  const { token, user } = useAuth();
   const isAdmin = user?.user_type === 'admin';
   const [students, setStudents] = useState<Student[]>([]);
+  const [subjects, setSubjects] = useState<SubjectOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+  const [selectedSubjectId, setSelectedSubjectId] = useState('');
   const [reportTitle, setReportTitle] = useState('');
   const [reportType, setReportType] = useState<StudentWrittenReport['report_type']>('general');
   const [reportBody, setReportBody] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [reportHistory, setReportHistory] = useState<StudentWrittenReport[]>([]);
+  const [deliveryChannels, setDeliveryChannels] = useState({
+    system: true,
+    email: false,
+    sms: false,
+  });
 
   useEffect(() => {
     const loadStudents = async () => {
@@ -44,11 +67,40 @@ export default function ProvideFeedbackPage() {
     loadStudents();
   }, [isAdmin]);
 
+  useEffect(() => {
+    const loadSubjects = async () => {
+      try {
+        const items: Array<AdminSubjectRow | TrainerSubjectRow> = isAdmin
+          ? await apiRequest<AdminSubjectRow[]>('/subjects', { token })
+          : await trainerSubjectsAPI.getAssignedSubjects();
+        setSubjects((Array.isArray(items) ? items : []).map((item) => ({
+          id: item.id,
+          label: 'subject_name' in item ? item.subject_name : item.name,
+        })));
+      } catch {
+        setSubjects([]);
+      }
+    };
+
+    if (token) {
+      loadSubjects();
+    }
+  }, [isAdmin, token]);
+
+  const historySummary = useMemo(() => {
+    return reportHistory.reduce<Record<string, number>>((acc, item) => {
+      acc[item.report_type] = (acc[item.report_type] ?? 0) + 1;
+      return acc;
+    }, {});
+  }, [reportHistory]);
+
   const handleSelectStudent = async (student: Student) => {
     setSelectedStudent(student);
+    setSelectedSubjectId('');
     setReportTitle('');
     setReportBody('');
     setReportType('general');
+    setDeliveryChannels({ system: true, email: false, sms: false });
     setError(null);
     try {
       const reports = await trainerStudentsAPI.getStudentReports(student.id);
@@ -64,6 +116,10 @@ export default function ProvideFeedbackPage() {
       setError('Please select a student and complete the report title and body');
       return;
     }
+    if (!deliveryChannels.system && !deliveryChannels.email && !deliveryChannels.sms) {
+      setError('Select at least one delivery option: system, email, or SMS.');
+      return;
+    }
 
     try {
       setSubmitting(true);
@@ -73,11 +129,20 @@ export default function ProvideFeedbackPage() {
         title: reportTitle.trim(),
         body: reportBody.trim(),
         report_type: reportType,
+        subject_id: selectedSubjectId || undefined,
+        delivery_channels: (Object.entries(deliveryChannels)
+          .filter(([, enabled]) => enabled)
+          .map(([channel]) => channel) as Array<'system' | 'email' | 'sms'>),
       });
 
-      setSuccess('Student report saved and sent successfully!');
+      const selectedChannels = Object.entries(deliveryChannels)
+        .filter(([, enabled]) => enabled)
+        .map(([channel]) => channel.toUpperCase())
+        .join(', ');
+      setSuccess(`Student report saved. Selected feedback option(s): ${selectedChannels}.`);
       setReportTitle('');
       setReportBody('');
+      setSelectedSubjectId('');
       setReportHistory([report, ...reportHistory]);
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
@@ -228,6 +293,22 @@ export default function ProvideFeedbackPage() {
                         <option value="behaviour">Behaviour</option>
                         <option value="support">Support Plan</option>
                         <option value="progress">Progress</option>
+                        <option value="message">Message</option>
+                        </select>
+                      </div>
+                    <div>
+                      <label className="block text-sm font-medium text-slate-300 mb-2">
+                        Subject
+                      </label>
+                      <select
+                        value={selectedSubjectId}
+                        onChange={(e) => setSelectedSubjectId(e.target.value)}
+                        className="w-full px-4 py-3 bg-slate-800 text-slate-100 border border-slate-700 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                      >
+                        <option value="">General / no subject</option>
+                        {subjects.map((subject) => (
+                          <option key={subject.id} value={subject.id}>{subject.label}</option>
+                        ))}
                       </select>
                     </div>
                   </div>
@@ -245,6 +326,30 @@ export default function ProvideFeedbackPage() {
                     />
                     <p className="text-xs text-slate-400 mt-2">
                       {reportBody.length}/5000 characters
+                    </p>
+                  </div>
+
+                  <div className="mb-4 rounded-lg border border-slate-700 bg-slate-800/70 p-4">
+                    <p className="text-sm font-medium text-slate-200 mb-3">Feedback Options</p>
+                    <div className="grid gap-3 md:grid-cols-3">
+                      {([
+                        ['system', 'System'],
+                        ['email', 'Email'],
+                        ['sms', 'SMS'],
+                      ] as const).map(([key, label]) => (
+                        <label key={key} className="flex items-center gap-2 text-sm text-slate-300">
+                          <input
+                            type="checkbox"
+                            checked={deliveryChannels[key]}
+                            onChange={(event) => setDeliveryChannels((current) => ({ ...current, [key]: event.target.checked }))}
+                            className="h-4 w-4 rounded border-slate-600 bg-slate-900 text-cyan-500 focus:ring-cyan-500"
+                          />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                    <p className="mt-2 text-xs text-slate-400">
+                      `System` creates an in-app notification. `Email` and `SMS` are also selectable delivery paths.
                     </p>
                   </div>
 
@@ -302,7 +407,16 @@ export default function ProvideFeedbackPage() {
                 {/* Report History */}
                 {reportHistory.length > 0 && (
                   <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
-                    <h3 className="text-lg font-bold text-slate-100 mb-4">Previous Reports</h3>
+                    <div className="flex items-center justify-between gap-4 mb-4">
+                      <h3 className="text-lg font-bold text-slate-100">Previous Reports</h3>
+                      <div className="flex flex-wrap gap-2">
+                        {Object.entries(historySummary).map(([type, count]) => (
+                          <span key={type} className="rounded-full bg-slate-800 px-3 py-1 text-xs font-medium text-slate-300 capitalize">
+                            {type}: {count}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
                     <div className="space-y-4">
                       {reportHistory.map((item) => (
                         <div

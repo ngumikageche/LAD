@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Users, BookOpen, TrendingUp, AlertCircle, BarChart3, PieChart, LineChart as LineChartIcon } from 'lucide-react';
-import { LineChart, Line, PieChart as PieChartComponent, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { adminDashboardAPI, adminAnalyticsAPI } from '../api/admin';
+import { Users, BookOpen, TrendingUp, AlertCircle, BarChart3, PieChart, LineChart as LineChartIcon, Filter } from 'lucide-react';
+import { LineChart, Line, PieChart as PieChartComponent, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Label } from 'recharts';
+import { adminDashboardAPI, adminAnalyticsAPI, type DashboardScopeFilters } from '../api/admin';
+import { apiRequest } from '../api/client';
 import { useNavigate } from 'react-router-dom';
 import CompetencyHeatmap from '../components/charts/CompetencyHeatmap';
 import AttendanceCorrelationChart from '../components/charts/AttendanceCorrelationChart';
@@ -40,10 +41,23 @@ interface AtRiskStudent {
   avg_score: number;
 }
 
+interface OptionItem {
+  id: string;
+  name: string;
+  course_id?: string | null;
+  module_id?: string | null;
+}
+
 const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#f87171'];
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
+  const [scope, setScope] = useState<DashboardScopeFilters>({});
+  const [courseOptions, setCourseOptions] = useState<OptionItem[]>([]);
+  const [moduleOptions, setModuleOptions] = useState<OptionItem[]>([]);
+  const [subjectOptions, setSubjectOptions] = useState<OptionItem[]>([]);
+  const [trainerOptions, setTrainerOptions] = useState<OptionItem[]>([]);
+  const [studentOptions, setStudentOptions] = useState<OptionItem[]>([]);
   const [metrics, setMetrics] = useState<DashboardMetric[]>([]);
   const [departments, setDepartments] = useState<DepartmentPerformance[]>([]);
   const [departmentChartData, setDepartmentChartData] = useState<any[]>([]);
@@ -55,6 +69,43 @@ export default function AdminDashboard() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const loadOptions = async () => {
+      try {
+        const [courses, modules, subjects, trainers, students] = await Promise.all([
+          apiRequest<any[]>('/courses'),
+          apiRequest<any[]>('/modules'),
+          apiRequest<any[]>('/subjects'),
+          apiRequest<any[]>('/trainers'),
+          apiRequest<any[]>('/students'),
+        ]);
+
+        setCourseOptions((Array.isArray(courses) ? courses : []).map((item) => ({ id: String(item.id), name: item.name ?? 'Unnamed course' })));
+        setModuleOptions((Array.isArray(modules) ? modules : []).map((item) => ({ id: String(item.id), name: item.name ?? 'Unnamed module', course_id: item.course_id ?? null })));
+        setSubjectOptions((Array.isArray(subjects) ? subjects : []).map((item) => ({ id: String(item.id), name: item.name ?? 'Unnamed subject', module_id: item.module_id ?? null, course_id: item.course_id ?? null })));
+        setTrainerOptions((Array.isArray(trainers) ? trainers : []).map((item) => ({ id: String(item.id), name: item.user?.name ?? item.name ?? 'Unnamed trainer' })));
+        setStudentOptions((Array.isArray(students) ? students : []).map((item) => ({ id: String(item.id), name: item.user?.name ?? item.name ?? 'Unnamed student' })));
+      } catch (err) {
+        setCourseOptions([]);
+        setModuleOptions([]);
+        setSubjectOptions([]);
+        setTrainerOptions([]);
+        setStudentOptions([]);
+      }
+    };
+
+    loadOptions();
+  }, []);
+
+  useEffect(() => {
+    const cacheKey = [
+      'lad.admin.dashboard.v2',
+      scope.course_id,
+      scope.module_id,
+      scope.subject_id,
+      scope.trainer_id,
+      scope.student_id,
+    ].filter(Boolean).join(':');
+
     const cached = loadCachedDashboard<{
       metrics: DashboardMetric[];
       departments: DepartmentPerformance[];
@@ -63,7 +114,7 @@ export default function AdminDashboard() {
       atRisk: AtRiskStudent[];
       advanced: AdvancedDashboardResponse | null;
       comparison: CohortComparisonResponse | null;
-    }>('lad.admin.dashboard.v2');
+    }>(cacheKey);
     if (cached) {
       setMetrics(cached.metrics);
       setDepartments(cached.departments);
@@ -81,8 +132,8 @@ export default function AdminDashboard() {
         setError(null);
 
         const [dashboardDataRaw, departmentsDataRaw] = await Promise.all([
-          adminDashboardAPI.getDashboardStats(),
-          adminAnalyticsAPI.getDepartmentsAnalytics(),
+          adminDashboardAPI.getDashboardStats(scope),
+          adminAnalyticsAPI.getDepartmentsAnalytics(scope),
         ]);
         const dashboardData = dashboardDataRaw as any;
         const departmentsData = departmentsDataRaw as any[];
@@ -124,7 +175,7 @@ export default function AdminDashboard() {
 
         const nextComparison: CohortComparisonResponse | null = advancedData?.cohort_comparison ?? null;
 
-        saveCachedDashboard('lad.admin.dashboard.v2', {
+        saveCachedDashboard(cacheKey, {
           metrics: nextMetrics,
           departments: formattedDepts,
           departmentChartData: formattedDepts.map((dept: any, idx: number) => ({
@@ -145,7 +196,27 @@ export default function AdminDashboard() {
       }
     };
     loadDashboard();
-  }, []);
+  }, [scope]);
+
+  const filteredModules = scope.course_id
+    ? moduleOptions.filter((module) => module.course_id === scope.course_id)
+    : moduleOptions;
+
+  const filteredSubjects = scope.module_id
+    ? subjectOptions.filter((subject) => subject.module_id === scope.module_id)
+    : scope.course_id
+      ? subjectOptions.filter((subject) => subject.course_id === scope.course_id)
+      : subjectOptions;
+
+  const updateScope = (patch: Partial<DashboardScopeFilters>, reset: Array<keyof DashboardScopeFilters> = []) => {
+    setScope((current) => {
+      const next = { ...current, ...patch };
+      reset.forEach((key) => {
+        delete next[key];
+      });
+      return next;
+    });
+  };
 
   if (loading) {
     return (
@@ -171,6 +242,89 @@ export default function AdminDashboard() {
             {error}
           </div>
         )}
+
+        <div className="mb-6 rounded-2xl border border-slate-800 bg-slate-900 p-4 shadow-lg">
+          <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-center gap-2">
+              <Filter size={18} className="text-emerald-400" />
+              <h2 className="text-lg font-semibold text-slate-100">Dashboard scope</h2>
+            </div>
+            <button
+              type="button"
+              onClick={() => setScope({})}
+              className="self-start rounded-xl border border-slate-700 px-4 py-2 text-sm font-medium text-slate-300 transition hover:border-slate-500 hover:text-slate-100"
+            >
+              Clear filters
+            </button>
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+            <label className="space-y-2 text-sm text-slate-400">
+              <span>Course</span>
+              <select
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none transition focus:border-emerald-500"
+                value={scope.course_id ?? ''}
+                onChange={(event) => updateScope({ course_id: event.target.value || undefined }, ['module_id', 'subject_id'])}
+              >
+                <option value="">All courses</option>
+                {courseOptions.map((course) => (
+                  <option key={course.id} value={course.id}>{course.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-2 text-sm text-slate-400">
+              <span>Module</span>
+              <select
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none transition focus:border-emerald-500"
+                value={scope.module_id ?? ''}
+                onChange={(event) => updateScope({ module_id: event.target.value || undefined }, ['subject_id'])}
+              >
+                <option value="">All modules</option>
+                {filteredModules.map((module) => (
+                  <option key={module.id} value={module.id}>{module.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-2 text-sm text-slate-400">
+              <span>Subject</span>
+              <select
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none transition focus:border-emerald-500"
+                value={scope.subject_id ?? ''}
+                onChange={(event) => updateScope({ subject_id: event.target.value || undefined })}
+              >
+                <option value="">All subjects</option>
+                {filteredSubjects.map((subject) => (
+                  <option key={subject.id} value={subject.id}>{subject.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-2 text-sm text-slate-400">
+              <span>Trainer</span>
+              <select
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none transition focus:border-emerald-500"
+                value={scope.trainer_id ?? ''}
+                onChange={(event) => updateScope({ trainer_id: event.target.value || undefined })}
+              >
+                <option value="">All trainers</option>
+                {trainerOptions.map((trainer) => (
+                  <option key={trainer.id} value={trainer.id}>{trainer.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="space-y-2 text-sm text-slate-400">
+              <span>Student</span>
+              <select
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none transition focus:border-emerald-500"
+                value={scope.student_id ?? ''}
+                onChange={(event) => updateScope({ student_id: event.target.value || undefined })}
+              >
+                <option value="">All students</option>
+                {studentOptions.map((student) => (
+                  <option key={student.id} value={student.id}>{student.name}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
 
         {/* Key Metrics */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
@@ -213,8 +367,12 @@ export default function AdminDashboard() {
               <ResponsiveContainer width="100%" height={300}>
                 <LineChart data={termTrend}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="term" tick={{ fontSize: 11 }} />
-                  <YAxis domain={[0, 100]} />
+                  <XAxis dataKey="term" tick={{ fontSize: 11 }}>
+                    <Label value="Term" position="insideBottom" offset={-5} />
+                  </XAxis>
+                  <YAxis domain={[0, 100]}>
+                    <Label value="Percentage (%)" angle={-90} position="insideLeft" />
+                  </YAxis>
                   <Tooltip formatter={(v) => `${Number(v ?? 0)}%`} />
                   <Legend />
                   <Line type="monotone" dataKey="avg_score" stroke="#3b82f6" strokeWidth={2} name="Avg Score" />

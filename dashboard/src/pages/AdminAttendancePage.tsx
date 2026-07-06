@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, Legend, LineChart, Line, PieChart, Pie, Cell,
+  Tooltip, Legend, LineChart, Line, PieChart, Pie, Cell, Label,
 } from 'recharts';
 import { apiRequest } from '../api/client';
 
@@ -161,8 +161,12 @@ export default function AdminAttendancePage() {
               <ResponsiveContainer width="100%" height={240}>
                 <LineChart data={analytics.daily} margin={{ top: 4, right: 16, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                  <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 11 }} tickFormatter={(v) => v.slice(5)} />
-                  <YAxis tick={{ fill: '#64748b', fontSize: 11 }} allowDecimals={false} />
+                  <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 11 }} tickFormatter={(v) => v.slice(5)}>
+                    <Label value="Date" position="insideBottom" offset={-5} />
+                  </XAxis>
+                  <YAxis tick={{ fill: '#64748b', fontSize: 11 }} allowDecimals={false}>
+                    <Label value="Check-ins" angle={-90} position="insideLeft" />
+                  </YAxis>
                   <Tooltip {...CHART_TOOLTIP} />
                   <Legend wrapperStyle={{ color: '#94a3b8', fontSize: 12 }} />
                   <Line type="monotone" dataKey="successful" stroke="#6366f1" strokeWidth={2} dot={false} name="Successful" />
@@ -215,8 +219,12 @@ export default function AdminAttendancePage() {
                 <ResponsiveContainer width="100%" height={200}>
                   <BarChart data={analytics.by_subject} layout="vertical" margin={{ left: 8, right: 16 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
-                    <XAxis type="number" tick={{ fill: '#64748b', fontSize: 11 }} allowDecimals={false} />
-                    <YAxis type="category" dataKey="subject" tick={{ fill: '#94a3b8', fontSize: 11 }} width={110} />
+                    <XAxis type="number" tick={{ fill: '#64748b', fontSize: 11 }} allowDecimals={false}>
+                      <Label value="Check-ins" position="insideBottom" offset={-5} />
+                    </XAxis>
+                    <YAxis type="category" dataKey="subject" tick={{ fill: '#94a3b8', fontSize: 11 }} width={110}>
+                      <Label value="Subject" angle={-90} position="insideLeft" />
+                    </YAxis>
                     <Tooltip {...CHART_TOOLTIP} />
                     <Bar dataKey="checkins" fill="#6366f1" radius={[0, 4, 4, 0]} name="Check-ins" />
                   </BarChart>
@@ -234,8 +242,12 @@ export default function AdminAttendancePage() {
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={analytics.by_trainer} margin={{ top: 4, right: 16, left: 0, bottom: 40 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                  <XAxis dataKey="trainer" tick={{ fill: '#94a3b8', fontSize: 11 }} angle={-30} textAnchor="end" interval={0} />
-                  <YAxis tick={{ fill: '#64748b', fontSize: 11 }} allowDecimals={false} />
+                  <XAxis dataKey="trainer" tick={{ fill: '#94a3b8', fontSize: 11 }} angle={-30} textAnchor="end" interval={0}>
+                    <Label value="Trainer" position="insideBottom" offset={-5} />
+                  </XAxis>
+                  <YAxis tick={{ fill: '#64748b', fontSize: 11 }} allowDecimals={false}>
+                    <Label value="Count" angle={-90} position="insideLeft" />
+                  </YAxis>
                   <Tooltip {...CHART_TOOLTIP} />
                   <Legend wrapperStyle={{ color: '#94a3b8', fontSize: 12 }} />
                   <Bar dataKey="sessions" fill="#475569" radius={[4, 4, 0, 0]} name="Sessions" />

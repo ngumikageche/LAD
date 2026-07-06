@@ -1,11 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent } from 'react';
-import { AlertCircle, BarChart3, Camera, CheckCircle2, ClipboardList, Mic, Plus, Printer, Save, Send, Trash2, Undo2, Upload, User, Video } from 'lucide-react';
+import { AlertCircle, BarChart3, Camera, CheckCircle2, ClipboardList, FileText, Mic, Plus, Printer, Save, Send, Trash2, Undo2, Upload, User, Video } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { Button } from '../components/ui/Button';
 import { FormField, Input, Select, TextArea } from '../components/ui/Form';
 import type { PracticalAssessmentPayload, PracticalAssessmentReport } from '../api/trainer';
-import { trainerPracticalAssessmentsAPI, trainerStudentsAPI } from '../api/trainer';
+import { trainerPracticalAssessmentsAPI, trainerStudentsAPI, trainerSubjectsAPI } from '../api/trainer';
 
 type StudentOption = {
   id: string;
@@ -14,6 +14,12 @@ type StudentOption = {
   student_id: string;
   enrollment_status: string;
   overall_avg: number;
+  subjects?: string[];
+};
+
+type SubjectFilterOption = {
+  id: string;
+  subject_name: string;
 };
 
 type SectionType = 'narrative' | 'session' | 'oral';
@@ -41,14 +47,12 @@ type SectionForm = {
 
 type FormState = {
   assessment_date: string;
-  company_name: string;
   assessment_venue: string;
   status: PracticalAssessmentReport['status'];
 };
 
 const DEFAULT_FORM: FormState = {
   assessment_date: '',
-  company_name: '',
   assessment_venue: '',
   status: 'draft',
 };
@@ -227,7 +231,9 @@ const reportSectionsToForm = (report: PracticalAssessmentReport): SectionForm[] 
 export default function TrainerPracticalAssessmentPage() {
   const { user } = useAuth();
   const isAdmin = user?.user_type === 'admin';
-  const [students, setStudents] = useState<StudentOption[]>([]);
+  const [allStudents, setAllStudents] = useState<StudentOption[]>([]);
+  const [subjectOptions, setSubjectOptions] = useState<SubjectFilterOption[]>([]);
+  const [selectedSubjectId, setSelectedSubjectId] = useState('');
   const [reports, setReports] = useState<PracticalAssessmentReport[]>([]);
   const [allReports, setAllReports] = useState<PracticalAssessmentReport[]>([]);
   const [selectedStudentId, setSelectedStudentId] = useState('');
@@ -243,6 +249,16 @@ export default function TrainerPracticalAssessmentPage() {
   const [success, setSuccess] = useState<string | null>(null);
   const mediaInputRef = useRef<HTMLInputElement | null>(null);
 
+  const selectedSubject = useMemo(
+    () => subjectOptions.find((subject) => subject.id === selectedSubjectId) ?? null,
+    [selectedSubjectId, subjectOptions],
+  );
+
+  const students = useMemo(() => {
+    if (!selectedSubject) return allStudents;
+    return allStudents.filter((student) => student.subjects?.includes(selectedSubject.subject_name));
+  }, [allStudents, selectedSubject]);
+
   const selectedStudent = useMemo(
     () => students.find((student) => student.id === selectedStudentId) ?? null,
     [selectedStudentId, students],
@@ -254,6 +270,26 @@ export default function TrainerPracticalAssessmentPage() {
   );
 
   useEffect(() => {
+    if (isAdmin) return undefined;
+    let cancelled = false;
+    trainerSubjectsAPI.getAssignedSubjects()
+      .then((items) => {
+        if (!cancelled) {
+          setSubjectOptions(Array.isArray(items) ? items.map((item) => ({
+            id: item.id,
+            subject_name: item.subject_name,
+          })) : []);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setSubjectOptions([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin]);
+
+  useEffect(() => {
     const loadStudents = async () => {
       try {
         setLoading(true);
@@ -262,10 +298,7 @@ export default function TrainerPracticalAssessmentPage() {
           ? await trainerStudentsAPI.getAllStudentsForReports()
           : await trainerStudentsAPI.getStudentsInSubjects();
         const items = Array.isArray(data) ? (data as StudentOption[]) : [];
-        setStudents(items);
-        if (items.length > 0) {
-          setSelectedStudentId(items[0].id);
-        }
+        setAllStudents(items);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load students');
       } finally {
@@ -276,6 +309,18 @@ export default function TrainerPracticalAssessmentPage() {
     loadStudents();
   }, [isAdmin]);
 
+  useEffect(() => {
+    if (students.length === 0) {
+      setSelectedStudentId('');
+      setReports([]);
+      resetEditor();
+      return;
+    }
+    if (!students.some((student) => student.id === selectedStudentId)) {
+      setSelectedStudentId(students[0].id);
+    }
+  }, [students, selectedStudentId]);
+
   const resetEditor = () => {
     setSelectedReportId('');
     setForm({ ...DEFAULT_FORM });
@@ -285,7 +330,6 @@ export default function TrainerPracticalAssessmentPage() {
   const loadFormFromReport = (report: PracticalAssessmentReport) => {
     setForm({
       assessment_date: report.assessment_date ? report.assessment_date.slice(0, 10) : '',
-      company_name: report.company_name ?? '',
       assessment_venue: report.assessment_venue ?? '',
       status: report.status,
     });
@@ -431,7 +475,6 @@ export default function TrainerPracticalAssessmentPage() {
     trainer_id: user?.trainer_id ?? undefined,
     status: statusOverride ?? form.status,
     assessment_date: form.assessment_date.trim() || undefined,
-    company_name: form.company_name.trim() || undefined,
     assessment_venue: form.assessment_venue.trim() || undefined,
     report_sections: sections.map((section, sectionIndex) => ({
       number: sectionIndex + 1,
@@ -734,10 +777,23 @@ export default function TrainerPracticalAssessmentPage() {
             <h2 className="text-lg font-semibold text-slate-100">Assigned Students</h2>
           </div>
 
+          {!isAdmin && subjectOptions.length > 0 ? (
+            <div className="mt-4">
+              <FormField label="Subject">
+                <Select value={selectedSubjectId} onChange={(event) => setSelectedSubjectId(event.target.value)}>
+                  <option value="">All assigned subjects</option>
+                  {subjectOptions.map((subject) => (
+                    <option key={subject.id} value={subject.id}>{subject.subject_name}</option>
+                  ))}
+                </Select>
+              </FormField>
+            </div>
+          ) : null}
+
           <div className="mt-4 space-y-2">
             {students.length === 0 ? (
               <p className="rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-500">
-                No students are assigned to your subjects yet.
+                {selectedSubject ? `No students are currently linked to ${selectedSubject.subject_name}.` : 'No students are assigned to your subjects yet.'}
               </p>
             ) : students.map((student) => (
               <button
@@ -895,15 +951,14 @@ export default function TrainerPracticalAssessmentPage() {
                 <input
                   ref={mediaInputRef}
                   type="file"
-                  accept="image/*,video/*"
-                  capture="environment"
+                  accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.rtf"
                   multiple
                   onChange={handleMediaSelected}
                   className="hidden"
                 />
                 <Button variant="secondary" isLoading={uploadingMedia} onClick={() => mediaInputRef.current?.click()}>
-                  <Camera size={16} />
-                  Upload Photos / Videos
+                  <Upload size={16} />
+                  Upload Files
                 </Button>
                 <Button variant="secondary" onClick={() => window.print()}>
                   <Printer size={16} />
@@ -942,6 +997,7 @@ export default function TrainerPracticalAssessmentPage() {
                 </div>
                 <div className="mt-3 grid gap-3 sm:grid-cols-3">
                   <MiniStat label="Student" value={selectedStudent?.name ?? 'None'} />
+                  <MiniStat label="Subject" value={selectedSubject?.subject_name ?? selectedReport?.unit_of_competency ?? 'All'} />
                   <MiniStat label="Total" value={summary.totalScore == null ? 'Incomplete' : `${summary.totalScore.toFixed(1)} / ${(summary.totalMax ?? 0).toFixed(1)}`} />
                   <MiniStat label="Outcome" value={summary.outcome} />
                 </div>
@@ -953,9 +1009,6 @@ export default function TrainerPracticalAssessmentPage() {
                 </FormField>
                 <FormField label="Assessment Venue">
                   <Input value={form.assessment_venue} onChange={(e) => updateField('assessment_venue', e.target.value)} placeholder="Workshop, lab, or field location" />
-                </FormField>
-                <FormField label="Company">
-                  <Input value={form.company_name} onChange={(e) => updateField('company_name', e.target.value)} placeholder="Company or partner organization" />
                 </FormField>
                 <FormField label="Report Status">
                   <Select value={form.status} onChange={(e) => updateField('status', e.target.value as FormState['status'])}>
@@ -971,19 +1024,19 @@ export default function TrainerPracticalAssessmentPage() {
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-semibold text-slate-200">Captured Practical Evidence</p>
-                  <p className="text-xs text-slate-500">Use a phone or laptop camera to capture photos and videos during the practical, then attach them here.</p>
+                  <p className="text-xs text-slate-500">Type the assessment below or upload a prepared file when the trainer prefers a normal document workflow.</p>
                 </div>
                 <div className="flex gap-2 text-xs text-slate-400">
                   <span className="inline-flex items-center gap-1 rounded-full bg-slate-800 px-3 py-1"><Camera size={12} /> Photos</span>
                   <span className="inline-flex items-center gap-1 rounded-full bg-slate-800 px-3 py-1"><Video size={12} /> Videos</span>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-800 px-3 py-1"><Upload size={12} /> Mobile capture supported</span>
+                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-800 px-3 py-1"><FileText size={12} /> PDF / Word</span>
                 </div>
               </div>
 
               <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {(selectedReport?.media_attachments ?? []).length === 0 ? (
                   <div className="rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-500">
-                    Save the report, then upload practical evidence from a camera, gallery, or recorded video.
+                    Save the report, then upload practical evidence from a camera, gallery, recorded video, or a prepared assessment document.
                   </div>
                 ) : (selectedReport?.media_attachments ?? []).map((attachment) => (
                   <a
@@ -1094,8 +1147,8 @@ export default function TrainerPracticalAssessmentPage() {
                             </div>
 
                             <div className="mt-4 grid gap-4 xl:grid-cols-2">
-                              <FormField label={section.type === 'oral' ? 'Expected Key Points' : 'Expected Standard'}>
-                                <TextArea value={item.expected_response} onChange={(e) => updateItem(sectionIndex, itemIndex, 'expected_response', e.target.value)} rows={3} placeholder={section.type === 'oral' ? 'Expected answer or key points' : 'Expected standard or result'} />
+                              <FormField label="Rubrics / Assessor Guide">
+                                <TextArea value={item.expected_response} onChange={(e) => updateItem(sectionIndex, itemIndex, 'expected_response', e.target.value)} rows={3} placeholder={section.type === 'oral' ? 'Expected answer, rubric, or key guide' : 'Rubric, expected standard, or assessor guide'} />
                               </FormField>
                               <FormField label={section.type === 'oral' ? 'Sub points / prompts' : 'Sub items'}>
                                 <TextArea value={item.details} onChange={(e) => updateItem(sectionIndex, itemIndex, 'details', e.target.value)} rows={3} placeholder="One bullet or sub-item per line" />

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Label } from 'recharts';
 import { apiRequest } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
 
@@ -40,8 +40,12 @@ const SubjectBarChart = () => {
     <ResponsiveContainer width="100%" height={300}>
       <BarChart data={data}>
         <CartesianGrid strokeDasharray="3 3" />
-        <XAxis dataKey="name" />
-        <YAxis />
+        <XAxis dataKey="name">
+          <Label value="Subject" position="insideBottom" offset={-5} />
+        </XAxis>
+        <YAxis>
+          <Label value="Average Score (%)" angle={-90} position="insideLeft" />
+        </YAxis>
         <Tooltip />
         <Legend />
         <Bar dataKey="score" fill="#10b981" />

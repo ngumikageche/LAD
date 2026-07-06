@@ -1,5 +1,24 @@
 import { apiClient } from './client';
 
+export type DashboardScopeFilters = {
+  course_id?: string;
+  module_id?: string;
+  subject_id?: string;
+  trainer_id?: string;
+  student_id?: string;
+};
+
+const buildScopeQuery = (filters?: DashboardScopeFilters) => {
+  if (!filters) return '';
+  const params = new URLSearchParams();
+  if (filters.course_id) params.append('course_id', filters.course_id);
+  if (filters.module_id) params.append('module_id', filters.module_id);
+  if (filters.subject_id) params.append('subject_id', filters.subject_id);
+  if (filters.trainer_id) params.append('trainer_id', filters.trainer_id);
+  if (filters.student_id) params.append('student_id', filters.student_id);
+  return params.toString() ? `?${params.toString()}` : '';
+};
+
 // Admin Phase-3 Reports API
 export const adminReportsV2API = {
   async getExamResults(termId?: string) {
@@ -21,9 +40,9 @@ export const adminReportsV2API = {
 
 // Admin Dashboard API
 export const adminDashboardAPI = {
-  async getDashboardStats() {
+  async getDashboardStats(filters?: DashboardScopeFilters) {
     // Use analytics/dashboard which returns term_trend and at_risk_students
-    const response = await apiClient.get('/admin/analytics/dashboard');
+    const response = await apiClient.get(`/admin/analytics/dashboard${buildScopeQuery(filters)}`);
     return response.data;
   },
 
@@ -35,33 +54,33 @@ export const adminDashboardAPI = {
 
 // Admin Analytics API
 export const adminAnalyticsAPI = {
-  async getDashboard() {
-    const response = await apiClient.get('/admin/analytics/dashboard');
+  async getDashboard(filters?: DashboardScopeFilters) {
+    const response = await apiClient.get(`/admin/analytics/dashboard${buildScopeQuery(filters)}`);
     return response.data;
   },
 
-  async getCoursesAnalytics() {
-    const response = await apiClient.get('/admin/analytics/courses');
+  async getCoursesAnalytics(filters?: DashboardScopeFilters) {
+    const response = await apiClient.get(`/admin/analytics/courses${buildScopeQuery(filters)}`);
     return response.data;
   },
 
-  async getDepartmentsAnalytics() {
-    const response = await apiClient.get('/admin/analytics/departments');
+  async getDepartmentsAnalytics(filters?: DashboardScopeFilters) {
+    const response = await apiClient.get(`/admin/analytics/departments${buildScopeQuery(filters)}`);
     return response.data;
   },
 
-  async getInstitutionsAnalytics() {
-    const response = await apiClient.get('/admin/analytics/institutions');
+  async getInstitutionsAnalytics(filters?: DashboardScopeFilters) {
+    const response = await apiClient.get(`/admin/analytics/institutions${buildScopeQuery(filters)}`);
     return response.data;
   },
 
-  async getComparisons() {
-    const response = await apiClient.get('/admin/analytics/comparisons');
+  async getComparisons(filters?: DashboardScopeFilters) {
+    const response = await apiClient.get(`/admin/analytics/comparisons${buildScopeQuery(filters)}`);
     return response.data;
   },
 
-  async getSystemWideReport() {
-    const response = await apiClient.get('/admin/analytics/system-wide-report');
+  async getSystemWideReport(filters?: DashboardScopeFilters) {
+    const response = await apiClient.get(`/admin/analytics/system-wide-report${buildScopeQuery(filters)}`);
     return response.data;
   },
 };
@@ -145,7 +164,7 @@ export const adminNotificationsAPI = {
     return response.data;
   },
 
-  async createNotification(data: { title: string; message: string; user_id: string }) {
+  async createNotification(data: { title: string; message: string; user_id: string; delivery_channels?: Array<'system' | 'email' | 'sms'> }) {
     const response = await apiClient.post('/notifications', data);
     return response.data;
   },
@@ -161,6 +180,7 @@ export const adminNotificationsAPI = {
       subject_id?: string;
       enrollment_year?: string;
     };
+    delivery_channels?: Array<'system' | 'email' | 'sms'>;
     sms_config: {
       enabled: boolean;
       provider: string;

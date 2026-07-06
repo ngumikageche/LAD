@@ -1,8 +1,17 @@
 import { useState, useEffect } from 'react';
 import { Printer, AlertCircle, TrendingUp, TrendingDown, Download } from 'lucide-react';
 import { adminReportsV2API } from '../api/admin';
-import { useAuth } from '../auth/AuthContext';
 import { exportExcel, exportCSV } from '../utils/exportUtils';
+import {
+  ReportActionButton,
+  ReportMetricCard,
+  ReportNotice,
+  ReportPage,
+  ReportPrintStyles,
+  ReportSectionTitle,
+  ReportSurface,
+  ReportToolbar,
+} from '../components/reports/PremiumReportLayout';
 
 interface CourseRow {
   course_id: string; course_name: string; student_count: number;
@@ -29,7 +38,7 @@ function TrendBadge({ delta }: { delta: number }) {
   if (delta === 0) return <span className="text-slate-500 text-xs">—</span>;
   const up = delta > 0;
   return (
-    <span className={`inline-flex items-center gap-0.5 text-xs font-semibold ${up ? 'text-green-600' : 'text-red-600'}`}>
+    <span className={`inline-flex items-center gap-0.5 text-xs font-semibold ${up ? 'text-emerald-300' : 'text-red-300'}`}>
       {up ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
       {up ? '+' : ''}{delta}%
     </span>
@@ -37,7 +46,6 @@ function TrendBadge({ delta }: { delta: number }) {
 }
 
 export default function AdminExamResultsPage() {
-  const { user } = useAuth();
   const [data, setData] = useState<ExamReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -76,143 +84,141 @@ export default function AdminExamResultsPage() {
   };
 
   if (loading) return (
-    <div className="flex items-center justify-center min-h-screen">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500" />
-    </div>
+    <ReportPage>
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-cyan-400" />
+      </div>
+    </ReportPage>
   );
 
   if (error) return (
-    <div className="flex items-center justify-center min-h-screen">
-      <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700">
-        <AlertCircle size={20} />{error}
+    <ReportPage>
+      <div className="mx-auto flex min-h-[60vh] max-w-6xl items-center">
+        <ReportNotice icon={AlertCircle} tone="error">{error}</ReportNotice>
       </div>
-    </div>
+    </ReportPage>
   );
 
   if (!data) return null;
 
   return (
-    <div className="min-h-screen bg-blue-950 p-6 print:bg-slate-900 print:p-0">
-      {/* Toolbar */}
-      <div className="max-w-6xl mx-auto mb-4 flex items-center gap-3 print:hidden">
-        <h1 className="text-xl font-bold text-slate-100 flex-1">School-Wide Exam Results</h1>
-        <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-800 transition font-medium">
-          <Printer size={16} /> Print
-        </button>
-        <button onClick={handleExcelExport} className="flex items-center gap-2 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition font-medium">
-          <Download size={16} /> Excel
-        </button>
-        <button onClick={handleCSVExport} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium">
-          <Download size={16} /> CSV
-        </button>
-      </div>
+    <ReportPage>
+      <ReportToolbar
+        title="School-Wide Exam Results"
+        description="Review term-wide academic performance across courses and subjects with export-ready reporting."
+        eyebrow="Admin Reports"
+      >
+        <ReportActionButton onClick={() => window.print()} icon={Printer}>
+          Print
+        </ReportActionButton>
+        <ReportActionButton onClick={handleExcelExport} icon={Download} variant="success">
+          Excel
+        </ReportActionButton>
+        <ReportActionButton onClick={handleCSVExport} icon={Download} variant="primary">
+          CSV
+        </ReportActionButton>
+      </ReportToolbar>
 
-      <div className="max-w-6xl mx-auto bg-slate-900 shadow-lg print:shadow-none" style={{ padding: '16mm' }}>
-        {/* Header */}
-        <div className="text-center border-b-2 border-slate-700 pb-4 mb-6">
-          <p className="text-xs text-slate-500 uppercase tracking-widest print:block hidden">CONFIDENTIAL</p>
-          <h1 className="text-2xl font-bold text-slate-100 uppercase">{data.school.name}</h1>
-          <p className="text-sm text-slate-400">{data.school.location}</p>
-          <h2 className="text-lg font-bold text-slate-200 mt-2 uppercase">School-Wide Exam Results</h2>
-          {data.term.name && <p className="text-sm text-slate-400">{data.term.name}</p>}
+      <ReportSurface maxWidth="max-w-6xl">
+        <div className="border-b border-white/10 pb-6 text-center">
+          <p className="hidden text-[11px] font-semibold uppercase tracking-[0.32em] text-cyan-200/70 print:block">Confidential</p>
+          <h1 className="mt-3 text-2xl font-semibold uppercase tracking-[0.16em] text-white sm:text-3xl">{data.school.name}</h1>
+          <p className="mt-2 text-sm text-slate-400">{data.school.location}</p>
+          <h2 className="mt-4 text-lg font-semibold uppercase tracking-[0.18em] text-slate-100">School-Wide Exam Results</h2>
+          {data.term.name ? <p className="mt-2 text-sm text-slate-400">{data.term.name}</p> : null}
         </div>
 
-        {/* Executive Summary */}
-        <div className="grid grid-cols-3 gap-4 mb-8">
-          {[
-            { label: 'School Average', value: `${data.summary.school_avg}%`, delta: data.trend?.avg_delta, color: 'text-indigo-600' },
-            { label: 'Pass Rate', value: `${data.summary.pass_rate}%`, delta: data.trend?.pass_rate_delta, color: 'text-green-600' },
-            { label: 'Top Course', value: data.summary.top_course ?? '—', delta: null, color: 'text-purple-600' },
-          ].map(({ label, value, delta, color }) => (
-            <div key={label} className="p-5 bg-slate-800 border border-slate-700 rounded-lg text-center">
-              <p className="text-xs text-slate-500 uppercase mb-1">{label}</p>
-              <p className={`text-3xl font-bold ${color}`}>{value}</p>
-              {delta != null && (
-                <div className="mt-1 flex justify-center items-center gap-1">
-                  <TrendBadge delta={delta} />
-                  {data.trend && <span className="text-xs text-slate-500">vs {data.trend.prev_term}</span>}
-                </div>
-              )}
-            </div>
-          ))}
+        <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <ReportMetricCard
+            label="School Average"
+            value={`${data.summary.school_avg}%`}
+            accent="cyan"
+            helper={data.trend ? <><TrendBadge delta={data.trend.avg_delta} /> <span>vs {data.trend.prev_term}</span></> : undefined}
+          />
+          <ReportMetricCard
+            label="Pass Rate"
+            value={`${data.summary.pass_rate}%`}
+            accent="emerald"
+            helper={data.trend ? <><TrendBadge delta={data.trend.pass_rate_delta} /> <span>vs {data.trend.prev_term}</span></> : undefined}
+          />
+          <ReportMetricCard
+            label="Top Course"
+            value={data.summary.top_course ?? '—'}
+            accent="violet"
+            helper={`${data.summary.total_scores} recorded scores`}
+          />
         </div>
 
-        {/* By Course Table */}
-        <h3 className="font-bold text-slate-200 mb-3 uppercase text-sm">Performance by Course</h3>
-        <div className="overflow-x-auto mb-8">
-          <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="bg-slate-800 text-white">
-                <th className="px-3 py-2 text-left">Course</th>
-                <th className="px-3 py-2 text-center">Students</th>
-                <th className="px-3 py-2 text-center">Avg Marks</th>
-                <th className="px-3 py-2 text-center">Pass %</th>
-                <th className="px-3 py-2 text-left">Top Student</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.by_course.length === 0 ? (
-                <tr><td colSpan={5} className="px-3 py-6 text-center text-slate-500">No data for this term</td></tr>
-              ) : data.by_course.map((row, i) => (
-                <tr key={row.course_id} className={i % 2 === 0 ? 'bg-slate-900' : 'bg-slate-800'}>
-                  <td className="px-3 py-2 font-medium text-slate-100">{row.course_name}</td>
-                  <td className="px-3 py-2 text-center text-slate-400">{row.student_count}</td>
-                  <td className="px-3 py-2 text-center">
-                    <span className={`px-2 py-0.5 rounded text-xs font-bold ${row.avg_marks >= 75 ? 'bg-green-100 text-green-800' : row.avg_marks >= 50 ? 'bg-yellow-100 text-yellow-800' : 'bg-red-100 text-red-800'}`}>
-                      {row.avg_marks}%
-                    </span>
-                  </td>
-                  <td className="px-3 py-2 text-center font-semibold text-green-700">{row.pass_pct}%</td>
-                  <td className="px-3 py-2 text-slate-400 text-xs">{row.top_student ?? '—'}</td>
+        <div className="mt-6">
+          <ReportSectionTitle>Performance by Course</ReportSectionTitle>
+          <div className="overflow-x-auto rounded-[28px] border border-white/10">
+            <table className="min-w-full border-collapse text-sm">
+              <thead>
+                <tr className="bg-slate-800/90 text-white">
+                  <th className="px-3 py-3 text-left">Course</th>
+                  <th className="px-3 py-3 text-center">Students</th>
+                  <th className="px-3 py-3 text-center">Avg Marks</th>
+                  <th className="px-3 py-3 text-center">Pass %</th>
+                  <th className="px-3 py-3 text-left">Top Student</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {data.by_course.length === 0 ? (
+                  <tr><td colSpan={5} className="px-3 py-6 text-center text-slate-500">No data for this term</td></tr>
+                ) : data.by_course.map((row, i) => (
+                  <tr key={row.course_id} className={i % 2 === 0 ? 'bg-slate-950/40' : 'bg-white/[0.02]'}>
+                    <td className="px-3 py-3 font-medium text-slate-100">{row.course_name}</td>
+                    <td className="px-3 py-3 text-center text-slate-400">{row.student_count}</td>
+                    <td className="px-3 py-3 text-center">
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${row.avg_marks >= 75 ? 'bg-emerald-400/10 text-emerald-200' : row.avg_marks >= 50 ? 'bg-amber-400/10 text-amber-200' : 'bg-red-500/10 text-red-200'}`}>
+                        {row.avg_marks}%
+                      </span>
+                    </td>
+                    <td className="px-3 py-3 text-center font-semibold text-emerald-300">{row.pass_pct}%</td>
+                    <td className="px-3 py-3 text-xs text-slate-400">{row.top_student ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        {/* By Subject Table */}
-        <h3 className="font-bold text-slate-200 mb-3 uppercase text-sm">Performance by Subject</h3>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border-collapse">
-            <thead>
-              <tr className="bg-slate-800 text-white">
-                <th className="px-3 py-2 text-left">Subject</th>
-                <th className="px-3 py-2 text-center">Entries</th>
-                <th className="px-3 py-2 text-center">Avg</th>
-                <th className="px-3 py-2 text-center">Pass %</th>
-                <th className="px-3 py-2 text-center">Fail %</th>
-              </tr>
-            </thead>
-            <tbody>
-              {data.by_subject.length === 0 ? (
-                <tr><td colSpan={5} className="px-3 py-6 text-center text-slate-500">No data for this term</td></tr>
-              ) : data.by_subject.map((row, i) => (
-                <tr key={row.subject_id} className={i % 2 === 0 ? 'bg-slate-900' : 'bg-slate-800'}>
-                  <td className="px-3 py-2 font-medium text-slate-100">{row.subject_name}</td>
-                  <td className="px-3 py-2 text-center text-slate-400">{row.entries}</td>
-                  <td className="px-3 py-2 text-center font-semibold">{row.avg_marks}%</td>
-                  <td className="px-3 py-2 text-center text-green-700 font-semibold">{row.pass_pct}%</td>
-                  <td className="px-3 py-2 text-center text-red-700 font-semibold">{row.fail_pct}%</td>
+        <div className="mt-6">
+          <ReportSectionTitle>Performance by Subject</ReportSectionTitle>
+          <div className="overflow-x-auto rounded-[28px] border border-white/10">
+            <table className="min-w-full border-collapse text-sm">
+              <thead>
+                <tr className="bg-slate-800/90 text-white">
+                  <th className="px-3 py-3 text-left">Subject</th>
+                  <th className="px-3 py-3 text-center">Entries</th>
+                  <th className="px-3 py-3 text-center">Avg</th>
+                  <th className="px-3 py-3 text-center">Pass %</th>
+                  <th className="px-3 py-3 text-center">Fail %</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {data.by_subject.length === 0 ? (
+                  <tr><td colSpan={5} className="px-3 py-6 text-center text-slate-500">No data for this term</td></tr>
+                ) : data.by_subject.map((row, i) => (
+                  <tr key={row.subject_id} className={i % 2 === 0 ? 'bg-slate-950/40' : 'bg-white/[0.02]'}>
+                    <td className="px-3 py-3 font-medium text-slate-100">{row.subject_name}</td>
+                    <td className="px-3 py-3 text-center text-slate-400">{row.entries}</td>
+                    <td className="px-3 py-3 text-center font-semibold text-slate-100">{row.avg_marks}%</td>
+                    <td className="px-3 py-3 text-center font-semibold text-emerald-300">{row.pass_pct}%</td>
+                    <td className="px-3 py-3 text-center font-semibold text-red-300">{row.fail_pct}%</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
 
-        <p className="text-xs text-slate-500 text-right mt-6">
+        <p className="mt-6 text-right text-xs text-slate-500">
           Generated by {data.generated_by} on {new Date(data.generated_at).toLocaleString()}
         </p>
-      </div>
+      </ReportSurface>
 
-      <style>{`
-        @media print {
-          body * { visibility: hidden; }
-          .print\\:shadow-none, .print\\:shadow-none * { visibility: visible; }
-          .print\\:shadow-none { position: absolute; left: 0; top: 0; width: 100%; }
-          .print\\:hidden { display: none !important; }
-          .hidden { display: block !important; }
-        }
-      `}</style>
-    </div>
+      <ReportPrintStyles />
+    </ReportPage>
   );
 }

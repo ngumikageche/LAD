@@ -144,7 +144,7 @@ const PracticalAssessmentReportView = forwardRef(function PracticalAssessmentRep
                             </ul>
                           ) : null}
                           {item.expected_response ? (
-                            <p className="mt-2 text-xs text-slate-600"><strong>Expected:</strong> {item.expected_response}</p>
+                            <p className="mt-2 text-xs text-slate-600"><strong>Rubric:</strong> {item.expected_response}</p>
                           ) : null}
                           {item.remark ? (
                             <p className="mt-2 text-xs text-slate-600"><strong>Remark:</strong> {item.remark}</p>
@@ -183,7 +183,7 @@ const PracticalAssessmentReportView = forwardRef(function PracticalAssessmentRep
                     <tr>
                       <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Q#</th>
                       <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Question</th>
-                      <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Expected Key Points</th>
+                      <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Rubrics / Assessor Guide</th>
                       <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Max Marks</th>
                       <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Awarded</th>
                     </tr>

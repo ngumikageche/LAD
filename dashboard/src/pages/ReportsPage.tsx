@@ -145,13 +145,11 @@ const reportCards: ReportCard[] = [
     description: 'Behaviour and discipline report where records are configured.',
     category: 'Behaviour',
     permission: 'reports.student.discipline',
-    path: '/reports',
+    path: '/disciplinary-records',
     icon: HeartPulse,
     roles: ['admin', 'trainer'],
   },
 ];
-
-const categories = ['All', 'Academic', 'Attendance', 'Behaviour', 'Finance', 'Compliance', 'Teacher'];
 
 function hasReportPermission(user: ReturnType<typeof useAuth>['user'], permission: string) {
   if (!user) return false;
@@ -167,7 +165,6 @@ function canAct(user: ReturnType<typeof useAuth>['user'], permission: string, ac
 
 export default function ReportsPage() {
   const { user } = useAuth();
-  const [category, setCategory] = useState('All');
   const [filters, setFilters] = useState({
     academicYear: '',
     term: '',
@@ -177,14 +174,23 @@ export default function ReportsPage() {
     dateTo: '',
   });
 
-  const visibleReports = useMemo(() => {
+  const accessibleReports = useMemo(() => {
     return reportCards.filter((report) => {
       if (!user) return false;
-      const roleMatch = report.roles.includes(user.user_type);
-      const categoryMatch = category === 'All' || report.category === category;
-      return roleMatch && categoryMatch && hasReportPermission(user, report.permission);
+      return report.roles.includes(user.user_type) && hasReportPermission(user, report.permission);
     });
-  }, [category, user]);
+  }, [user]);
+
+  const categories = useMemo(
+    () => ['All', ...Array.from(new Set(accessibleReports.map((report) => report.category)))],
+    [accessibleReports],
+  );
+  const [category, setCategory] = useState('All');
+  const activeCategory = categories.includes(category) ? category : 'All';
+
+  const visibleReports = useMemo(() => {
+    return accessibleReports.filter((report) => activeCategory === 'All' || report.category === activeCategory);
+  }, [accessibleReports, activeCategory]);
 
   const exportSummary = (report: ReportCard) => {
     const rows = [
@@ -214,7 +220,7 @@ export default function ReportsPage() {
                 key={item}
                 onClick={() => setCategory(item)}
                 className={`rounded-md border px-3 py-2 text-sm font-medium transition ${
-                  category === item
+                  activeCategory === item
                     ? 'border-teal-400 bg-teal-500/15 text-teal-200'
                     : 'border-slate-700 bg-slate-900 text-slate-300 hover:border-slate-500'
                 }`}

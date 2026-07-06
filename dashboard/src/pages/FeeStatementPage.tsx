@@ -2,6 +2,15 @@ import { useState, useEffect } from 'react';
 import { Printer, AlertCircle, Info } from 'lucide-react';
 import { reportsAPI } from '../api/student';
 import { useAuth } from '../auth/AuthContext';
+import {
+  ReportActionButton,
+  ReportNotice,
+  ReportPage,
+  ReportPrintStyles,
+  ReportSectionTitle,
+  ReportSurface,
+  ReportToolbar,
+} from '../components/reports/PremiumReportLayout';
 
 interface LineItem { description: string; amount: number; paid: number; balance: number; }
 interface FeeReport {
@@ -41,17 +50,19 @@ export default function FeeStatementPage() {
   }, [studentId]);
 
   if (loading) return (
-    <div className="flex items-center justify-center min-h-screen">
-      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500" />
-    </div>
+    <ReportPage>
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="h-12 w-12 animate-spin rounded-full border-b-2 border-cyan-400" />
+      </div>
+    </ReportPage>
   );
 
   if (error) return (
-    <div className="flex items-center justify-center min-h-screen">
-      <div className="p-4 bg-red-500/10 border border-red-500/30 rounded-lg flex items-center gap-2 text-red-300">
-        <AlertCircle size={20} />{error}
+    <ReportPage>
+      <div className="mx-auto flex min-h-[60vh] max-w-3xl items-center">
+        <ReportNotice icon={AlertCircle} tone="error">{error}</ReportNotice>
       </div>
-    </div>
+    </ReportPage>
   );
 
   if (!data) return null;
@@ -59,121 +70,124 @@ export default function FeeStatementPage() {
   const fmt = (n: number) => n.toLocaleString(undefined, { minimumFractionDigits: 2 });
 
   return (
-    <div className="min-h-screen bg-blue-950 p-6 print:bg-slate-900 print:p-0">
-      {/* Toolbar */}
-      <div className="max-w-3xl mx-auto mb-4 flex gap-3 print:hidden">
-        <button
-          onClick={() => window.print()}
-          className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition font-medium"
-        >
-          <Printer size={18} /> Print / Download PDF
-        </button>
-      </div>
+    <ReportPage>
+      <ReportToolbar
+        maxWidth="max-w-3xl"
+        title="Fee Statement"
+        description="View billed items, payment history, and outstanding balances in a cleaner statement layout that prints well."
+        eyebrow="Finance Reports"
+      >
+        <ReportActionButton onClick={() => window.print()} icon={Printer} variant="primary">
+          Print / Download PDF
+        </ReportActionButton>
+      </ReportToolbar>
 
-      <div className="max-w-3xl mx-auto bg-slate-900 shadow-lg print:shadow-none" style={{ padding: '16mm' }}>
-        {/* Header */}
-        <div className="text-center border-b-2 border-slate-700 pb-4 mb-6">
-          <h1 className="text-2xl font-bold text-slate-100 uppercase">{data.school.name}</h1>
-          <p className="text-sm text-slate-400">{data.school.location}</p>
-          <h2 className="text-lg font-bold text-slate-200 mt-2 uppercase">Fee Statement</h2>
-          {data.term.name && <p className="text-sm text-slate-400">{data.term.name}</p>}
+      <ReportSurface maxWidth="max-w-3xl">
+        <div className="border-b border-white/10 pb-6 text-center">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.32em] text-cyan-200/70">Finance Statement</p>
+          <h1 className="mt-3 text-2xl font-semibold uppercase tracking-[0.16em] text-white sm:text-3xl">{data.school.name}</h1>
+          <p className="mt-2 text-sm text-slate-400">{data.school.location}</p>
+          <h2 className="mt-4 text-lg font-semibold uppercase tracking-[0.18em] text-slate-100">Fee Statement</h2>
+          {data.term.name ? <p className="mt-2 text-sm text-slate-400">{data.term.name}</p> : null}
         </div>
 
-        {/* Student Info */}
-        <div className="flex gap-8 mb-6 p-3 bg-slate-800 border border-slate-700 rounded text-sm">
-          <div><span className="text-slate-500">Name: </span><strong>{data.student.name}</strong></div>
-          <div><span className="text-slate-500">Reg No: </span><strong>{data.student.registration_number}</strong></div>
+        <div className="mt-6 grid gap-4 rounded-[28px] border border-white/10 bg-white/[0.03] p-4 text-sm sm:grid-cols-2">
+          <div>
+            <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Student</span>
+            <p className="mt-2 font-semibold text-slate-100">{data.student.name}</p>
+          </div>
+          <div>
+            <span className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">Registration Number</span>
+            <p className="mt-2 font-semibold text-slate-100">{data.student.registration_number}</p>
+          </div>
         </div>
 
-        {/* Note banner if no fee module */}
-        {data.note && (
-          <div className="mb-6 p-3 bg-blue-500/10 border border-blue-500/30 rounded flex items-center gap-2 text-blue-300 text-sm">
-            <Info size={16} />{data.note}
+        {data.note ? (
+          <div className="mt-6">
+            <ReportNotice icon={Info} tone="info">{data.note}</ReportNotice>
           </div>
-        )}
+        ) : null}
 
-        {/* Line Items */}
-        <table className="w-full mb-6 text-sm border-collapse">
-          <thead>
-            <tr className="bg-slate-800 text-white">
-              <th className="px-3 py-2 text-left">Description</th>
-              <th className="px-3 py-2 text-right">Charged</th>
-              <th className="px-3 py-2 text-right">Paid</th>
-              <th className="px-3 py-2 text-right">Balance</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.line_items.length === 0 ? (
-              <tr>
-                <td colSpan={4} className="px-3 py-6 text-center text-slate-500">No fee records available</td>
-              </tr>
-            ) : data.line_items.map((item, i) => (
-              <tr key={i} className={i % 2 === 0 ? 'bg-slate-900' : 'bg-slate-800'}>
-                <td className="px-3 py-2">{item.description}</td>
-                <td className="px-3 py-2 text-right">{fmt(item.amount)}</td>
-                <td className="px-3 py-2 text-right text-green-300">{fmt(item.paid)}</td>
-                <td className={`px-3 py-2 text-right font-medium ${item.balance > 0 ? 'text-red-300' : 'text-green-300'}`}>
-                  {fmt(item.balance)}
-                </td>
-              </tr>
-            ))}
-            {/* Totals row */}
-            <tr className="bg-slate-800 font-bold border-t-2 border-slate-600">
-              <td className="px-3 py-2">Total</td>
-              <td className="px-3 py-2 text-right">{fmt(data.summary.total_charged)}</td>
-              <td className="px-3 py-2 text-right text-green-300">{fmt(data.summary.total_paid)}</td>
-              <td className={`px-3 py-2 text-right ${data.summary.balance > 0 ? 'text-red-300' : 'text-green-300'}`}>
-                {fmt(data.summary.balance)}
-              </td>
-            </tr>
-          </tbody>
-        </table>
-
-        {/* Outstanding balance alert */}
-        {data.summary.balance > 0 && (
-          <div className="mb-6 p-3 bg-red-500/10 border border-red-500/40 rounded text-red-300 font-semibold text-sm">
-            Outstanding Balance: {fmt(data.summary.balance)} — Please settle at the earliest.
-          </div>
-        )}
-
-        {/* Payment History */}
-        {data.payments.length > 0 && (
-          <>
-            <h3 className="font-semibold text-slate-200 mb-2 text-sm uppercase">Payment History</h3>
-            <table className="w-full text-sm border-collapse mb-6">
+        <div className="mt-6">
+          <ReportSectionTitle>Billing Breakdown</ReportSectionTitle>
+          <div className="overflow-x-auto rounded-[28px] border border-white/10">
+            <table className="min-w-full border-collapse text-sm">
               <thead>
-                <tr className="bg-slate-800 border-b border-slate-700">
-                  <th className="px-3 py-2 text-left">Date</th>
-                  <th className="px-3 py-2 text-left">Reference</th>
-                  <th className="px-3 py-2 text-right">Amount</th>
+                <tr className="bg-slate-800/90 text-white">
+                  <th className="px-3 py-3 text-left">Description</th>
+                  <th className="px-3 py-3 text-right">Charged</th>
+                  <th className="px-3 py-3 text-right">Paid</th>
+                  <th className="px-3 py-3 text-right">Balance</th>
                 </tr>
               </thead>
               <tbody>
-                {data.payments.map((p, i) => (
-                  <tr key={i} className="border-b border-slate-800">
-                    <td className="px-3 py-2">{p.date}</td>
-                    <td className="px-3 py-2 text-slate-400">{p.reference}</td>
-                    <td className="px-3 py-2 text-right text-green-300 font-medium">{fmt(p.amount)}</td>
+                {data.line_items.length === 0 ? (
+                  <tr>
+                    <td colSpan={4} className="px-3 py-6 text-center text-slate-500">No fee records available</td>
+                  </tr>
+                ) : data.line_items.map((item, i) => (
+                  <tr key={i} className={i % 2 === 0 ? 'bg-slate-950/40' : 'bg-white/[0.02]'}>
+                    <td className="px-3 py-3 text-slate-100">{item.description}</td>
+                    <td className="px-3 py-3 text-right text-slate-100">{fmt(item.amount)}</td>
+                    <td className="px-3 py-3 text-right text-emerald-200">{fmt(item.paid)}</td>
+                    <td className={`px-3 py-3 text-right font-medium ${item.balance > 0 ? 'text-red-200' : 'text-emerald-200'}`}>
+                      {fmt(item.balance)}
+                    </td>
                   </tr>
                 ))}
+                <tr className="border-t border-white/10 bg-slate-800/80 font-semibold">
+                  <td className="px-3 py-3 text-white">Total</td>
+                  <td className="px-3 py-3 text-right text-white">{fmt(data.summary.total_charged)}</td>
+                  <td className="px-3 py-3 text-right text-emerald-200">{fmt(data.summary.total_paid)}</td>
+                  <td className={`px-3 py-3 text-right ${data.summary.balance > 0 ? 'text-red-200' : 'text-emerald-200'}`}>
+                    {fmt(data.summary.balance)}
+                  </td>
+                </tr>
               </tbody>
             </table>
-          </>
-        )}
+          </div>
+        </div>
 
-        <p className="text-xs text-slate-500 text-right mt-6">
+        {data.summary.balance > 0 ? (
+          <div className="mt-6">
+            <ReportNotice tone="warning">
+              Outstanding Balance: {fmt(data.summary.balance)}. Please settle at the earliest convenience.
+            </ReportNotice>
+          </div>
+        ) : null}
+
+        {data.payments.length > 0 ? (
+          <div className="mt-6">
+            <ReportSectionTitle>Payment History</ReportSectionTitle>
+            <div className="overflow-x-auto rounded-[28px] border border-white/10">
+              <table className="min-w-full border-collapse text-sm">
+                <thead>
+                  <tr className="bg-slate-800/90 text-white">
+                    <th className="px-3 py-3 text-left">Date</th>
+                    <th className="px-3 py-3 text-left">Reference</th>
+                    <th className="px-3 py-3 text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.payments.map((p, i) => (
+                    <tr key={i} className="border-t border-white/5 bg-slate-950/30">
+                      <td className="px-3 py-3 text-slate-100">{p.date}</td>
+                      <td className="px-3 py-3 text-slate-400">{p.reference}</td>
+                      <td className="px-3 py-3 text-right font-medium text-emerald-200">{fmt(p.amount)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : null}
+
+        <p className="mt-6 text-right text-xs text-slate-500">
           Generated: {new Date(data.generated_at).toLocaleString()}
         </p>
-      </div>
+      </ReportSurface>
 
-      <style>{`
-        @media print {
-          body * { visibility: hidden; }
-          .print\\:shadow-none, .print\\:shadow-none * { visibility: visible; }
-          .print\\:shadow-none { position: absolute; left: 0; top: 0; width: 100%; }
-          .print\\:hidden { display: none !important; }
-        }
-      `}</style>
-    </div>
+      <ReportPrintStyles />
+    </ReportPage>
   );
 }

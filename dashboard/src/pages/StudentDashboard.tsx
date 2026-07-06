@@ -13,6 +13,7 @@ import {
   Tooltip,
   Legend,
   ResponsiveContainer,
+  Label,
 } from 'recharts';
 import {
   TrendingUp,
@@ -182,8 +183,12 @@ export default function StudentDashboardPage() {
             <ResponsiveContainer width="100%" height={300}>
               <BarChart data={subjectChartData}>
                 <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis domain={[0, 100]} />
+                <XAxis dataKey="name">
+                  <Label value="Subject" position="insideBottom" offset={-5} />
+                </XAxis>
+                <YAxis domain={[0, 100]}>
+                  <Label value="Average Score (%)" angle={-90} position="insideLeft" />
+                </YAxis>
                 <Tooltip />
                 <Bar dataKey="avg" fill="#3b82f6" radius={[8, 8, 0, 0]} />
               </BarChart>
@@ -226,8 +231,12 @@ export default function StudentDashboardPage() {
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={trendChartData}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="name" />
-              <YAxis domain={[0, 100]} />
+              <XAxis dataKey="name">
+                <Label value="Term" position="insideBottom" offset={-5} />
+              </XAxis>
+              <YAxis domain={[0, 100]}>
+                <Label value="Performance (%)" angle={-90} position="insideLeft" />
+              </YAxis>
               <Tooltip />
               <Legend />
               <Line
