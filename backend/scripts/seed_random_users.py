@@ -1,4 +1,4 @@
-# python3 scripts/seed_random_users.py --password 'Password123!' --students-per-department 15 --trainers-per-department 4
+# python3 scripts/seed_random_users.py --password 'Password123!' --students-per-department 15 --trainers-per-department 4 --bootstrap-missing-catalog
 
 import argparse
 import random
@@ -83,7 +83,7 @@ def parse_args() -> argparse.Namespace:
         help="Comma-separated department names to target, e.g. 'Art,Engineering,Business Studies'.",
     )
     parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducible output.")
-    parser.add_argument("--email-domain", default="seed.lad.local", help="Email domain for generated accounts.")
+    parser.add_argument("--email-domain", default="larim.co.ke", help="Email domain for generated accounts.")
     parser.add_argument("--prefix", default="seed", help="Prefix used in generated email and registration values.")
     parser.add_argument(
         "--cohort-years",
@@ -603,6 +603,13 @@ def main() -> None:
         print(f"Skipped departments without courses: {summary.skipped_departments_without_courses}")
         print(f"Skipped course picks without modules/subjects: {summary.skipped_courses_without_modules_or_subjects}")
         print(f"Default password for generated accounts: {args.password}")
+        if (
+            summary.users == 0
+            and not args.bootstrap_missing_catalog
+            and summary.skipped_departments_without_courses > 0
+        ):
+            print("Hint: no users were created because the targeted departments do not have courses yet.")
+            print("Re-run with --bootstrap-missing-catalog to auto-create starter courses, modules, and subjects.")
 
 
 if __name__ == "__main__":
