@@ -12,6 +12,7 @@ interface ProgressRow {
   student_name: string;
   registration_number: string;
   course_name: string;
+  department_name: string;
   module_name: string;
   subject_name: string;
   avg_score: number;
@@ -32,10 +33,6 @@ function deriveStatus(avg: number): ProgressRow['status'] {
   if (avg >= 60) return 'average';
   if (avg >= 50) return 'at_risk';
   return 'critical';
-}
-
-function scoreToProgress(score: number) {
-  return Math.min(100, Math.max(0, score));
 }
 
 const STATUS_STYLES: Record<ProgressRow['status'], string> = {
@@ -111,7 +108,7 @@ async function fetchProgress(token: string | null, userId: string, userType: str
     
     for (const s of scoreArray) {
       // Get student_id from enrollment if not directly set
-      let sid = s.student_id;
+      const sid = s.student_id;
       if (!sid && s.enrollment_id) {
         // Would need to fetch enrollment data, skip for now
         continue;
@@ -135,8 +132,9 @@ async function fetchProgress(token: string | null, userId: string, userType: str
         student_name: stScores[0]?.student_name ?? '—',
         registration_number: stScores[0]?.registration_number ?? '—',
         course_name: stScores[0]?.course_name ?? '—',
-        module_name: '—',
-        subject_name: '—',
+        department_name: stScores[0]?.department_name ?? 'Unassigned',
+        module_name: stScores[0]?.module_name ?? '—',
+        subject_name: stScores[0]?.subject_name ?? '—',
         avg_score: avgRounded,
         total_assessments: stScores.length,
         passed,
@@ -175,6 +173,7 @@ async function fetchProgress(token: string | null, userId: string, userType: str
       student_name: 'Me',
       registration_number: '—',
       course_name: first?.subject?.module?.course?.name ?? '—',
+      department_name: first?.subject?.module?.course?.department?.name ?? '—',
       module_name: first?.subject?.module?.name ?? '—',
       subject_name: first?.subject?.name ?? '—',
       avg_score: avgRounded,
@@ -226,6 +225,8 @@ const ProgressTable = () => {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [departmentFilter, setDepartmentFilter] = useState('all');
+  const [prioritySort, setPrioritySort] = useState('attention');
 
   const isAdmin = user?.user_type === 'admin' || user?.user_type === 'manager'
     || user?.role_name?.toLowerCase() === 'admin'
@@ -248,19 +249,32 @@ const ProgressTable = () => {
 
   useEffect(() => { load(); }, [user?.id, token]);
 
+  const departments = useMemo(
+    () => Array.from(new Set(rows.map((row) => row.department_name).filter(Boolean))).sort(),
+    [rows],
+  );
+
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
-    return rows.filter((r) => {
+    const matches = rows.filter((r) => {
       const matchSearch =
         !q ||
         r.student_name.toLowerCase().includes(q) ||
         r.registration_number.toLowerCase().includes(q) ||
+        r.department_name.toLowerCase().includes(q) ||
         r.course_name.toLowerCase().includes(q) ||
         r.subject_name.toLowerCase().includes(q);
       const matchStatus = statusFilter === 'all' || r.status === statusFilter;
-      return matchSearch && matchStatus;
+      const matchDepartment = departmentFilter === 'all' || r.department_name === departmentFilter;
+      return matchSearch && matchStatus && matchDepartment;
     });
-  }, [rows, search, statusFilter]);
+    return [...matches].sort((a, b) => {
+      if (prioritySort === 'highest') return b.avg_score - a.avg_score;
+      if (prioritySort === 'assessments') return b.total_assessments - a.total_assessments;
+      if (prioritySort === 'attention') return a.avg_score - b.avg_score || a.student_name.localeCompare(b.student_name);
+      return 0;
+    });
+  }, [rows, search, statusFilter, departmentFilter, prioritySort]);
 
   const tc = useTableControls(filtered, 15);
 
@@ -294,6 +308,26 @@ const ProgressTable = () => {
               <option value="at_risk">At Risk</option>
               <option value="critical">Critical</option>
             </select>
+            {isAdmin ? (
+              <select
+                value={departmentFilter}
+                onChange={(e) => setDepartmentFilter(e.target.value)}
+                className="px-3 py-2 text-sm bg-slate-800 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="all">All departments</option>
+                {departments.map((department) => <option key={department} value={department}>{department}</option>)}
+              </select>
+            ) : null}
+            <select
+              value={prioritySort}
+              onChange={(e) => setPrioritySort(e.target.value)}
+              className="px-3 py-2 text-sm bg-slate-800 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="attention">Needs attention first</option>
+              <option value="highest">Highest progress first</option>
+              <option value="assessments">Most assessments first</option>
+              <option value="none">Manual column sorting</option>
+            </select>
           </div>
           <button
             onClick={load}
@@ -325,6 +359,7 @@ const ProgressTable = () => {
                 <tr>
                   {isAdmin && <SortableTh label="Student" sortKey="student_name" sort={tc.sort} onSort={tc.setSort} />}
                   {isAdmin && <SortableTh label="Reg No" sortKey="registration_number" sort={tc.sort} onSort={tc.setSort} />}
+                  {isAdmin && <SortableTh label="Department" sortKey="department_name" sort={tc.sort} onSort={tc.setSort} />}
                   <SortableTh label={isAdmin ? 'Course' : 'Subject'} sortKey={isAdmin ? 'course_name' : 'subject_name'} sort={tc.sort} onSort={tc.setSort} />
                   {!isAdmin && <SortableTh label="Module" sortKey="module_name" sort={tc.sort} onSort={tc.setSort} />}
                   <SortableTh label="Avg Score" sortKey="avg_score" sort={tc.sort} onSort={tc.setSort} />
@@ -344,6 +379,9 @@ const ProgressTable = () => {
                     )}
                     {isAdmin && (
                       <td className="px-6 py-4 text-sm text-slate-400">{row.registration_number}</td>
+                    )}
+                    {isAdmin && (
+                      <td className="px-6 py-4 text-sm text-slate-400">{row.department_name}</td>
                     )}
                     <td className="px-6 py-4 text-sm text-slate-300">
                       {isAdmin ? row.course_name : row.subject_name}

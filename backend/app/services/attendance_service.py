@@ -40,7 +40,7 @@ class AttendanceService:
         return "".join(secrets.choice(chars) for _ in range(6))
 
     @staticmethod
-    def generate_qr_token(session_id: str, qr_seed: str, secret_key: str) -> str:
+    def generate_qr_token(session_id: str, qr_seed: str, secret_key: str, regeneration_interval: int = 25) -> str:
         """
         Generate a rotating QR token using HMAC-SHA256.
         
@@ -56,7 +56,8 @@ class AttendanceService:
         - Cryptographically secure
         - Not replayable
         """
-        timestamp_window = int(datetime.utcnow().timestamp() / AttendanceService.DEFAULT_REGENERATION_INTERVAL)
+        interval = max(1, int(regeneration_interval))
+        timestamp_window = int(datetime.utcnow().timestamp() / interval)
         
         # Create HMAC of session_id + timestamp + seed
         message = f"{session_id}:{timestamp_window}:{qr_seed}".encode()
@@ -118,7 +119,7 @@ class AttendanceService:
         )
         
         # Generate initial token
-        token = AttendanceService.generate_qr_token(str(session.id), qr_seed, secret_key)
+        token = AttendanceService.generate_qr_token(str(session.id), qr_seed, secret_key, regeneration_interval)
         session.current_token = token
         
         db.session.add(session)
@@ -162,7 +163,7 @@ class AttendanceService:
             raise ValueError("Session is not active")
         
         # Generate new token
-        new_token = AttendanceService.generate_qr_token(str(session.id), session.qr_seed, secret_key)
+        new_token = AttendanceService.generate_qr_token(str(session.id), session.qr_seed, secret_key, session.regeneration_interval)
         old_token = session.current_token
         
         # Update session with new token
@@ -348,21 +349,9 @@ class AttendanceService:
         )
         
         if distance > session.allowed_radius_meters:
-            # Create failed record for analytics
-            record = AttendanceRecord(
-                attendance_session_id=session_id,
-                student_id=student_id,
-                latitude=student_latitude,
-                longitude=student_longitude,
-                ip_address=ip_address,
-                browser_info=browser_info,
-                device_hash=device_hash,
-                status="failed_gps",
-                distance_from_trainer=distance
-            )
-            db.session.add(record)
-            db.session.commit()
-            return record, False, f"Location too far: {distance:.0f}m > {session.allowed_radius_meters}m allowed"
+            # Do not consume the one-success-per-session record slot for a
+            # rejected GPS attempt; the student must be able to retry.
+            return None, False, f"Location too far: {distance:.0f}m > {session.allowed_radius_meters}m allowed"
         
         # All validations passed - create successful record
         try:

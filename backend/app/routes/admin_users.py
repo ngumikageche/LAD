@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from flask import Blueprint, request
 from werkzeug.security import generate_password_hash
+from sqlalchemy.exc import IntegrityError
 
 from ..extensions import db
 from ..models.user import User
@@ -30,27 +31,31 @@ def create_user():
     institution_id = payload.get("institution_id")
     user_type = payload.get("user_type")
 
-    if not name or not email or not password:
-        return {"error": "name, email and password are required"}, 400
+    if not name or not email or not password or not role_id:
+        return {"error": "name, email, password and role_id are required"}, 400
 
     # ensure role exists
     role = db.session.get(RolePermission, role_id) if role_id else None
     if role_id and not role:
         return {"error": "Invalid role_id"}, 400
 
-    u = User(name=name.strip(), email=email.strip().lower(), phone=phone, password_hash=generate_password_hash(password), role_id=role.id if role else None, institution_id=institution_id)
+    u = User(name=name.strip(), email=email.strip().lower(), phone=phone, password_hash=generate_password_hash(password), role_id=role.id, institution_id=institution_id)
     db.session.add(u)
-    db.session.commit()
-
-    # optionally create student or trainer profile
-    if user_type == "student":
-        s = Student(user_id=u.id, registration_number=payload.get("registration_number", ""), course_id=payload.get("course_id"), enrollment_year=payload.get("enrollment_year", 0))
-        db.session.add(s)
-    elif user_type == "trainer":
-        t = Trainer(user_id=u.id, department_id=payload.get("department_id"), specialization=payload.get("specialization"))
-        db.session.add(t)
-
-    db.session.commit()
+    try:
+        db.session.flush()
+        if user_type == "student":
+            registration_number = payload.get("registration_number")
+            enrollment_year = payload.get("enrollment_year")
+            if not registration_number or not isinstance(enrollment_year, int):
+                db.session.rollback()
+                return {"error": "student accounts require registration_number and enrollment_year"}, 400
+            db.session.add(Student(user_id=u.id, registration_number=registration_number.strip(), course_id=payload.get("course_id"), enrollment_year=enrollment_year))
+        elif user_type == "trainer":
+            db.session.add(Trainer(user_id=u.id, department_id=payload.get("department_id"), specialization=payload.get("specialization")))
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return {"error": "User or profile already exists, or contains invalid related data"}, 409
 
     return {"id": str(u.id), "email": u.email, "name": u.name}, 201
 

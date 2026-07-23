@@ -15,14 +15,23 @@ from ..models.trainer import Trainer
 from ..models.course import Course
 from ..models.notification import Notification
 from ..models.subject import Subject
+from ..models.score_evidence import ScoreEvidence
 from .permissions import log_view, require_permission, get_current_user
-from ..services.score_evidence import EVIDENCE_UPLOAD_FOLDER
+from ..services.score_evidence import EVIDENCE_UPLOAD_FOLDER, can_access_score_evidence
 
 bp = Blueprint('scores', __name__, url_prefix='/scores')
 
 
 @bp.get("/evidence/files/<path:filename>")
 def serve_score_evidence_file(filename: str):
+    user, error, status = get_current_user()
+    if error:
+        return error, status
+    evidence = db.session.query(ScoreEvidence).filter(
+        ScoreEvidence.file_url == f"/scores/evidence/files/{filename}"
+    ).first()
+    if not evidence or not can_access_score_evidence(user, evidence):
+        return {"error": "File not found"}, 404
     return send_from_directory(EVIDENCE_UPLOAD_FOLDER, filename)
 
 
@@ -44,19 +53,33 @@ def _score_payload(score: Score) -> dict:
         student_name = student.user.name
         registration_number = student.registration_number
     
+    course = (
+        score.enrollment.course
+        if score.enrollment and score.enrollment.course
+        else student.course if student else None
+    )
+    subject = score.subject
+    module = subject.module if subject else (score.enrollment.module if score.enrollment else None)
+    department = course.department if course else None
+
     return {
         "id": str(score.id),
         "student_id": str(score.student_id) if score.student_id else (str(score.enrollment.student_id) if score.enrollment else None),
         "student_name": student_name,
         "registration_number": registration_number,
-        "enrollment_id": str(score.enrollment_id),
-        "assessment_id": str(score.assessment_id),
+        "enrollment_id": str(score.enrollment_id) if score.enrollment_id else None,
+        "assessment_id": str(score.assessment_id) if score.assessment_id else None,
+        "subject_id": str(score.subject_id) if score.subject_id else None,
+        "subject_name": subject.name if subject else None,
         "marks_obtained": score.marks_obtained,
         "grade": score.grade,
         "feedback": score.feedback,
         "is_passed": score.is_passed,
         "assessment_name": score.assessment.name if score.assessment else None,
-        "course_name": score.enrollment.course.name if score.enrollment and score.enrollment.course else None,
+        "term": score.term,
+        "course_name": course.name if course else None,
+        "department_name": department.name if department else None,
+        "module_name": module.name if module else None,
         "created_at": score.created_at.isoformat() if score.created_at else None,
     }
 
@@ -91,6 +114,13 @@ def create_score():
     if not assessment:
         return {"error": "Invalid 'assessment_id'"}, 400
 
+    subject_id = None
+    if payload.get("subject_id"):
+        try:
+            subject_id = _parse_uuid(payload.get("subject_id"), "subject_id")
+        except ValueError as exc:
+            return {"error": str(exc)}, 400
+
     # Validate marks against total
     if marks_obtained < 0 or marks_obtained > assessment.total_marks:
         return {
@@ -98,7 +128,7 @@ def create_score():
         }, 400
 
     # Verify trainer has access to this course
-    trainer = db.session.query(Trainer).filter(Trainer.user_id == user["id"]).first()
+    trainer = db.session.query(Trainer).filter(Trainer.user_id == user.id).first()
     if trainer:  # Only check if user is a trainer
         from ..models.trainer_course import TrainerCourse
         has_access = db.session.query(TrainerCourse).filter(
@@ -116,6 +146,10 @@ def create_score():
     score = Score(
         enrollment_id=enrollment_id,
         assessment_id=assessment_id,
+        student_id=enrollment.student_id,
+        subject_id=subject_id,
+        trainer_id=trainer.id if trainer else None,
+        term=assessment.term.name if assessment.term else payload.get("term"),
         marks_obtained=marks_obtained,
         is_passed=is_passed,
         feedback=payload.get("feedback"),
@@ -123,34 +157,37 @@ def create_score():
 
     db.session.add(score)
     try:
+        db.session.flush()
+
+        # Notifications are part of the score-save transaction. A failed
+        # notification insert must not leave a score that the caller was told
+        # failed to save.
+        student = enrollment.student
+        course_name = enrollment.course.name if enrollment.course else "your course"
+        if student and student.user_id:
+            db.session.add(
+                Notification(
+                    user_id=student.user_id,
+                    title="New Score Available",
+                    message=f"Your score for {assessment.name} in {course_name} is now available.",
+                    is_read=False,
+                )
+            )
+            if is_passed is False:
+                db.session.add(
+                    Notification(
+                        user_id=student.user_id,
+                        title="Performance Alert",
+                        message=f"Your score in {course_name} is below passing. Please take corrective action.",
+                        is_read=False,
+                    )
+                )
         db.session.commit()
     except IntegrityError:
         db.session.rollback()
         return {"error": "Score already exists for this enrollment and assessment"}, 409
 
     db.session.refresh(score)
-
-    # Create notification for student
-    student = enrollment.student
-    notification = Notification(
-        user_id=student.user_id,
-        title="New Score Available",
-        message=f"Your score for {assessment.name} in {enrollment.course.name} is now available.",
-        is_read=False,
-    )
-    db.session.add(notification)
-
-    # Create alert if score is poor
-    if is_passed is False:
-        alert = Notification(
-            user_id=student.user_id,
-            title="Performance Alert",
-            message=f"Your score in {enrollment.course.name} is below passing. Please take corrective action.",
-            is_read=False,
-        )
-        db.session.add(alert)
-
-    db.session.commit()
 
     log_view(user, "scores", entity_id=str(score.id), metadata={"action": "created"})
     return _score_payload(score), 201
@@ -173,7 +210,7 @@ def update_score(score_id: str):
         return {"error": "Score not found"}, 404
 
     # Verify trainer has access
-    trainer = db.session.query(Trainer).filter(Trainer.user_id == user["id"]).first()
+    trainer = db.session.query(Trainer).filter(Trainer.user_id == user.id).first()
     if trainer:
         from ..models.trainer_course import TrainerCourse
         has_access = db.session.query(TrainerCourse).filter(

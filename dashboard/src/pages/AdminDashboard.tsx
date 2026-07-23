@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Users, BookOpen, TrendingUp, AlertCircle, BarChart3, PieChart, LineChart as LineChartIcon, Filter } from 'lucide-react';
 import { LineChart, Line, PieChart as PieChartComponent, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, Label } from 'recharts';
 import { adminDashboardAPI, adminAnalyticsAPI, type DashboardScopeFilters } from '../api/admin';
@@ -67,6 +67,7 @@ export default function AdminDashboard() {
   const [comparison, setComparison] = useState<CohortComparisonResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [departmentSort, setDepartmentSort] = useState<'highest' | 'lowest' | 'students'>('highest');
 
   useEffect(() => {
     const loadOptions = async () => {
@@ -98,7 +99,7 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     const cacheKey = [
-      'lad.admin.dashboard.v2',
+      'lad.admin.dashboard.v3',
       scope.course_id,
       scope.module_id,
       scope.subject_id,
@@ -143,6 +144,8 @@ export default function AdminDashboard() {
           { label: 'Total Students', value: dashboardData.system_overview?.total_students || 0, icon: Users, color: 'text-blue-600', bgColor: 'bg-blue-100' },
           { label: 'Active Trainers', value: dashboardData.system_overview?.total_trainers || 0, icon: Users, color: 'text-purple-600', bgColor: 'bg-purple-100' },
           { label: 'Total Courses', value: dashboardData.system_overview?.total_courses || 0, icon: BookOpen, color: 'text-amber-600', bgColor: 'bg-amber-100' },
+          { label: 'Departments', value: dashboardData.system_overview?.total_departments || 0, icon: BookOpen, color: 'text-cyan-600', bgColor: 'bg-cyan-100' },
+          { label: 'Progress Records', value: advancedData?.progress?.items?.length || 0, icon: BarChart3, color: 'text-indigo-600', bgColor: 'bg-indigo-100' },
           { label: 'Overall Pass Rate', value: `${dashboardData.academic_metrics?.overall_pass_rate || 0}%`, icon: TrendingUp, color: 'text-emerald-600', bgColor: 'bg-emerald-100' },
         ];
         setMetrics(nextMetrics);
@@ -217,6 +220,12 @@ export default function AdminDashboard() {
       return next;
     });
   };
+
+  const sortedDepartments = useMemo(() => [...departments].sort((a, b) => {
+    if (departmentSort === 'lowest') return a.avg_score - b.avg_score;
+    if (departmentSort === 'students') return b.students_count - a.students_count;
+    return b.avg_score - a.avg_score;
+  }), [departments, departmentSort]);
 
   if (loading) {
     return (
@@ -327,12 +336,14 @@ export default function AdminDashboard() {
         </div>
 
         {/* Key Metrics */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 mb-8">
           {[
             { ...metrics[0], description: 'Shows the total number of learner records currently active in the institution-level dataset.' },
             { ...metrics[1], description: 'Shows the number of trainers currently active in the system.' },
             { ...metrics[2], description: 'Shows the total number of courses configured across the institution.' },
-            { ...metrics[3], description: 'Shows the percentage of recorded scores that meet the pass threshold across the dashboard scope.' },
+            { ...metrics[3], description: 'Shows the number of configured academic departments.' },
+            { ...metrics[4], description: 'Shows the number of learner progress records available in the current dashboard scope.' },
+            { ...metrics[5], description: 'Shows the percentage of recorded scores that meet the pass threshold across the dashboard scope.' },
           ].filter(Boolean).map((metric, idx) => {
             const Icon = metric.icon;
             return (
@@ -468,7 +479,18 @@ export default function AdminDashboard() {
                 <BarChart3 size={24} className="text-emerald-400" />
                 <h2 className="text-lg font-bold text-slate-100">Department Performance</h2>
               </div>
-              <WidgetHelp title="Department Performance" description="Tabulates department-level learner count, average score, and pass rate to support institutional benchmarking." />
+              <div className="flex items-center gap-3">
+                <select
+                  value={departmentSort}
+                  onChange={(event) => setDepartmentSort(event.target.value as typeof departmentSort)}
+                  className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-300"
+                >
+                  <option value="highest">Highest performance first</option>
+                  <option value="lowest">Needs attention first</option>
+                  <option value="students">Largest department first</option>
+                </select>
+                <WidgetHelp title="Department Performance" description="Tabulates department-level learner count, average score, and pass rate to support institutional benchmarking." />
+              </div>
             </div>
           </div>
           <div className="overflow-x-auto">
@@ -494,7 +516,7 @@ export default function AdminDashboard() {
               </thead>
               <tbody className="divide-y divide-slate-800">
                 {departments.length > 0 ? (
-                  departments.map((dept, idx) => (
+                  sortedDepartments.map((dept, idx) => (
                     <tr key={idx} className="hover:bg-slate-800/60">
                       <td className="px-6 py-4 font-medium text-slate-200">{dept.name}</td>
                       <td className="px-6 py-4 text-slate-400">{dept.students_count.toLocaleString()}</td>
@@ -565,7 +587,7 @@ export default function AdminDashboard() {
         )}
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-6 gap-4">
           <button onClick={() => navigate('/users')} className="p-4 bg-slate-900 border border-blue-800 rounded-lg hover:bg-blue-900/40 transition text-left">
             <p className="font-semibold text-slate-100">👥 Manage Users</p>
             <p className="text-sm text-slate-400 mt-1">Create/edit user accounts</p>
@@ -573,6 +595,14 @@ export default function AdminDashboard() {
           <button onClick={() => navigate('/institutions')} className="p-4 bg-slate-900 border border-purple-800 rounded-lg hover:bg-purple-900/40 transition text-left">
             <p className="font-semibold text-slate-100">🏫 Institutions</p>
             <p className="text-sm text-slate-400 mt-1">Manage institution data</p>
+          </button>
+          <button onClick={() => navigate('/departments')} className="p-4 bg-slate-900 border border-cyan-800 rounded-lg hover:bg-cyan-900/40 transition text-left">
+            <p className="font-semibold text-slate-100">🏢 Departments</p>
+            <p className="text-sm text-slate-400 mt-1">Manage department data</p>
+          </button>
+          <button onClick={() => navigate('/progress')} className="p-4 bg-slate-900 border border-green-800 rounded-lg hover:bg-green-900/40 transition text-left">
+            <p className="font-semibold text-slate-100">📶 Progress Tracking</p>
+            <p className="text-sm text-slate-400 mt-1">Prioritize learner progress</p>
           </button>
           <button onClick={() => navigate('/admin/analytics')} className="p-4 bg-slate-900 border border-emerald-800 rounded-lg hover:bg-emerald-900/40 transition text-left">
             <p className="font-semibold text-slate-100">📊 Analytics</p>

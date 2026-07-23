@@ -15,7 +15,7 @@ from ..models.student import Student
 from ..models.student_subject import StudentSubject
 from ..models.subject import Subject
 from ..models.user import User
-from .permissions import log_view, require_permission
+from .permissions import _is_admin, log_view, require_permission
 
 
 bp = Blueprint("notifications", __name__, url_prefix="/notifications")
@@ -74,9 +74,11 @@ def _normalize_delivery_channels(payload: dict) -> list[str]:
     return channels
 
 
-def _bulk_recipient_query(filters: dict):
+def _bulk_recipient_query(filters: dict, actor: User):
     target = filters.get("target", "all")
     query = db.session.query(User).filter(User.deleted_at.is_(None))
+    if actor.institution_id is not None:
+        query = query.filter(User.institution_id == actor.institution_id)
 
     if target == "all":
         return query
@@ -216,7 +218,7 @@ def create_bulk_notifications():
         return {"error": "'sms_config' must be an object"}, 400
 
     try:
-        recipient_query = _bulk_recipient_query(filters)
+        recipient_query = _bulk_recipient_query(filters, user)
         delivery_channels = _normalize_delivery_channels(payload)
     except ValueError as exc:
         return {"error": str(exc)}, 400
@@ -292,7 +294,9 @@ def list_notifications():
 
     target_user_id = request.args.get("user_id")
     query = db.session.query(Notification)
-    if target_user_id:
+    if not _is_admin(user):
+        query = query.filter(Notification.user_id == user.id)
+    elif target_user_id:
         try:
             user_uuid = _parse_uuid(target_user_id, "user_id")
         except ValueError as exc:
@@ -318,6 +322,8 @@ def get_notification(notification_id: str):
     notification = db.session.get(Notification, notification_uuid)
     if not notification:
         return {"error": "Notification not found"}, 404
+    if not _is_admin(user) and notification.user_id != user.id:
+        return {"error": "Notification not found"}, 404
 
     log_view(user, "notifications", entity_id=notification_id, metadata={"scope": "detail"})
     return _notification_payload(notification), 200
@@ -325,7 +331,7 @@ def get_notification(notification_id: str):
 
 @bp.put("/<notification_id>")
 def update_notification(notification_id: str):
-    _, error, status = require_permission("notifications.update")
+    user, error, status = require_permission("notifications.update")
     if error:
         return error, status
 
@@ -337,16 +343,19 @@ def update_notification(notification_id: str):
     notification = db.session.get(Notification, notification_uuid)
     if not notification:
         return {"error": "Notification not found"}, 404
+    is_admin = _is_admin(user)
+    if not is_admin and notification.user_id != user.id:
+        return {"error": "Notification not found"}, 404
 
     payload = request.get_json(silent=True) or {}
 
-    title = payload.get("title")
+    title = payload.get("title") if is_admin else None
     if title is not None:
         if not isinstance(title, str) or not title.strip():
             return {"error": "'title' must be a non-empty string"}, 400
         notification.title = title.strip()
 
-    message = payload.get("message")
+    message = payload.get("message") if is_admin else None
     if message is not None:
         if not isinstance(message, str) or not message.strip():
             return {"error": "'message' must be a non-empty string"}, 400
@@ -355,7 +364,7 @@ def update_notification(notification_id: str):
     if "is_read" in payload:
         notification.is_read = bool(payload.get("is_read"))
 
-    if "user_id" in payload:
+    if "user_id" in payload and is_admin:
         try:
             user_id = _parse_uuid(payload.get("user_id"), "user_id")
         except ValueError as exc:
@@ -370,7 +379,7 @@ def update_notification(notification_id: str):
 
 @bp.delete("/<notification_id>")
 def delete_notification(notification_id: str):
-    _, error, status = require_permission("notifications.delete")
+    user, error, status = require_permission("notifications.delete")
     if error:
         return error, status
 
@@ -381,6 +390,8 @@ def delete_notification(notification_id: str):
 
     notification = db.session.get(Notification, notification_uuid)
     if not notification:
+        return {"error": "Notification not found"}, 404
+    if not _is_admin(user) and notification.user_id != user.id:
         return {"error": "Notification not found"}, 404
 
     db.session.delete(notification)

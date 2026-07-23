@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import ForeignKey, Float, Index, String, Text, UniqueConstraint
+from sqlalchemy import ForeignKey, Float, Index, String, Text, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -12,8 +12,22 @@ from .base import BaseModel
 class Score(BaseModel):
     __tablename__ = "scores"
     __table_args__ = (
-        UniqueConstraint("student_id", "subject_id", "term", name="uq_scores_student_subject_term"),
         Index("ix_scores_student_subject_term", "student_id", "subject_id", "term"),
+        Index(
+            "uq_scores_student_assessment",
+            "student_id",
+            "assessment_id",
+            unique=True,
+            postgresql_where=text("assessment_id IS NOT NULL AND deleted_at IS NULL"),
+        ),
+        Index(
+            "uq_scores_student_subject_term_unassessed",
+            "student_id",
+            "subject_id",
+            "term",
+            unique=True,
+            postgresql_where=text("assessment_id IS NULL AND deleted_at IS NULL"),
+        ),
     )
 
     enrollment_id: Mapped[uuid.UUID] = mapped_column(

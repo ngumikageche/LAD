@@ -230,7 +230,6 @@ def create_score(trainer: Trainer, payload: dict) -> Score:
     )
 
     db.session.add(score)
-    db.session.flush()
 
     if student.user_id:
         db.session.add(
@@ -252,8 +251,10 @@ def create_score(trainer: Trainer, payload: dict) -> Score:
                 )
             )
 
-    db.session.commit()
-    db.session.refresh(score)
+    # The route owns the transaction because score evidence is saved immediately
+    # afterwards. Committing here could leave an orphan score when evidence
+    # persistence fails.
+    db.session.flush()
     return score
 
 

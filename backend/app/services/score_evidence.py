@@ -72,3 +72,51 @@ def save_score_evidence_files(
 
     current_app.logger.info("Saved %s score evidence file(s)", len(saved))
     return saved
+
+
+def remove_score_evidence_files(evidence_items: Iterable[ScoreEvidence]) -> None:
+    """Remove filesystem files created for a transaction that was rolled back."""
+    for evidence in evidence_items:
+        filename = (evidence.file_url or "").rsplit("/", 1)[-1]
+        path = os.path.join(EVIDENCE_UPLOAD_FOLDER, filename)
+        try:
+            if filename and os.path.isfile(path):
+                os.remove(path)
+        except OSError:
+            current_app.logger.exception("Unable to remove rolled-back evidence file %s", filename)
+
+
+def can_access_score_evidence(user, evidence: ScoreEvidence) -> bool:
+    """Apply ownership rules to a score-evidence download."""
+    from ..models.student_subject import StudentSubject
+    from ..models.trainer_subject import TrainerSubject
+
+    role_name = ((user.role.role_name if user.role else "") or "").lower()
+    permissions = user.role.permissions if user.role and user.role.permissions else {}
+    if role_name in {"admin", "super admin"} or permissions.get("*") is True:
+        return True
+    if evidence.uploaded_by == user.id:
+        return True
+    if user.trainer:
+        if evidence.trainer_id == user.trainer.id:
+            return True
+        if evidence.subject_id:
+            return db.session.query(TrainerSubject.id).filter(
+                TrainerSubject.trainer_id == user.trainer.id,
+                TrainerSubject.subject_id == evidence.subject_id,
+            ).first() is not None
+    if user.student:
+        if evidence.score and (
+            evidence.score.student_id == user.student.id
+            or (
+                evidence.score.enrollment
+                and evidence.score.enrollment.student_id == user.student.id
+            )
+        ):
+            return True
+        if evidence.subject_id:
+            return db.session.query(StudentSubject.id).filter(
+                StudentSubject.student_id == user.student.id,
+                StudentSubject.subject_id == evidence.subject_id,
+            ).first() is not None
+    return False

@@ -1,9 +1,9 @@
 import { Link, useLocation } from 'react-router-dom';
 import {
-  Book, Home, Users, BarChart, FileText, ChevronsLeft, ChevronsRight, Upload,
+  Book, Users, BarChart, FileText, ChevronsLeft, ChevronsRight, Upload,
   Shield, Building2, School, KeyRound, UserCog, MessageSquare, TrendingUp,
-  BarChart3, Bell, ClipboardList, CalendarCheck, Receipt, GraduationCap,
-  BookOpen, UserCheck, ChevronDown, ChevronRight, Settings, LayoutDashboard,
+  BarChart3, Bell, ClipboardList, CalendarCheck, GraduationCap,
+  BookOpen, UserCheck, ChevronDown, ChevronRight, LayoutDashboard,
   QrCode, ScanLine, PenLine, HeartPulse,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -48,7 +48,6 @@ const studentGroups: NavGroup[] = [
         { name: 'Report Card',       icon: ClipboardList,   path: '/student/report-card',       color: 'text-blue-300', permission: 'reports.student.term' },
         { name: 'Practical Reports', icon: FileText,        path: '/student/practical-assessments', color: 'text-teal-300' },
         { name: 'Attendance',        icon: CalendarCheck,   path: '/student/attendance-report', color: 'text-green-400', permission: 'reports.student.attendance' },
-        { name: 'Fee Statement',     icon: Receipt,         path: '/student/fee-statement',     color: 'text-amber-400', permission: 'reports.student.fees' },
       ],
   },
   {
@@ -141,7 +140,6 @@ const adminGroups: NavGroup[] = [
     label: 'Reports',
     items: [
       { name: 'Exam Results',      icon: GraduationCap,   path: '/admin/reports/exam-results', color: 'text-blue-300', permission: 'reports.admin.pass_rate' },
-      { name: 'Fee Collection',    icon: Receipt,         path: '/admin/reports/fees',         color: 'text-green-400', permission: 'reports.admin.fees' },
       { name: 'Enrolment',         icon: ClipboardList,   path: '/admin/reports/enrolment',    color: 'text-amber-400', permission: 'reports.admin.enrolment' },
       { name: 'Disciplinary Records', icon: HeartPulse,   path: '/disciplinary-records',       color: 'text-rose-300', permission: 'reports.student.discipline' },
       { name: 'All Reports',       icon: FileText,        path: '/reports',                    color: 'text-teal-300', permission: 'reports.*' },

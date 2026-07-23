@@ -57,6 +57,27 @@ def _payload(doc: Document) -> dict:
     }
 
 
+def _can_access_document(user: User, doc: Document) -> bool:
+    if _is_admin(user) or doc.uploaded_by == user.id:
+        return True
+    if _is_trainer(user) and user.trainer:
+        return (
+            doc.subject_id is not None
+            and db.session.query(TrainerSubject.id).filter(
+                TrainerSubject.trainer_id == user.trainer.id,
+                TrainerSubject.subject_id == doc.subject_id,
+            ).first() is not None
+        )
+    if _is_student(user) and user.student:
+        if doc.subject_id is None:
+            return True
+        return db.session.query(StudentSubject.id).filter(
+            StudentSubject.student_id == user.student.id,
+            StudentSubject.subject_id == doc.subject_id,
+        ).first() is not None
+    return False
+
+
 def _notify_students(student_user_ids: list, doc: Document, subject_name: str | None) -> int:
     """Create notifications for a list of user IDs. Returns count sent."""
     host = request.host_url.rstrip("/")
@@ -118,6 +139,20 @@ def upload_document():
     if not _allowed(file.filename):
         return {"error": f"File type not allowed. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}"}, 400
 
+    # Determine subject scope from form data
+    subject_id_str = request.form.get("subject_id", "").strip()
+    subject_uuid = None
+    subject_name = None
+    if subject_id_str:
+        try:
+            subject_uuid = uuid.UUID(subject_id_str)
+            subj = db.session.get(Subject, subject_uuid)
+            if not subj or subj.deleted_at:
+                return {"error": "Subject not found"}, 404
+            subject_name = subj.name
+        except ValueError:
+            return {"error": "Invalid subject_id"}, 400
+
     os.makedirs(UPLOAD_FOLDER, exist_ok=True)
     safe_name = secure_filename(file.filename)
     unique_name = f"{uuid.uuid4().hex}_{safe_name}"
@@ -127,18 +162,6 @@ def upload_document():
     file_size = os.path.getsize(save_path)
     ext = safe_name.rsplit(".", 1)[-1].lower() if "." in safe_name else None
     file_url = f"/documents/files/{unique_name}"
-
-    # Determine subject scope from form data
-    subject_id_str = request.form.get("subject_id", "").strip()
-    subject_uuid = None
-    subject_name = None
-    if subject_id_str:
-        try:
-            subject_uuid = uuid.UUID(subject_id_str)
-            subj = db.session.get(Subject, subject_uuid)
-            subject_name = subj.name if subj else None
-        except ValueError:
-            return {"error": "Invalid subject_id"}, 400
 
     doc = Document(
         title=title,
@@ -169,6 +192,8 @@ def upload_document():
                 ).first()
                 if not teaches:
                     db.session.rollback()
+                    if os.path.exists(save_path):
+                        os.remove(save_path)
                     return {"error": "You are not assigned to that subject"}, 403
             user_ids = _students_for_subject(subject_uuid)
             sent = _notify_students(user_ids, doc, subject_name)
@@ -184,7 +209,14 @@ def upload_document():
             sent = _notify_students(user_ids, doc, subject_name)
         # target == "" means no auto-send; admin can use /send later
 
-    db.session.commit()
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        if os.path.exists(save_path):
+            os.remove(save_path)
+        current_app.logger.exception("Document upload transaction failed")
+        return {"error": "Document could not be saved"}, 409
     return {**_payload(doc), "notifications_sent": sent}, 201
 
 
@@ -193,6 +225,15 @@ def upload_document():
 @bp.get("/files/<path:filename>")
 def serve_file(filename: str):
     from flask import send_from_directory
+    user, error, status = get_current_user()
+    if error:
+        return error, status
+    doc = db.session.query(Document).filter(
+        Document.file_url == f"/documents/files/{filename}",
+        Document.deleted_at.is_(None),
+    ).first()
+    if not doc or not _can_access_document(user, doc):
+        return {"error": "File not found"}, 404
     return send_from_directory(os.path.abspath(UPLOAD_FOLDER), filename)
 
 

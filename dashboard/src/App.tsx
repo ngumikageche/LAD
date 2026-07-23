@@ -31,13 +31,11 @@ import AdminNotificationsPage from './pages/AdminNotificationsPage';
 import ReportCardPage from './pages/ReportCardPage';
 import StudentPracticalAssessmentPage from './pages/StudentPracticalAssessmentPage';
 import AttendanceReportPage from './pages/AttendanceReportPage';
-import FeeStatementPage from './pages/FeeStatementPage';
 import ClassPerformancePage from './pages/ClassPerformancePage';
 import SyllabusCoveragePage from './pages/SyllabusCoveragePage';
 import TrainerAttendancePage from './pages/TrainerAttendancePage';
 import TrainerManualAttendancePage from './pages/TrainerManualAttendancePage';
 import AdminExamResultsPage from './pages/AdminExamResultsPage';
-import AdminFeeCollectionPage from './pages/AdminFeeCollectionPage';
 import AdminEnrolmentPage from './pages/AdminEnrolmentPage';
 import AdminAttendancePage from './pages/AdminAttendancePage';
 import DisciplinaryRecordsPage from './pages/DisciplinaryRecordsPage';
@@ -86,9 +84,6 @@ function App() {
                 <Route path="/student/documents" element={<DocumentsPage />} />
                 <Route path="/student/online-exams" element={<StudentOnlineExamsPage />} />
               </Route>
-              <Route element={<PermissionRoute permissionKey="reports.student.fees" deniedTypes={['trainer', 'admin']} />}>
-                <Route path="/student/fee-statement" element={<FeeStatementPage />} />
-              </Route>
               <Route element={<UserTypeRoute allowedTypes={['trainer']} />}>
                 <Route path="/trainer-hub" element={<TrainerDashboardPage />} />
                 <Route path="/trainer/reports" element={<TrainerReportsPage />} />
@@ -136,9 +131,6 @@ function App() {
                 <Route path="/modules" element={<ModulesPage />} />
                 <Route path="/subjects" element={<SubjectsPage />} />
                 <Route path="/progress" element={<ProgressPage />} />
-              </Route>
-              <Route element={<PermissionRoute permissionKey="reports.admin.fees" deniedTypes={['student', 'trainer']} />}>
-                <Route path="/admin/reports/fees" element={<AdminFeeCollectionPage />} />
               </Route>
             </Route>
           </Route>

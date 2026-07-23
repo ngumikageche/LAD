@@ -62,7 +62,10 @@ def _verify_token(token: str) -> User | None:
     if not user_id:
         return None
 
-    return db.session.get(User, user_id)
+    user = db.session.get(User, user_id)
+    if not user or user.deleted_at is not None:
+        return None
+    return user
 
 
 def _get_bearer_token() -> str | None:
@@ -87,7 +90,10 @@ def login():
 
     user = (
         db.session.query(User)
-        .filter(User.email == email.strip().lower())
+        .filter(
+            User.email == email.strip().lower(),
+            User.deleted_at.is_(None),
+        )
         .first()
     )
 

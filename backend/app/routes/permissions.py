@@ -3,7 +3,7 @@ from __future__ import annotations
 from functools import wraps
 from typing import Any
 
-from flask import g
+from flask import current_app, g
 
 from ..extensions import db
 from ..models.system_log import SystemLog
@@ -121,7 +121,8 @@ def trainer_or_admin_required(permission_key: str | None = None):
 
 def _is_admin(user: User) -> bool:
     role_name = (user.role.role_name if user.role else "") or ""
-    return role_name.lower() == "admin" or (user.role and user.role.permissions.get("*") is True)
+    permissions = user.role.permissions if user.role and user.role.permissions else {}
+    return role_name.lower() in {"admin", "super admin"} or permissions.get("*") is True
 
 
 def admin_required(permission_key: str | None = None):
@@ -175,12 +176,25 @@ def student_required(permission_key: str | None = None):
     return decorator
 
 
-def log_view(user: User, entity: str, entity_id: str | None = None, metadata: dict[str, Any] | None = None) -> None:
+def log_view(user: User | None, entity: str, entity_id: str | None = None, metadata: dict[str, Any] | None = None) -> None:
+    """Write an audit event without committing or poisoning the caller's session."""
+    if user is None:
+        current_app.logger.warning("Skipped audit event %s because no user was supplied", entity)
+        return
     payload = {
         "entity": entity,
         "entity_id": entity_id,
         "metadata": metadata or {},
     }
-    log = SystemLog(action=f"{entity}.read", user_id=user.id, meta_data=payload)
-    db.session.add(log)
-    db.session.commit()
+    action = str((metadata or {}).get("action") or "read")
+    try:
+        with db.engine.begin() as connection:
+            connection.execute(
+                SystemLog.__table__.insert().values(
+                    action=f"{entity}.{action}",
+                    user_id=user.id,
+                    meta_data=payload,
+                )
+            )
+    except Exception:
+        current_app.logger.exception("Unable to write audit event for %s", entity)

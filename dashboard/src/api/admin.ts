@@ -21,9 +21,12 @@ const buildScopeQuery = (filters?: DashboardScopeFilters) => {
 
 // Admin Phase-3 Reports API
 export const adminReportsV2API = {
-  async getExamResults(termId?: string) {
-    const params = termId ? `?term_id=${termId}` : '';
-    const response = await apiClient.get(`/reports/admin/exam-results${params}`);
+  async getExamResults(filters?: { term_id?: string; department_id?: string; course_id?: string; subject_id?: string }) {
+    const params = new URLSearchParams();
+    Object.entries(filters ?? {}).forEach(([key, value]) => {
+      if (value) params.set(key, value);
+    });
+    const response = await apiClient.get(`/reports/admin/exam-results${params.size ? `?${params}` : ''}`);
     return response.data;
   },
   async getFeeCollection(termId?: string) {
@@ -212,7 +215,8 @@ export const adminNotificationsAPI = {
 export const adminUsersAPI = {
   async getUsers(filters?: any) {
     try {
-      const response = await apiClient.get('/admin/users', { params: filters });
+      const query = filters ? `?${new URLSearchParams(filters as Record<string, string>).toString()}` : '';
+      const response = await apiClient.get(`/admin/users${query}`);
       return response.data;
     } catch (error) {
       throw error;

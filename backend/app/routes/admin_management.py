@@ -135,7 +135,11 @@ def trainer_performance(trainer_id: str):
     ).all()
 
     if scores:
-        avg_student_score = (sum(s.marks_obtained for s in scores) / sum(s.assessment.total_marks for s in scores if s.assessment) * 100) if scores else 0
+        percentages = [
+            (s.marks_obtained / s.assessment.total_marks * 100) if s.assessment and s.assessment.total_marks else s.marks_obtained
+            for s in scores
+        ]
+        avg_student_score = sum(percentages) / len(percentages) if percentages else 0
         student_pass_rate = (sum(1 for s in scores if s.is_passed is True) / len(scores) * 100) if scores else 0
     else:
         avg_student_score = 0

@@ -300,7 +300,14 @@ def school_pass_rate_report(user: User, term_id: str | None = None):
     if term:
         q = q.filter(Score.term == term.name)
     scores = q.all()
-    passed = sum(1 for s in scores if s.is_passed is True or s.marks_obtained >= PASS_MARK)
+    def score_passed(score: Score) -> bool:
+        if score.is_passed is not None:
+            return bool(score.is_passed)
+        total = score.assessment.total_marks if score.assessment else None
+        percentage = (score.marks_obtained / total * 100) if total else score.marks_obtained
+        return percentage >= PASS_MARK
+
+    passed = sum(1 for s in scores if score_passed(s))
     return {
         "school": _school_info(user),
         "term": {"id": str(term.id) if term else None, "name": term.name if term else None},

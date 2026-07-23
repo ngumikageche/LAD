@@ -11,10 +11,21 @@ from ..extensions import db
 from ..models.assessment import Assessment
 from ..models.course import Course
 from ..models.score import Score
+from ..models.score_evidence import ScoreEvidence
 from ..models.student import Student
 from ..models.subject import Subject
-from ..services.score_evidence import EVIDENCE_UPLOAD_FOLDER, save_score_evidence_files, usable_score_evidence_files
-from .permissions import require_permission
+from ..models.enrollment import Enrollment
+from ..models.trainer import Trainer
+from ..models.trainer_subject import TrainerSubject
+from .permissions import _is_admin
+from ..services.score_evidence import (
+    EVIDENCE_UPLOAD_FOLDER,
+    can_access_score_evidence,
+    remove_score_evidence_files,
+    save_score_evidence_files,
+    usable_score_evidence_files,
+)
+from .permissions import get_current_user, require_permission
 
 bp = Blueprint("bulk_marks", __name__, url_prefix="/scores/bulk-marks")
 
@@ -267,6 +278,8 @@ def commit_bulk():
     subject_ids = set()
 
     for row in rows:
+        # Never trust preview-only flags or calculated values from the client.
+        # Re-resolve and validate every row during the write transaction.
         if not row.get("valid"):
             skipped += 1
             continue
@@ -290,10 +303,19 @@ def commit_bulk():
             continue
         assessment_ids.add(assessment_uuid)
 
-        marks = float(row["marks_obtained"])
-        grade = row.get("grade") or _grade(marks, assessment.total_marks)
-        is_passed = bool(row.get("is_passed"))
-        term = row.get("term") or None
+        try:
+            marks = float(row["marks_obtained"])
+        except (TypeError, ValueError):
+            skipped += 1
+            errors.append(f"Row {row.get('row')}: marks_obtained must be numeric")
+            continue
+        if marks < 0 or marks > assessment.total_marks:
+            errors.append(f"marks_obtained must be 0–{assessment.total_marks}")
+            skipped += 1
+            continue
+        grade = _grade(marks, assessment.total_marks)
+        is_passed = marks >= (assessment.pass_marks or assessment.total_marks * 0.5)
+        term = row.get("term") or (assessment.term.name if assessment.term else None)
         feedback = row.get("feedback") or None
 
         # Resolve subject_id (may be a UUID string from preview output)
@@ -304,6 +326,32 @@ def commit_bulk():
                 subject_ids.add(subject_id)
             except (ValueError, TypeError):
                 pass
+
+        enrollment = db.session.query(Enrollment).filter(
+            Enrollment.student_id == student.id,
+            Enrollment.course_id == assessment.course_id,
+            Enrollment.deleted_at.is_(None),
+        ).first()
+        if not enrollment:
+            errors.append(f"Row {row.get('row')}: student is not enrolled in the assessment course")
+            skipped += 1
+            continue
+        trainer = db.session.query(Trainer).filter(Trainer.user_id == user.id).first()
+        if trainer and not _is_admin(user):
+            has_access = db.session.query(TrainerSubject).filter(
+                TrainerSubject.trainer_id == trainer.id,
+                TrainerSubject.subject_id == subject_id,
+            ).first() if subject_id else None
+            if not has_access:
+                from ..models.trainer_course import TrainerCourse
+                has_access = db.session.query(TrainerCourse).filter(
+                    TrainerCourse.trainer_id == trainer.id,
+                    TrainerCourse.course_id == assessment.course_id,
+                ).first()
+            if not has_access:
+                errors.append(f"Row {row.get('row')}: you do not have access to this assessment")
+                skipped += 1
+                continue
 
         existing = (
             db.session.query(Score)
@@ -325,6 +373,7 @@ def commit_bulk():
                 student_id=student.id,
                 assessment_id=assessment_uuid,
                 subject_id=subject_id,
+                enrollment_id=enrollment.id,
                 marks_obtained=marks,
                 grade=grade,
                 is_passed=is_passed,
@@ -334,7 +383,7 @@ def commit_bulk():
             inserted += 1
 
     try:
-        save_score_evidence_files(
+        saved_evidence = save_score_evidence_files(
             evidence_files,
             uploaded_by=user.id,
             batch_id=batch_id,
@@ -344,7 +393,8 @@ def commit_bulk():
         db.session.commit()
     except Exception as exc:
         db.session.rollback()
-        return {"error": str(exc)}, 500
+        remove_score_evidence_files(locals().get("saved_evidence", []))
+        return {"error": "Marks could not be saved"}, 409
 
     return {
         "inserted": inserted,
@@ -372,4 +422,12 @@ def download_template():
 
 @bp.get("/evidence/files/<path:filename>")
 def serve_evidence_file(filename: str):
+    user, error, status = get_current_user()
+    if error:
+        return error, status
+    evidence = db.session.query(ScoreEvidence).filter(
+        ScoreEvidence.file_url == f"/scores/evidence/files/{filename}"
+    ).first()
+    if not evidence or not can_access_score_evidence(user, evidence):
+        return {"error": "File not found"}, 404
     return send_from_directory(EVIDENCE_UPLOAD_FOLDER, filename)

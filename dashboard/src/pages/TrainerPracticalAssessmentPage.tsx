@@ -6,6 +6,7 @@ import { Button } from '../components/ui/Button';
 import { FormField, Input, Select, TextArea } from '../components/ui/Form';
 import type { PracticalAssessmentPayload, PracticalAssessmentReport } from '../api/trainer';
 import { trainerPracticalAssessmentsAPI, trainerStudentsAPI, trainerSubjectsAPI } from '../api/trainer';
+import { apiRequest } from '../api/client';
 
 type StudentOption = {
   id: string;
@@ -20,6 +21,12 @@ type StudentOption = {
 type SubjectFilterOption = {
   id: string;
   subject_name: string;
+};
+
+type TrainerOption = {
+  id: string;
+  name: string;
+  department_name?: string;
 };
 
 type SectionType = 'narrative' | 'session' | 'oral';
@@ -229,11 +236,14 @@ const reportSectionsToForm = (report: PracticalAssessmentReport): SectionForm[] 
 };
 
 export default function TrainerPracticalAssessmentPage() {
-  const { user } = useAuth();
+  const { user, token } = useAuth();
   const isAdmin = user?.user_type === 'admin';
   const [allStudents, setAllStudents] = useState<StudentOption[]>([]);
   const [subjectOptions, setSubjectOptions] = useState<SubjectFilterOption[]>([]);
   const [selectedSubjectId, setSelectedSubjectId] = useState('');
+  const [trainerOptions, setTrainerOptions] = useState<TrainerOption[]>([]);
+  const [selectedTrainerId, setSelectedTrainerId] = useState('');
+  const [eligibleTrainerIds, setEligibleTrainerIds] = useState<string[]>([]);
   const [reports, setReports] = useState<PracticalAssessmentReport[]>([]);
   const [allReports, setAllReports] = useState<PracticalAssessmentReport[]>([]);
   const [selectedStudentId, setSelectedStudentId] = useState('');
@@ -247,7 +257,9 @@ export default function TrainerPracticalAssessmentPage() {
   const [uploadingMedia, setUploadingMedia] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [existingSearch, setExistingSearch] = useState('');
   const mediaInputRef = useRef<HTMLInputElement | null>(null);
+  const reportToOpenRef = useRef<string | undefined>(undefined);
 
   const selectedSubject = useMemo(
     () => subjectOptions.find((subject) => subject.id === selectedSubjectId) ?? null,
@@ -290,6 +302,41 @@ export default function TrainerPracticalAssessmentPage() {
   }, [isAdmin]);
 
   useEffect(() => {
+    if (!isAdmin || !token) return;
+    Promise.all([
+      apiRequest<Array<{ id: string; department_id: string; user?: { name?: string } }>>('/trainers', { token }),
+      apiRequest<Array<{ id: string; name: string }>>('/departments', { token }),
+    ]).then(([trainers, departments]) => {
+      const departmentNames = new Map(departments.map((item) => [String(item.id), item.name]));
+      setTrainerOptions(trainers.map((item) => ({
+        id: String(item.id),
+        name: item.user?.name ?? 'Unnamed trainer',
+        department_name: departmentNames.get(String(item.department_id)),
+      })));
+    }).catch(() => setTrainerOptions([]));
+  }, [isAdmin, token]);
+
+  useEffect(() => {
+    if (!isAdmin || !token || !selectedStudentId) {
+      setEligibleTrainerIds([]);
+      return;
+    }
+    apiRequest<{ subjects?: Array<{ trainers?: Array<{ id: string }> }> }>(
+      `/students/${selectedStudentId}/subjects`,
+      { token },
+    ).then((result) => {
+      const trainerIds = new Set<string>();
+      for (const subject of result.subjects ?? []) {
+        for (const trainer of subject.trainers ?? []) trainerIds.add(String(trainer.id));
+      }
+      setEligibleTrainerIds(Array.from(trainerIds));
+      setSelectedTrainerId((current) => (
+        current && (trainerIds.has(current) || Boolean(selectedReportId)) ? current : ''
+      ));
+    }).catch(() => setEligibleTrainerIds([]));
+  }, [isAdmin, selectedReportId, selectedStudentId, token]);
+
+  useEffect(() => {
     const loadStudents = async () => {
       try {
         setLoading(true);
@@ -323,11 +370,13 @@ export default function TrainerPracticalAssessmentPage() {
 
   const resetEditor = () => {
     setSelectedReportId('');
+    if (isAdmin) setSelectedTrainerId('');
     setForm({ ...DEFAULT_FORM });
     setSections([sectionPreset('narrative')]);
   };
 
   const loadFormFromReport = (report: PracticalAssessmentReport) => {
+    setSelectedTrainerId(report.trainer_id ?? '');
     setForm({
       assessment_date: report.assessment_date ? report.assessment_date.slice(0, 10) : '',
       assessment_venue: report.assessment_venue ?? '',
@@ -375,7 +424,9 @@ export default function TrainerPracticalAssessmentPage() {
   };
 
   useEffect(() => {
-    refreshReports(selectedStudentId);
+    const preferredReportId = reportToOpenRef.current;
+    reportToOpenRef.current = undefined;
+    refreshReports(selectedStudentId, preferredReportId);
   }, [selectedStudentId]);
 
   useEffect(() => {
@@ -472,7 +523,7 @@ export default function TrainerPracticalAssessmentPage() {
   const buildPayload = (statusOverride?: PracticalAssessmentReport['status']): PracticalAssessmentPayload => ({
     id: selectedReportId || undefined,
     student_id: selectedStudentId,
-    trainer_id: user?.trainer_id ?? undefined,
+    trainer_id: isAdmin ? (selectedTrainerId || undefined) : (user?.trainer_id ?? undefined),
     status: statusOverride ?? form.status,
     assessment_date: form.assessment_date.trim() || undefined,
     assessment_venue: form.assessment_venue.trim() || undefined,
@@ -505,6 +556,10 @@ export default function TrainerPracticalAssessmentPage() {
   const persistReport = async (statusOverride?: PracticalAssessmentReport['status']) => {
     if (!selectedStudentId) {
       setError('Select a student first');
+      return null;
+    }
+    if (isAdmin && !selectedReportId && !selectedTrainerId) {
+      setError('Select the trainer responsible for this assessment');
       return null;
     }
 
@@ -687,6 +742,25 @@ export default function TrainerPracticalAssessmentPage() {
     };
   }, [allReports, students]);
 
+  const visibleExistingReports = useMemo(() => {
+    const query = existingSearch.trim().toLowerCase();
+    return allReports.filter((report) => (
+      !query
+      || (report.student_name ?? '').toLowerCase().includes(query)
+      || (report.student_registration_number ?? '').toLowerCase().includes(query)
+      || (report.unit_of_competency ?? '').toLowerCase().includes(query)
+      || (report.trainer_name ?? '').toLowerCase().includes(query)
+      || report.status.toLowerCase().includes(query)
+    ));
+  }, [allReports, existingSearch]);
+
+  const openExistingReport = (report: PracticalAssessmentReport) => {
+    reportToOpenRef.current = report.id;
+    setSelectedStudentId(report.student_id);
+    setSelectedReportId(report.id);
+    loadFormFromReport(report);
+  };
+
   const handleMediaSelected = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? []);
     event.target.value = '';
@@ -769,6 +843,56 @@ export default function TrainerPracticalAssessmentPage() {
           </div>
         ) : null}
       </div>
+
+      <section className="rounded-3xl border border-slate-800 bg-slate-900 p-5 shadow-lg shadow-slate-950/20">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-100">Existing Practical Assessments</h2>
+            <p className="text-sm text-slate-500">Open any saved assessment in your access scope to review, continue, print, or release it.</p>
+          </div>
+          <Input
+            value={existingSearch}
+            onChange={(event) => setExistingSearch(event.target.value)}
+            placeholder="Search student, trainer, unit, or status"
+            className="md:max-w-sm"
+          />
+        </div>
+        <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-800">
+          <table className="min-w-full text-sm">
+            <thead className="bg-slate-800/80 text-left text-xs uppercase tracking-wider text-slate-400">
+              <tr>
+                <th className="px-4 py-3">Student</th>
+                <th className="px-4 py-3">Unit</th>
+                <th className="px-4 py-3">Trainer</th>
+                <th className="px-4 py-3">Score</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Action</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-800">
+              {visibleExistingReports.length === 0 ? (
+                <tr><td colSpan={6} className="px-4 py-6 text-center text-slate-500">No saved practical assessments match this view.</td></tr>
+              ) : visibleExistingReports.slice(0, 50).map((report) => (
+                <tr key={report.id} className="text-slate-300 hover:bg-slate-800/50">
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-slate-100">{report.student_name ?? 'Unknown student'}</p>
+                    <p className="text-xs text-slate-500">{report.student_registration_number ?? '—'}</p>
+                  </td>
+                  <td className="px-4 py-3">{report.unit_of_competency || '—'}</td>
+                  <td className="px-4 py-3">{report.trainer_name || '—'}</td>
+                  <td className="px-4 py-3">{report.score_percentage == null ? 'Incomplete' : `${report.score_percentage.toFixed(1)}%`}</td>
+                  <td className="px-4 py-3 capitalize">{report.status}</td>
+                  <td className="px-4 py-3">
+                    <button type="button" onClick={() => openExistingReport(report)} className="font-semibold text-teal-300 hover:text-teal-200">
+                      Open
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
 
       <div className="grid gap-6 xl:grid-cols-[320px_1fr]">
         <aside className="rounded-3xl border border-slate-800 bg-slate-900 p-5 shadow-lg shadow-slate-950/20">
@@ -1004,6 +1128,29 @@ export default function TrainerPracticalAssessmentPage() {
               </div>
 
               <div className="space-y-4">
+                {isAdmin ? (
+                  <FormField label="Responsible Trainer">
+                    <Select
+                      value={selectedTrainerId}
+                      onChange={(event) => setSelectedTrainerId(event.target.value)}
+                      disabled={Boolean(selectedReportId)}
+                    >
+                      <option value="">Select trainer</option>
+                      {trainerOptions.filter((trainer) => (
+                        eligibleTrainerIds.includes(trainer.id) || trainer.id === selectedTrainerId
+                      )).map((trainer) => (
+                        <option key={trainer.id} value={trainer.id}>
+                          {trainer.name}{trainer.department_name ? ` — ${trainer.department_name}` : ''}
+                        </option>
+                      ))}
+                    </Select>
+                    {!selectedReportId && selectedStudentId && eligibleTrainerIds.length === 0 ? (
+                      <p className="mt-2 text-xs text-amber-300">
+                        No trainer is linked to this student’s subjects. Assign the student to module subjects and assign a trainer to one of those subjects first.
+                      </p>
+                    ) : null}
+                  </FormField>
+                ) : null}
                 <FormField label="Assessment Date">
                   <Input type="date" value={form.assessment_date} onChange={(e) => updateField('assessment_date', e.target.value)} />
                 </FormField>
@@ -1014,7 +1161,7 @@ export default function TrainerPracticalAssessmentPage() {
                   <Select value={form.status} onChange={(e) => updateField('status', e.target.value as FormState['status'])}>
                     <option value="draft">Draft</option>
                     <option value="complete">Complete</option>
-                    <option value="released">Released</option>
+                    <option value="released" disabled>Released (managed by Release / Unsend)</option>
                   </Select>
                 </FormField>
               </div>

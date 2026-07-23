@@ -408,6 +408,10 @@ def _normalize_section_items(raw_items, section_type: str, section_index: int) -
             raise ValueError(f"'report_sections[{section_index}].items[{item_index}].max_score' must be a number") from exc
         if max_score <= 0:
             raise ValueError(f"'report_sections[{section_index}].items[{item_index}].max_score' must be greater than zero")
+        if score is not None and score > max_score:
+            raise ValueError(
+                f"'report_sections[{section_index}].items[{item_index}].score' cannot exceed max_score"
+            )
 
         if prompt in (None, "") and expected_response in (None, "") and remark in (None, "") and score is None:
             continue
@@ -767,6 +771,7 @@ def _apply_payload(report: PracticalAssessmentReport, payload: dict) -> Practica
             value = payload.get(field)
             if field == "assessment_date":
                 if value in (None, ""):
+                    setattr(report, field, None)
                     continue
                 try:
                     setattr(report, field, datetime.fromisoformat(str(value)))
@@ -834,6 +839,8 @@ def _validate_score_fields(payload: dict) -> None:
 
 
 def _validate_task_descriptions(payload: dict) -> None:
+    if "status" in payload and payload.get("status") not in {"draft", "complete", "released"}:
+        raise ValueError("'status' must be draft, complete, or released")
     if "report_sections" in payload:
         _normalize_report_sections(payload.get("report_sections"))
     if "task_items" in payload:
@@ -870,6 +877,7 @@ def list_practical_assessments():
         trainer = _trainer_profile(user)
         if not trainer:
             return {"error": "Trainer profile not found"}, 404
+        query = query.filter(PracticalAssessmentReport.trainer_id == trainer.id)
         if student_id:
             try:
                 student_uuid = _parse_uuid(student_id, "student_id")
@@ -878,14 +886,6 @@ def list_practical_assessments():
             if not _can_trainer_access_student(trainer.id, student_uuid):
                 return {"error": "Student not found in your assigned subjects"}, 403
             query = query.filter(PracticalAssessmentReport.student_id == student_uuid)
-        else:
-            query = query.filter(
-                exists().where(
-                    (TrainerSubject.trainer_id == trainer.id)
-                    & (StudentSubject.student_id == PracticalAssessmentReport.student_id)
-                    & (TrainerSubject.subject_id == StudentSubject.subject_id)
-                )
-            )
     elif _is_admin(user):
         if student_id:
             try:
@@ -954,6 +954,17 @@ def list_student_practical_assessments(student_id: str):
         trainer = _trainer_profile(user)
         if not trainer or not _can_trainer_access_student(trainer.id, student_uuid):
             return {"error": "Student not found in your assigned subjects"}, 403
+        reports = (
+            db.session.query(PracticalAssessmentReport)
+            .filter(
+                PracticalAssessmentReport.student_id == student_uuid,
+                PracticalAssessmentReport.trainer_id == trainer.id,
+                PracticalAssessmentReport.deleted_at.is_(None),
+            )
+            .order_by(PracticalAssessmentReport.created_at.desc())
+            .all()
+        )
+        return [_report_payload(report) for report in reports], 200
     elif not _is_admin(user):
         return {"error": "Access denied"}, 403
 
@@ -991,7 +1002,7 @@ def get_student_practical_assessment(student_id: str, report_id: str):
             return {"error": "Access denied"}, 403
     elif _is_trainer(user):
         trainer = _trainer_profile(user)
-        if not trainer or not _can_trainer_access_student(trainer.id, student_uuid):
+        if not trainer or report.trainer_id != trainer.id:
             return {"error": "Access denied"}, 403
     elif not _is_admin(user):
         return {"error": "Access denied"}, 403
@@ -1009,6 +1020,8 @@ def create_practical_assessment():
         return {"error": "Trainer or admin access required"}, 403
 
     payload = request.get_json(silent=True) or {}
+    if payload.get("status") == "released":
+        return {"error": "Use the release action after saving a complete assessment"}, 400
     try:
         student_uuid = _parse_uuid(payload.get("student_id"), "student_id")
     except ValueError as exc:
@@ -1075,7 +1088,11 @@ def create_practical_assessment():
     except ValueError as exc:
         return {"error": str(exc)}, 400
     db.session.add(report)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return {"error": "Practical assessment could not be saved"}, 409
     db.session.refresh(report)
     return _report_payload(report), 201
 
@@ -1097,6 +1114,8 @@ def update_practical_assessment(report_id: str):
     report = db.session.get(PracticalAssessmentReport, report_uuid)
     if not report or report.deleted_at:
         return {"error": "Report not found"}, 404
+    if report.status == "released":
+        return {"error": "Unsend the released assessment before editing it"}, 409
 
     if _is_trainer(user):
         trainer = _trainer_profile(user)
@@ -1104,6 +1123,8 @@ def update_practical_assessment(report_id: str):
             return {"error": "Access denied"}, 403
 
     payload = request.get_json(silent=True) or {}
+    if payload.get("status") == "released":
+        return {"error": "Use the release action after saving a complete assessment"}, 400
     try:
         _validate_task_descriptions(payload)
         _validate_score_fields(payload)
@@ -1115,7 +1136,11 @@ def update_practical_assessment(report_id: str):
         return {"error": str(exc)}, 400
     if report.student and report.trainer:
         _seed_context_fields(report, report.student, report.trainer)
-    db.session.commit()
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return {"error": "Practical assessment could not be updated"}, 409
     db.session.refresh(report)
     return _report_payload(report), 200
 
@@ -1167,13 +1192,47 @@ def upload_practical_assessment_media(report_id: str):
         "uploaded_by_user_id": str(user.id),
     }
     report.media_attachments = [*attachments, attachment]
-    db.session.commit()
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        if os.path.exists(save_path):
+            os.remove(save_path)
+        return {"error": "Media attachment could not be saved"}, 409
     db.session.refresh(report)
     return {"attachment": attachment, "report": _report_payload(report)}, 201
 
 
 @bp.get("/practical-assessments/media/<path:filename>")
 def serve_practical_assessment_media(filename: str):
+    user, error, status = _load_current_user()
+    if error:
+        return error, status
+    reports = db.session.query(PracticalAssessmentReport).filter(
+        PracticalAssessmentReport.deleted_at.is_(None)
+    ).all()
+    report = next(
+        (
+            item for item in reports
+            if any(
+                attachment.get("file_url") == f"/practical-assessments/media/{filename}"
+                for attachment in (item.media_attachments or [])
+                if isinstance(attachment, dict)
+            )
+        ),
+        None,
+    )
+    if not report:
+        return {"error": "File not found"}, 404
+    allowed = _is_admin(user)
+    if _is_trainer(user):
+        trainer = _trainer_profile(user)
+        allowed = bool(trainer and report.trainer_id == trainer.id)
+    elif _is_student(user):
+        student = _student_profile(user)
+        allowed = bool(student and report.student_id == student.id and report.released_at is not None)
+    if not allowed:
+        return {"error": "File not found"}, 404
     return send_from_directory(os.path.abspath(PRACTICAL_MEDIA_UPLOAD_FOLDER), filename)
 
 

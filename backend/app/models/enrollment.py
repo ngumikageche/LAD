@@ -1,4 +1,4 @@
-from sqlalchemy import String, ForeignKey
+from sqlalchemy import String, ForeignKey, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import BaseModel
@@ -7,6 +7,17 @@ import uuid
 class Enrollment(BaseModel):
     scores = relationship("Score", back_populates="enrollment")
     __tablename__ = 'enrollments'
+    __table_args__ = (
+        Index(
+            "uq_enrollment_student_course_module_term",
+            "student_id",
+            "course_id",
+            "module_id",
+            "term_id",
+            unique=True,
+            postgresql_nulls_not_distinct=True,
+        ),
+    )
     student_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("students.id"), nullable=True, index=True)
     module_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("modules.id"), nullable=True, index=True)
     course_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("courses.id"), nullable=True, index=True)

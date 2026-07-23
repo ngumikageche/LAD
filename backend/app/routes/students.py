@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy import and_
 from ..extensions import db
 from ..models.course import Course
+from ..models.module import Module
 from ..models.student import Student
 from ..models.user import User
 from ..models.enrollment import Enrollment
@@ -26,27 +27,101 @@ def enroll_student(student_id):
     if error:
         return error, status
     payload = request.get_json(silent=True) or {}
-    module_id = payload.get("module_id")
-    course_id = payload.get("course_id")
-    if not module_id or not course_id:
-        return {"error": "module_id and course_id are required"}, 400
+    try:
+        student_uuid = _parse_uuid(student_id, "student_id")
+        module_uuid = _parse_uuid(payload.get("module_id"), "module_id")
+        course_uuid = _parse_uuid(payload.get("course_id"), "course_id")
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
 
-    # Update student course
-    student = db.session.get(Student, student_id)
+    student = db.session.get(Student, student_uuid)
     if not student:
         return {"error": "Student not found"}, 404
-    student.course_id = course_id
 
-    # Upsert enrollment
-    enrollment = db.session.query(Enrollment).filter_by(student_id=student_id).first()
+    course = db.session.get(Course, course_uuid)
+    module = db.session.get(Module, module_uuid)
+    if not course:
+        return {"error": "Course not found"}, 404
+    if not module:
+        return {"error": "Module not found"}, 404
+    if module.course_id != course.id:
+        return {"error": "Selected module does not belong to the selected course"}, 400
+
+    # Keep the student profile, current enrollment, and subject links in one
+    # transaction. Trainer/student access is derived from StudentSubject, so an
+    # enrollment save is incomplete unless those links are synchronized.
+    student.course_id = course.id
+    enrollment = (
+        db.session.query(Enrollment)
+        .filter(
+            Enrollment.student_id == student.id,
+            Enrollment.deleted_at.is_(None),
+            Enrollment.status == "active",
+        )
+        .order_by(Enrollment.updated_at.desc(), Enrollment.created_at.desc())
+        .first()
+    )
+    previous_module_id = enrollment.module_id if enrollment else None
     if enrollment:
-        enrollment.module_id = module_id
+        enrollment.module_id = module.id
+        enrollment.course_id = course.id
     else:
-        enrollment = Enrollment(student_id=student_id, module_id=module_id, status='active')
+        enrollment = Enrollment(
+            student_id=student.id,
+            module_id=module.id,
+            course_id=course.id,
+            status="active",
+        )
         db.session.add(enrollment)
 
-    db.session.commit()
-    return {"status": "enrolled"}, 200
+    new_subject_ids = {
+        row[0]
+        for row in db.session.query(Subject.id).filter(
+            Subject.module_id == module.id,
+            Subject.deleted_at.is_(None),
+        ).all()
+    }
+    existing_subject_ids = {
+        row[0]
+        for row in db.session.query(StudentSubject.subject_id).filter(
+            StudentSubject.student_id == student.id,
+        ).all()
+    }
+    added_subject_ids = new_subject_ids - existing_subject_ids
+    db.session.add_all(
+        StudentSubject(student_id=student.id, subject_id=subject_id)
+        for subject_id in added_subject_ids
+    )
+
+    removed_subject_ids: set[uuid.UUID] = set()
+    if previous_module_id and previous_module_id != module.id:
+        previous_subject_ids = {
+            row[0]
+            for row in db.session.query(Subject.id).filter(
+                Subject.module_id == previous_module_id,
+            ).all()
+        }
+        removed_subject_ids = previous_subject_ids - new_subject_ids
+        if removed_subject_ids:
+            db.session.query(StudentSubject).filter(
+                StudentSubject.student_id == student.id,
+                StudentSubject.subject_id.in_(removed_subject_ids),
+            ).delete(synchronize_session=False)
+
+    try:
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return {"error": "Enrollment could not be saved because of conflicting data"}, 409
+
+    return {
+        "status": "enrolled",
+        "student_id": str(student.id),
+        "course_id": str(course.id),
+        "module_id": str(module.id),
+        "subjects_added": len(added_subject_ids),
+        "subjects_removed": len(removed_subject_ids),
+    }, 200
 
 
 
@@ -129,6 +204,11 @@ def create_student():
     )
 
     db.session.add(student)
+    # Keep subject visibility consistent with the selected course even when a
+    # student is created outside the module-enrollment workflow.
+    db.session.flush()
+    course_subject_ids = [row[0] for row in db.session.query(Subject.id).join(Module, Subject.module_id == Module.id).filter(Module.course_id == course_id, Subject.deleted_at.is_(None)).all()]
+    db.session.add_all(StudentSubject(student_id=student.id, subject_id=sid) for sid in course_subject_ids)
     try:
         db.session.commit()
     except IntegrityError:
@@ -262,7 +342,16 @@ def update_student(student_id: str):
             return {"error": str(exc)}, 400
         if not db.session.get(Course, course_id):
             return {"error": "Invalid 'course_id'"}, 400
+        previous_course_id = student.course_id
         student.course_id = course_id
+        new_subject_ids = {row[0] for row in db.session.query(Subject.id).join(Module, Subject.module_id == Module.id).filter(Module.course_id == course_id, Subject.deleted_at.is_(None)).all()}
+        existing_subject_ids = {row[0] for row in db.session.query(StudentSubject.subject_id).filter(StudentSubject.student_id == student.id).all()}
+        db.session.add_all(StudentSubject(student_id=student.id, subject_id=sid) for sid in new_subject_ids - existing_subject_ids)
+        if previous_course_id and previous_course_id != course_id:
+            old_subject_ids = {row[0] for row in db.session.query(Subject.id).join(Module, Subject.module_id == Module.id).filter(Module.course_id == previous_course_id).all()}
+            removable = old_subject_ids - new_subject_ids
+            if removable:
+                db.session.query(StudentSubject).filter(StudentSubject.student_id == student.id, StudentSubject.subject_id.in_(removable)).delete(synchronize_session=False)
 
     try:
         db.session.commit()

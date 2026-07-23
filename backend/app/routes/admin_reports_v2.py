@@ -2,14 +2,16 @@ from __future__ import annotations
 
 from collections import defaultdict
 from datetime import datetime
+import uuid
 
 from flask import Blueprint, request
-from sqlalchemy import and_, func
+from sqlalchemy import and_, func, or_
 
 from ..extensions import cache, db
 from ..models.assessment import Assessment
 from ..models.attendance import Attendance
 from ..models.course import Course
+from ..models.department import Department
 from ..models.enrollment import Enrollment
 from ..models.score import Score
 from ..models.student import Student
@@ -34,7 +36,11 @@ def _admin_only():
 
 def _resolve_term(term_id_str: str | None) -> Term | None:
     if term_id_str:
-        return db.session.get(Term, term_id_str)
+        try:
+            term_id = uuid.UUID(str(term_id_str))
+        except (TypeError, ValueError):
+            return None
+        return db.session.get(Term, term_id)
     return db.session.query(Term).filter(Term.is_active == True).first()
 
 
@@ -69,26 +75,107 @@ def exam_results():
 
     term_id_str = request.args.get("term_id")
     term = _resolve_term(term_id_str)
+    if term_id_str and not term:
+        return {"error": "Term not found"}, 404
 
-    cache_key = f"admin_exam_results_{term.id if term else 'all'}"
-    cached = cache.get(cache_key)
-    if cached:
-        log_view(user, "report.admin.exam_results", metadata={"term": term.name if term else None, "cached": True})
-        return cached, 200
+    department_id = request.args.get("department_id")
+    course_id = request.args.get("course_id")
+    subject_id = request.args.get("subject_id")
+
+    def _valid_filter(model, value, label):
+        if not value:
+            return None, None
+        try:
+            item_id = uuid.UUID(str(value))
+        except (TypeError, ValueError):
+            return None, ({"error": f"Invalid {label.lower()}_id"}, 400)
+        item = db.session.get(model, item_id)
+        if not item or item.deleted_at:
+            return None, ({"error": f"{label} not found"}, 404)
+        return item, None
+
+    department, filter_error = _valid_filter(Department, department_id, "Department")
+    if filter_error:
+        return filter_error
+    course, filter_error = _valid_filter(Course, course_id, "Course")
+    if filter_error:
+        return filter_error
+    subject, filter_error = _valid_filter(Subject, subject_id, "Subject")
+    if filter_error:
+        return filter_error
+    if department and course and course.department_id != department.id:
+        return {"error": "Selected course does not belong to the selected department"}, 400
+    if course and subject and subject.module and subject.module.course_id != course.id:
+        return {"error": "Selected subject does not belong to the selected course"}, 400
+    if user.institution_id:
+        if department and department.institution_id != user.institution_id:
+            return {"error": "Department is outside your institution"}, 403
+        if course and (not course.department or course.department.institution_id != user.institution_id):
+            return {"error": "Course is outside your institution"}, 403
+        subject_course = subject.module.course if subject and subject.module else None
+        if subject and (
+            not subject_course
+            or not subject_course.department
+            or subject_course.department.institution_id != user.institution_id
+        ):
+            return {"error": "Subject is outside your institution"}, 403
 
     # Base score query filtered by term
     score_q = db.session.query(Score).filter(Score.deleted_at.is_(None))
+
+    def _student_course_clause(course_ids):
+        return or_(
+            Score.student.has(Student.course_id.in_(course_ids)),
+            Score.enrollment.has(Enrollment.student.has(Student.course_id.in_(course_ids))),
+        )
+
+    def _score_student(score):
+        return score.student or (score.enrollment.student if score.enrollment else None)
+
     if term:
         score_q = score_q.filter(Score.term == term.name)
+    permitted_course_ids = None
+    if user.institution_id:
+        permitted_course_ids = [
+            row[0]
+            for row in (
+                db.session.query(Course.id)
+                .join(Department, Department.id == Course.department_id)
+                .filter(
+                    Department.institution_id == user.institution_id,
+                    Course.deleted_at.is_(None),
+                    Department.deleted_at.is_(None),
+                )
+                .all()
+            )
+        ]
+        score_q = score_q.filter(_student_course_clause(permitted_course_ids))
+    department_course_ids = None
+    if department:
+        department_course_ids = [
+            row[0] for row in db.session.query(Course.id).filter(
+                Course.department_id == department.id,
+                Course.deleted_at.is_(None),
+            ).all()
+        ]
+        score_q = score_q.filter(_student_course_clause(department_course_ids))
+    if course:
+        score_q = score_q.filter(_student_course_clause([course.id]))
+    if subject:
+        score_q = score_q.filter(Score.subject_id == subject.id)
     all_scores = score_q.all()
 
     # ── By course (class) ──
     course_scores: dict[str, list[Score]] = defaultdict(list)
     for s in all_scores:
-        if s.student and s.student.course_id:
-            course_scores[str(s.student.course_id)].append(s)
+        score_student = _score_student(s)
+        if score_student and score_student.course_id:
+            course_scores[str(score_student.course_id)].append(s)
 
-    courses = db.session.query(Course).filter(Course.deleted_at.is_(None)).all()
+    courses_query = db.session.query(Course).filter(Course.deleted_at.is_(None))
+    if permitted_course_ids is not None:
+        courses_query = courses_query.filter(Course.id.in_(permitted_course_ids))
+    courses = courses_query.all()
     course_map = {str(c.id): c for c in courses}
 
     by_course = []
@@ -102,13 +189,18 @@ def exam_results():
         # Top student in this course
         top_score = max(scores, key=lambda s: s.marks_obtained) if scores else None
         top_student = None
-        if top_score and top_score.student and top_score.student.user:
-            top_student = top_score.student.user.name
+        top_score_student = _score_student(top_score) if top_score else None
+        if top_score_student and top_score_student.user:
+            top_student = top_score_student.user.name
 
         by_course.append({
             "course_id": cid,
             "course_name": course.name if course else cid,
-            "student_count": len({str(s.student_id) for s in scores if s.student_id}),
+            "student_count": len({
+                str(score_student.id)
+                for score in scores
+                if (score_student := _score_student(score)) is not None
+            }),
             "scores_count": len(scores),
             "avg_marks": avg,
             "pass_pct": pass_pct,
@@ -156,9 +248,18 @@ def exam_results():
     if term:
         prev = _prev_term(term)
         if prev:
-            prev_scores = db.session.query(Score).filter(
+            prev_query = db.session.query(Score).filter(
                 Score.term == prev.name, Score.deleted_at.is_(None)
-            ).all()
+            )
+            if permitted_course_ids is not None:
+                prev_query = prev_query.filter(_student_course_clause(permitted_course_ids))
+            if department_course_ids is not None:
+                prev_query = prev_query.filter(_student_course_clause(department_course_ids))
+            if course:
+                prev_query = prev_query.filter(_student_course_clause([course.id]))
+            if subject:
+                prev_query = prev_query.filter(Score.subject_id == subject.id)
+            prev_scores = prev_query.all()
             if prev_scores:
                 prev_marks = [s.marks_obtained for s in prev_scores]
                 prev_avg = sum(prev_marks) / len(prev_marks)
@@ -182,11 +283,48 @@ def exam_results():
         "trend": trend,
         "by_course": by_course,
         "by_subject": by_subject,
+        "filter_options": {
+            "terms": [
+                {"id": str(item.id), "name": item.name}
+                for item in db.session.query(Term)
+                .filter(Term.deleted_at.is_(None))
+                .order_by(Term.start_date.desc())
+                .all()
+            ],
+            "departments": [
+                {"id": str(item.id), "name": item.name}
+                for item in db.session.query(Department)
+                .filter(
+                    Department.deleted_at.is_(None),
+                    Department.institution_id == user.institution_id if user.institution_id else True,
+                )
+                .order_by(Department.name.asc())
+                .all()
+            ],
+            "courses": [
+                {"id": str(item.id), "name": item.name, "department_id": str(item.department_id)}
+                for item in courses
+            ],
+            "subjects": [
+                {
+                    "id": str(item.id),
+                    "name": item.name,
+                    "course_id": str(item.module.course_id) if item.module else None,
+                }
+                for item in subjects
+                if item.module and (permitted_course_ids is None or item.module.course_id in permitted_course_ids)
+            ],
+        },
+        "applied_filters": {
+            "term_id": str(term.id) if term else None,
+            "department_id": str(department.id) if department else None,
+            "course_id": str(course.id) if course else None,
+            "subject_id": str(subject.id) if subject else None,
+        },
         "generated_at": datetime.utcnow().isoformat(),
         "generated_by": user.name,
     }
 
-    cache.set(cache_key, result, timeout=600)
     log_view(user, "report.admin.exam_results", metadata={"term": term.name if term else None})
     return result, 200
 

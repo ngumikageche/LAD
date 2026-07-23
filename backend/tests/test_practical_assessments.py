@@ -1,5 +1,7 @@
 import uuid
 
+import pytest
+
 from app.models.practical_assessment_report import PracticalAssessmentReport
 from app.models.student import Student
 from app.models.trainer import Trainer
@@ -55,3 +57,19 @@ def test_report_payload_tolerates_malformed_nested_practical_data(monkeypatch):
     assert payload["report_sections"] == []
     assert payload["task_items"] == []
     assert payload["oral_questions"] == []
+
+
+def test_practical_section_score_cannot_exceed_configured_maximum():
+    with pytest.raises(ValueError, match="cannot exceed max_score"):
+        practical_assessments._normalize_report_sections([
+            {
+                "title": "Session 1",
+                "type": "session",
+                "items": [{"prompt": "Complete task", "score": 3, "max_score": 2}],
+            }
+        ])
+
+
+def test_practical_status_is_restricted_to_supported_workflow_values():
+    with pytest.raises(ValueError, match="must be draft, complete, or released"):
+        practical_assessments._validate_task_descriptions({"status": "published"})

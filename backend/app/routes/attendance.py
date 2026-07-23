@@ -67,6 +67,10 @@ def _record_payload(record: AttendanceRecord) -> dict:
     }
 
 
+def _session_owned_by_current_trainer(session) -> bool:
+    return not g.current_trainer or session.trainer_id == g.current_trainer.id
+
+
 # ============================================================================
 # LECTURER ENDPOINTS
 # ============================================================================
@@ -174,10 +178,8 @@ def get_session(session_id: str):
         
         if not session:
             return {"error": "Session not found"}, 404
-        
-        # Verify ownership (optional - remove if admin should see all)
-        # if str(session.trainer_id) != str(g.current_trainer.id):
-        #     return {"error": "Unauthorized"}, 403
+        if not _session_owned_by_current_trainer(session):
+            return {"error": "Unauthorized"}, 403
         
         return _session_payload(session), 200
     
@@ -196,6 +198,8 @@ def get_session_records(session_id: str):
         
         if not session:
             return {"error": "Session not found"}, 404
+        if not _session_owned_by_current_trainer(session):
+            return {"error": "Unauthorized"}, 403
         
         records = AttendanceService.get_session_records(session_id)
         
@@ -214,6 +218,9 @@ def get_session_records(session_id: str):
 def get_session_summary(session_id: str):
     """Get attendance summary for a session."""
     try:
+        session = db.session.query(AttendanceSession).filter_by(id=uuid_lib.UUID(session_id)).first()
+        if session and not _session_owned_by_current_trainer(session):
+            return {"error": "Unauthorized"}, 403
         summary = AttendanceService.get_session_summary(session_id)
         
         if not summary:
@@ -257,6 +264,8 @@ def regenerate_token(session_id: str):
         
         if not session:
             return {"error": "Session not found"}, 404
+        if not _session_owned_by_current_trainer(session):
+            return {"error": "Unauthorized"}, 403
         
         secret_key = current_app.config.get("SECRET_KEY", "default-secret")
         new_token = AttendanceService.regenerate_token(session, secret_key)
@@ -414,7 +423,6 @@ def get_session_by_code(session_code: str):
     return {
         "id": str(session.id),
         "session_code": session.session_code,
-        "current_token": session.current_token,
         "status": session.status,
         "seconds_until_expiry": session.seconds_until_expiry(),
         "allowed_radius_meters": session.allowed_radius_meters,
@@ -722,6 +730,8 @@ def manual_checkin(session_id: str):
             return {"error": "Session not found"}, 404
         if session.status == "ended":
             return {"error": "Session has ended"}, 409
+        if not _session_owned_by_current_trainer(session):
+            return {"error": "Unauthorized"}, 403
     except ValueError:
         return {"error": "Invalid session ID"}, 400
 
@@ -787,6 +797,11 @@ def manual_remove(session_id: str):
     if not student:
         return {"error": "Student not found"}, 404
 
+    session = db.session.query(AttendanceSession).filter_by(id=session_uuid).first()
+    if not session:
+        return {"error": "Session not found"}, 404
+    if not _session_owned_by_current_trainer(session):
+        return {"error": "Unauthorized"}, 403
     record = db.session.query(AttendanceRecord).filter_by(
         attendance_session_id=session_uuid, student_id=student.id
     ).first()

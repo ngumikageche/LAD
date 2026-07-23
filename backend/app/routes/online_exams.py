@@ -88,6 +88,8 @@ def _normalize_questions(raw_questions) -> list[dict]:
             if len(options) < 2:
                 raise ValueError(f"Question {index} needs at least two options")
             correct_answer = str(raw.get("correct_answer") or "").strip()
+            if not correct_answer:
+                raise ValueError(f"Question {index} requires a correct answer")
             if correct_answer and correct_answer not in options:
                 raise ValueError(f"Question {index} correct answer must match one option")
         else:
@@ -215,6 +217,11 @@ def create_online_exam():
     if status_value not in {"draft", "published"}:
         return {"error": "status must be draft or published"}, 400
 
+    duration_minutes = payload.get("duration_minutes")
+    if duration_minutes is not None:
+        if not isinstance(duration_minutes, int) or duration_minutes < 1 or duration_minutes > 480:
+            return {"error": "duration_minutes must be an integer between 1 and 480"}, 400
+
     exam = OnlineExam(
         title=title,
         description=(payload.get("description") or "").strip() or None,
@@ -222,7 +229,7 @@ def create_online_exam():
         trainer_id=trainer.id if trainer else None,
         created_by=user.id,
         status=status_value,
-        duration_minutes=payload.get("duration_minutes") or None,
+        duration_minutes=duration_minutes,
         auto_marking=bool(payload.get("auto_marking", True)),
         questions=questions,
         total_marks=sum(float(q.get("marks") or 0) for q in questions),
@@ -248,6 +255,9 @@ def update_online_exam(exam_id: str):
     if trainer and exam.trainer_id != trainer.id:
         return {"error": "You can only edit your own exams"}, 403
 
+    if exam.status == "published" and db.session.query(OnlineExamSubmission).filter_by(exam_id=exam.id).first():
+        return {"error": "Published exams with submissions cannot be edited"}, 409
+
     payload = request.get_json(silent=True) or {}
     if "title" in payload:
         title = (payload.get("title") or "").strip()
@@ -257,7 +267,10 @@ def update_online_exam(exam_id: str):
     if "description" in payload:
         exam.description = (payload.get("description") or "").strip() or None
     if "duration_minutes" in payload:
-        exam.duration_minutes = payload.get("duration_minutes") or None
+        duration = payload.get("duration_minutes")
+        if duration is not None and (not isinstance(duration, int) or duration < 1 or duration > 480):
+            return {"error": "duration_minutes must be an integer between 1 and 480"}, 400
+        exam.duration_minutes = duration
     if "auto_marking" in payload:
         exam.auto_marking = bool(payload.get("auto_marking"))
     if "questions" in payload:
@@ -344,7 +357,8 @@ def submit_student_online_exam(exam_id: str):
             if question.get("type") != "multiple_choice":
                 continue
             qid = str(question.get("id"))
-            if str(answers.get(qid, "")).strip() == str(question.get("correct_answer", "")).strip():
+            correct = str(question.get("correct_answer", "")).strip()
+            if correct and str(answers.get(qid, "")).strip() == correct:
                 score += float(question.get("marks") or 0)
 
     submission = OnlineExamSubmission(

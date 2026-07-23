@@ -35,7 +35,6 @@ export const PREDEFINED_ROLES: Array<{
       'analytics.read': true,
       'reports.student.term.view': true,
       'reports.student.attendance.view': true,
-      'reports.student.fees.view': true,
     },
   },
   {
@@ -94,7 +93,6 @@ export const PREDEFINED_ROLES: Array<{
       'attendance.read': true,
       'reports.admin.pass_rate.view': true,
       'reports.admin.enrolment.view': true,
-      'reports.admin.fees.view': true,
       'reports.class.performance.view': true,
       'reports.class.at_risk.view': true,
     },
@@ -184,17 +182,6 @@ const PERMISSION_TABS: Array<{ label: string; permissions: PermDef[] }> = [
       { key: 'notifications.read',     label: 'Read Notifications' },
       { key: 'notifications.update',   label: 'Update Notifications' },
       { key: 'notifications.delete',   label: 'Delete Notifications' },
-    ],
-  },
-  {
-    label: 'Finance',
-    permissions: [
-      { key: 'reports.student.fees.view',   label: 'View Student Fee Statements' },
-      { key: 'reports.student.fees.print',  label: 'Print Student Fee Statements' },
-      { key: 'reports.student.fees.export', label: 'Export Student Fee Statements' },
-      { key: 'reports.admin.fees.view',     label: 'View Admin Fee Reports' },
-      { key: 'reports.admin.fees.print',    label: 'Print Admin Fee Reports' },
-      { key: 'reports.admin.fees.export',   label: 'Export Admin Fee Reports' },
     ],
   },
   {

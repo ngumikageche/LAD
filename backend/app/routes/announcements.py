@@ -65,7 +65,7 @@ def create_announcement():
             return {"error": "Invalid course_id"}, 400
 
     announcement = Announcement(
-        creator_id=uuid.UUID(user["id"]),
+        creator_id=user.id,
         title=title.strip(),
         content=content.strip(),
         course_id=course_id,
@@ -115,7 +115,7 @@ def list_announcements():
             db.session.query(AnnouncementRead).filter(
                 and_(
                     AnnouncementRead.announcement_id == announcement.id,
-                    AnnouncementRead.user_id == uuid.UUID(user["id"]),
+                    AnnouncementRead.user_id == user.id,
                 )
             ).first()
             is not None
@@ -193,14 +193,14 @@ def mark_announcement_read(announcement_id: str):
     existing = db.session.query(AnnouncementRead).filter(
         and_(
             AnnouncementRead.announcement_id == announcement_uuid,
-            AnnouncementRead.user_id == uuid.UUID(user["id"]),
+            AnnouncementRead.user_id == user.id,
         )
     ).first()
 
     if not existing:
         read_record = AnnouncementRead(
             announcement_id=announcement_uuid,
-            user_id=uuid.UUID(user["id"]),
+            user_id=user.id,
         )
         db.session.add(read_record)
         db.session.commit()
@@ -228,7 +228,7 @@ def get_announcement(announcement_id: str):
         db.session.query(AnnouncementRead).filter(
             and_(
                 AnnouncementRead.announcement_id == announcement_uuid,
-                AnnouncementRead.user_id == uuid.UUID(user["id"]),
+                AnnouncementRead.user_id == user.id,
             )
         ).first()
         is not None
