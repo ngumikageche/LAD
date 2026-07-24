@@ -68,27 +68,7 @@ def _scope_ids() -> tuple[list[uuid.UUID] | None, list[uuid.UUID] | None]:
 
 
 def _apply_scope_filters(query, subject_ids: list[uuid.UUID] | None, student_ids: list[uuid.UUID] | None):
-    if scope.get("course_id"):
-        total_courses = (
-            db.session.query(func.count(Course.id))
-            .filter(
-                Course.id == _parse_uuid(scope["course_id"], "course_id"),
-                Course.deleted_at.is_(None),
-            )
-            .scalar()
-            or 0
-        )
-    elif scope.get("department_id"):
-        total_courses = (
-            db.session.query(func.count(Course.id))
-            .filter(
-                Course.department_id == _parse_uuid(scope["department_id"], "department_id"),
-                Course.deleted_at.is_(None),
-            )
-            .scalar()
-            or 0
-        )
-    elif subject_ids is not None:
+    if subject_ids is not None:
         query = query.filter(Score.subject_id.in_(subject_ids))
     if student_ids is not None:
         query = query.filter(Score.student_id.in_(student_ids))
@@ -114,7 +94,27 @@ def admin_dashboard():
         trainer_query = trainer_query.filter(TrainerSubject.subject_id.in_(subject_ids))
     total_trainers = trainer_query.scalar() or 0
 
-    if subject_ids is not None:
+    if scope.get("course_id"):
+        total_courses = (
+            db.session.query(func.count(Course.id))
+            .filter(
+                Course.id == _parse_uuid(scope["course_id"], "course_id"),
+                Course.deleted_at.is_(None),
+            )
+            .scalar()
+            or 0
+        )
+    elif scope.get("department_id"):
+        total_courses = (
+            db.session.query(func.count(Course.id))
+            .filter(
+                Course.department_id == _parse_uuid(scope["department_id"], "department_id"),
+                Course.deleted_at.is_(None),
+            )
+            .scalar()
+            or 0
+        )
+    elif subject_ids is not None:
         total_courses = (
             db.session.query(func.count(func.distinct(Course.id)))
             .join(Module, Module.course_id == Course.id)
