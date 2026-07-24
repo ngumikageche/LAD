@@ -43,12 +43,19 @@ def _parse_uuid(value: str | None, field: str) -> uuid.UUID:
 
 
 def _trainer_payload(trainer: Trainer) -> dict:
+    subject_ids = [
+        str(row.subject_id)
+        for row in db.session.query(TrainerSubject.subject_id)
+        .filter(TrainerSubject.trainer_id == trainer.id)
+        .all()
+    ]
     return {
         "id": str(trainer.id),
         "code": trainer.code,
         "user_id": str(trainer.user_id),
         "department_id": str(trainer.department_id),
         "specialization": trainer.specialization,
+        "subject_ids": subject_ids,
         "user": {
             "id": str(trainer.user.id),
             "name": trainer.user.name,

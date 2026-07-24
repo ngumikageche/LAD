@@ -1,6 +1,7 @@
 import { apiClient } from './client';
 
 export type DashboardScopeFilters = {
+  department_id?: string;
   course_id?: string;
   module_id?: string;
   subject_id?: string;
@@ -11,6 +12,7 @@ export type DashboardScopeFilters = {
 const buildScopeQuery = (filters?: DashboardScopeFilters) => {
   if (!filters) return '';
   const params = new URLSearchParams();
+  if (filters.department_id) params.append('department_id', filters.department_id);
   if (filters.course_id) params.append('course_id', filters.course_id);
   if (filters.module_id) params.append('module_id', filters.module_id);
   if (filters.subject_id) params.append('subject_id', filters.subject_id);

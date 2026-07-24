@@ -16,6 +16,7 @@ bp = Blueprint("advanced_reports", __name__, url_prefix="/api/v1/reports")
 
 def _scope_args(*, include_trainer: bool = False, include_student: bool = False) -> dict[str, str | None]:
     scope = {
+        "department_id": request.args.get("department_id"),
         "course_id": request.args.get("course_id"),
         "module_id": request.args.get("module_id"),
         "subject_id": request.args.get("subject_id"),

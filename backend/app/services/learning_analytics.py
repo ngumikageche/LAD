@@ -42,6 +42,7 @@ def _uuid_or_none(value: str | None) -> uuid.UUID | None:
 
 
 def _resolve_subject_ids(
+    department_id: str | None = None,
     course_id: str | None = None,
     module_id: str | None = None,
     subject_id: str | None = None,
@@ -50,8 +51,14 @@ def _resolve_subject_ids(
 ) -> list[uuid.UUID] | None:
     query = db.session.query(Subject.id).filter(Subject.deleted_at.is_(None))
 
+    if department_id or course_id:
+        query = query.join(Module, Module.id == Subject.module_id)
+    if department_id:
+        query = query.join(Course, Course.id == Module.course_id).filter(
+            Course.department_id == _uuid_or_none(department_id)
+        )
     if course_id:
-        query = query.join(Module, Module.id == Subject.module_id).filter(Module.course_id == _uuid_or_none(course_id))
+        query = query.filter(Module.course_id == _uuid_or_none(course_id))
     if module_id:
         query = query.filter(Subject.module_id == _uuid_or_none(module_id))
     if subject_id:
@@ -69,6 +76,7 @@ def _resolve_subject_ids(
 
 
 def _resolve_student_ids(
+    department_id: str | None = None,
     course_id: str | None = None,
     module_id: str | None = None,
     subject_id: str | None = None,
@@ -77,6 +85,10 @@ def _resolve_student_ids(
 ) -> list[uuid.UUID] | None:
     query = db.session.query(Student.id).filter(Student.deleted_at.is_(None))
 
+    if department_id:
+        query = query.join(Course, Course.id == Student.course_id).filter(
+            Course.department_id == _uuid_or_none(department_id)
+        )
     if course_id:
         query = query.filter(Student.course_id == _uuid_or_none(course_id))
     if module_id or subject_id or trainer_id:
@@ -99,13 +111,14 @@ def _resolve_student_ids(
 
 def _scope_subject_filter(
     query,
+    department_id: str | None = None,
     course_id: str | None = None,
     module_id: str | None = None,
     subject_id: str | None = None,
     trainer_id: str | None = None,
     student_id: str | None = None,
 ):
-    subject_ids = _resolve_subject_ids(course_id, module_id, subject_id, trainer_id, student_id)
+    subject_ids = _resolve_subject_ids(department_id, course_id, module_id, subject_id, trainer_id, student_id)
     if subject_ids is not None:
         query = query.filter(Subject.id.in_(subject_ids))
     return query
@@ -113,13 +126,14 @@ def _scope_subject_filter(
 
 def _scope_student_filter(
     query,
+    department_id: str | None = None,
     course_id: str | None = None,
     module_id: str | None = None,
     subject_id: str | None = None,
     trainer_id: str | None = None,
     student_id: str | None = None,
 ):
-    student_ids = _resolve_student_ids(course_id, module_id, subject_id, trainer_id, student_id)
+    student_ids = _resolve_student_ids(department_id, course_id, module_id, subject_id, trainer_id, student_id)
     if student_ids is not None:
         query = query.filter(Student.id.in_(student_ids))
     return query
@@ -145,6 +159,7 @@ def _student_name_expr():
 
 @cache.memoize(timeout=60)
 def get_heatmap(
+    department_id: str | None = None,
     course_id: str | None = None,
     module_id: str | None = None,
     subject_id: str | None = None,
@@ -180,8 +195,8 @@ def get_heatmap(
         )
     )
 
-    query = _scope_subject_filter(query, course_id, module_id, subject_id, trainer_id, student_id)
-    query = _scope_student_filter(query, course_id, module_id, subject_id, trainer_id, student_id)
+    query = _scope_subject_filter(query, department_id, course_id, module_id, subject_id, trainer_id, student_id)
+    query = _scope_student_filter(query, department_id, course_id, module_id, subject_id, trainer_id, student_id)
 
     rows = (
         query.group_by(Student.id, User.name, Competency.id, Competency.name)
@@ -217,6 +232,7 @@ def get_heatmap(
 
 @cache.memoize(timeout=60)
 def get_mastery_progress(
+    department_id: str | None = None,
     course_id: str | None = None,
     module_id: str | None = None,
     subject_id: str | None = None,
@@ -240,8 +256,8 @@ def get_mastery_progress(
         .filter(Score.deleted_at.is_(None), Student.deleted_at.is_(None))
     )
 
-    subject_ids = _resolve_subject_ids(course_id, module_id, subject_id, trainer_id, student_id)
-    student_ids = _resolve_student_ids(course_id, module_id, subject_id, trainer_id, student_id)
+    subject_ids = _resolve_subject_ids(department_id, course_id, module_id, subject_id, trainer_id, student_id)
+    student_ids = _resolve_student_ids(department_id, course_id, module_id, subject_id, trainer_id, student_id)
     if subject_ids is not None:
         query = query.filter(Score.subject_id.in_(subject_ids))
     if student_ids is not None:
@@ -308,6 +324,7 @@ def _pearson(xs: list[float], ys: list[float]) -> float:
 
 @cache.memoize(timeout=60)
 def get_attendance_performance(
+    department_id: str | None = None,
     course_id: str | None = None,
     module_id: str | None = None,
     subject_id: str | None = None,
@@ -337,8 +354,8 @@ def get_attendance_performance(
         .filter(Student.deleted_at.is_(None))
     )
 
-    subject_ids = _resolve_subject_ids(course_id, module_id, subject_id, trainer_id, student_id)
-    student_ids = _resolve_student_ids(course_id, module_id, subject_id, trainer_id, student_id)
+    subject_ids = _resolve_subject_ids(department_id, course_id, module_id, subject_id, trainer_id, student_id)
+    student_ids = _resolve_student_ids(department_id, course_id, module_id, subject_id, trainer_id, student_id)
     if subject_ids is not None:
         query = query.filter(Score.subject_id.in_(subject_ids))
     if student_ids is not None:
@@ -376,6 +393,7 @@ def get_attendance_performance(
 
 @cache.memoize(timeout=60)
 def get_portfolio_tracking(
+    department_id: str | None = None,
     course_id: str | None = None,
     module_id: str | None = None,
     subject_id: str | None = None,
@@ -405,8 +423,8 @@ def get_portfolio_tracking(
             Competency.deleted_at.is_(None),
         )
     )
-    query = _scope_subject_filter(query, course_id, module_id, subject_id, trainer_id, student_id)
-    query = _scope_student_filter(query, course_id, module_id, subject_id, trainer_id, student_id)
+    query = _scope_subject_filter(query, department_id, course_id, module_id, subject_id, trainer_id, student_id)
+    query = _scope_student_filter(query, department_id, course_id, module_id, subject_id, trainer_id, student_id)
 
     rows = query.group_by(Student.id, User.name).order_by(User.name.asc()).all()
     items = []
@@ -433,6 +451,7 @@ def get_portfolio_tracking(
 
 @cache.memoize(timeout=60)
 def get_at_risk_analytics(
+    department_id: str | None = None,
     course_id: str | None = None,
     module_id: str | None = None,
     subject_id: str | None = None,
@@ -442,6 +461,7 @@ def get_at_risk_analytics(
     attendance_threshold: float = 75.0,
 ) -> dict:
     attendance = get_attendance_performance(
+        department_id=department_id,
         course_id=course_id,
         module_id=module_id,
         subject_id=subject_id,
@@ -461,8 +481,8 @@ def get_at_risk_analytics(
         .join(Score, (Score.student_id == Student.id) & (Score.deleted_at.is_(None)))
         .filter(Student.deleted_at.is_(None))
     )
-    subject_ids = _resolve_subject_ids(course_id, module_id, subject_id, trainer_id, student_id)
-    student_ids = _resolve_student_ids(course_id, module_id, subject_id, trainer_id, student_id)
+    subject_ids = _resolve_subject_ids(department_id, course_id, module_id, subject_id, trainer_id, student_id)
+    student_ids = _resolve_student_ids(department_id, course_id, module_id, subject_id, trainer_id, student_id)
     if subject_ids is not None:
         query = query.filter(Score.subject_id.in_(subject_ids))
     if student_ids is not None:
@@ -503,6 +523,7 @@ def get_at_risk_analytics(
 
 @cache.memoize(timeout=60)
 def get_recommendations(
+    department_id: str | None = None,
     course_id: str | None = None,
     module_id: str | None = None,
     subject_id: str | None = None,
@@ -510,6 +531,7 @@ def get_recommendations(
     student_id: str | None = None,
 ) -> dict:
     heatmap = get_heatmap(
+        department_id=department_id,
         course_id=course_id,
         module_id=module_id,
         subject_id=subject_id,
@@ -517,6 +539,7 @@ def get_recommendations(
         student_id=student_id,
     )["items"]
     at_risk = get_at_risk_analytics(
+        department_id=department_id,
         course_id=course_id,
         module_id=module_id,
         subject_id=subject_id,
@@ -564,6 +587,7 @@ def get_recommendations(
 def get_cohort_comparison(
     subject_a_id: str | None = None,
     subject_b_id: str | None = None,
+    department_id: str | None = None,
     course_id: str | None = None,
     module_id: str | None = None,
     subject_id: str | None = None,
@@ -582,7 +606,7 @@ def get_cohort_comparison(
             .join(Score, (Score.subject_id == Subject.id) & (Score.deleted_at.is_(None)))
             .filter(Subject.deleted_at.is_(None))
         )
-        query = _scope_subject_filter(query, course_id, module_id, subject_id, trainer_id, student_id)
+        query = _scope_subject_filter(query, department_id, course_id, module_id, subject_id, trainer_id, student_id)
         rows = (
             query.group_by(Subject.id)
             .order_by(func.count(Score.id).desc(), Subject.id.asc())
@@ -636,6 +660,7 @@ def get_cohort_comparison(
 @cache.memoize(timeout=60)
 def get_cohort_drilldown(
     subject_id: str,
+    department_id: str | None = None,
     course_id: str | None = None,
     module_id: str | None = None,
     trainer_id: str | None = None,
@@ -669,6 +694,7 @@ def get_cohort_drilldown(
         ],
         "summary": {
             "heatmap": get_heatmap(
+                department_id=department_id,
                 course_id=course_id,
                 module_id=module_id,
                 subject_id=subject_id,
@@ -676,6 +702,7 @@ def get_cohort_drilldown(
                 student_id=student_id,
             ),
             "progress": get_mastery_progress(
+                department_id=department_id,
                 course_id=course_id,
                 module_id=module_id,
                 subject_id=subject_id,
@@ -683,6 +710,7 @@ def get_cohort_drilldown(
                 student_id=student_id,
             ),
             "attendance_correlation": get_attendance_performance(
+                department_id=department_id,
                 course_id=course_id,
                 module_id=module_id,
                 subject_id=subject_id,
@@ -690,6 +718,7 @@ def get_cohort_drilldown(
                 student_id=student_id,
             ),
             "portfolio": get_portfolio_tracking(
+                department_id=department_id,
                 course_id=course_id,
                 module_id=module_id,
                 subject_id=subject_id,
@@ -697,6 +726,7 @@ def get_cohort_drilldown(
                 student_id=student_id,
             ),
             "at_risk": get_at_risk_analytics(
+                department_id=department_id,
                 course_id=course_id,
                 module_id=module_id,
                 subject_id=subject_id,
@@ -704,6 +734,7 @@ def get_cohort_drilldown(
                 student_id=student_id,
             ),
             "recommendations": get_recommendations(
+                department_id=department_id,
                 course_id=course_id,
                 module_id=module_id,
                 subject_id=subject_id,
@@ -718,6 +749,7 @@ def get_cohort_drilldown(
 @cache.memoize(timeout=60)
 def get_student_drilldown(
     student_id: str,
+    department_id: str | None = None,
     course_id: str | None = None,
     module_id: str | None = None,
     subject_id: str | None = None,
@@ -733,6 +765,7 @@ def get_student_drilldown(
             "registration_number": student.registration_number if student else None,
         },
         "heatmap": get_heatmap(
+            department_id=department_id,
             course_id=course_id,
             module_id=module_id,
             subject_id=subject_id,
@@ -740,6 +773,7 @@ def get_student_drilldown(
             student_id=student_id,
         ),
         "progress": get_mastery_progress(
+            department_id=department_id,
             course_id=course_id,
             module_id=module_id,
             subject_id=subject_id,
@@ -747,6 +781,7 @@ def get_student_drilldown(
             student_id=student_id,
         ),
         "attendance_correlation": get_attendance_performance(
+            department_id=department_id,
             course_id=course_id,
             module_id=module_id,
             subject_id=subject_id,
@@ -754,6 +789,7 @@ def get_student_drilldown(
             student_id=student_id,
         ),
         "portfolio": get_portfolio_tracking(
+            department_id=department_id,
             course_id=course_id,
             module_id=module_id,
             subject_id=subject_id,
@@ -761,6 +797,7 @@ def get_student_drilldown(
             student_id=student_id,
         ),
         "at_risk": get_at_risk_analytics(
+            department_id=department_id,
             course_id=course_id,
             module_id=module_id,
             subject_id=subject_id,
@@ -768,6 +805,7 @@ def get_student_drilldown(
             student_id=student_id,
         ),
         "recommendations": get_recommendations(
+            department_id=department_id,
             course_id=course_id,
             module_id=module_id,
             subject_id=subject_id,
@@ -807,6 +845,7 @@ def build_role_dashboard(
     role: str,
     student_id: str | None = None,
     trainer_id: str | None = None,
+    department_id: str | None = None,
     course_id: str | None = None,
     module_id: str | None = None,
     subject_id: str | None = None,
@@ -832,6 +871,7 @@ def build_role_dashboard(
             resolved_subject_id = str(trainer_subject[0]) if trainer_subject else None
 
     at_risk = get_at_risk_analytics(
+        department_id=department_id,
         course_id=course_id,
         module_id=module_id,
         subject_id=resolved_subject_id,
@@ -839,6 +879,7 @@ def build_role_dashboard(
         student_id=student_id,
     )
     attendance = get_attendance_performance(
+        department_id=department_id,
         course_id=course_id,
         module_id=module_id,
         subject_id=resolved_subject_id,
@@ -846,6 +887,7 @@ def build_role_dashboard(
         student_id=student_id,
     )
     portfolio = get_portfolio_tracking(
+        department_id=department_id,
         course_id=course_id,
         module_id=module_id,
         subject_id=resolved_subject_id,
@@ -853,6 +895,7 @@ def build_role_dashboard(
         student_id=student_id,
     )
     heatmap = get_heatmap(
+        department_id=department_id,
         course_id=course_id,
         module_id=module_id,
         subject_id=resolved_subject_id,
@@ -860,6 +903,7 @@ def build_role_dashboard(
         student_id=student_id,
     )
     progress = get_mastery_progress(
+        department_id=department_id,
         course_id=course_id,
         module_id=module_id,
         subject_id=resolved_subject_id,
@@ -905,13 +949,14 @@ def build_role_dashboard(
         "portfolio": portfolio,
         "at_risk": at_risk,
         "cohort_comparison": (
-            get_cohort_comparison(trainer_id=trainer_id, course_id=course_id, module_id=module_id, subject_id=resolved_subject_id, student_id=student_id)
+            get_cohort_comparison(trainer_id=trainer_id, department_id=department_id, course_id=course_id, module_id=module_id, subject_id=resolved_subject_id, student_id=student_id)
             if role == "trainer"
-            else get_cohort_comparison(course_id=course_id, module_id=module_id, subject_id=resolved_subject_id, trainer_id=trainer_id, student_id=student_id)
+            else get_cohort_comparison(department_id=department_id, course_id=course_id, module_id=module_id, subject_id=resolved_subject_id, trainer_id=trainer_id, student_id=student_id)
             if role == "admin"
             else {"cohorts": [], "cohort_a_avg": 0.0, "cohort_b_avg": 0.0, "last_updated": datetime.utcnow().isoformat()}
         ),
         "recommendations": get_recommendations(
+            department_id=department_id,
             course_id=course_id,
             module_id=module_id,
             subject_id=resolved_subject_id,

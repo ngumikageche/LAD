@@ -147,6 +147,12 @@ def _generate_registration_number(enrollment_year: int) -> str:
 
 
 def _student_payload(student: Student) -> dict:
+    subject_ids = [
+        str(row.subject_id)
+        for row in db.session.query(StudentSubject.subject_id)
+        .filter(StudentSubject.student_id == student.id)
+        .all()
+    ]
     return {
         "id": str(student.id),
         "code": student.code,
@@ -154,6 +160,7 @@ def _student_payload(student: Student) -> dict:
         "registration_number": student.registration_number,
         "course_id": str(student.course_id),
         "enrollment_year": student.enrollment_year,
+        "subject_ids": subject_ids,
         "user": {
             "id": str(student.user.id),
             "name": student.user.name,

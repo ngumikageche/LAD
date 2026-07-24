@@ -50,6 +50,7 @@ def _score_agg(filter_clause):
 
 def _scope_args() -> dict[str, str | None]:
     return {
+        "department_id": request.args.get("department_id"),
         "course_id": request.args.get("course_id"),
         "module_id": request.args.get("module_id"),
         "subject_id": request.args.get("subject_id"),
@@ -67,7 +68,27 @@ def _scope_ids() -> tuple[list[uuid.UUID] | None, list[uuid.UUID] | None]:
 
 
 def _apply_scope_filters(query, subject_ids: list[uuid.UUID] | None, student_ids: list[uuid.UUID] | None):
-    if subject_ids is not None:
+    if scope.get("course_id"):
+        total_courses = (
+            db.session.query(func.count(Course.id))
+            .filter(
+                Course.id == _parse_uuid(scope["course_id"], "course_id"),
+                Course.deleted_at.is_(None),
+            )
+            .scalar()
+            or 0
+        )
+    elif scope.get("department_id"):
+        total_courses = (
+            db.session.query(func.count(Course.id))
+            .filter(
+                Course.department_id == _parse_uuid(scope["department_id"], "department_id"),
+                Course.deleted_at.is_(None),
+            )
+            .scalar()
+            or 0
+        )
+    elif subject_ids is not None:
         query = query.filter(Score.subject_id.in_(subject_ids))
     if student_ids is not None:
         query = query.filter(Score.student_id.in_(student_ids))
@@ -114,7 +135,10 @@ def admin_dashboard():
         total_courses = db.session.query(func.count(Course.id)).filter(Course.deleted_at.is_(None)).scalar() or 0
 
     total_institutions = db.session.query(func.count(Institution.id)).filter(Institution.deleted_at.is_(None)).scalar() or 0
-    total_departments = db.session.query(func.count(Department.id)).filter(Department.deleted_at.is_(None)).scalar() or 0
+    department_query = db.session.query(func.count(Department.id)).filter(Department.deleted_at.is_(None))
+    if scope.get("department_id"):
+        department_query = department_query.filter(Department.id == _parse_uuid(scope["department_id"], "department_id"))
+    total_departments = department_query.scalar() or 0
     active_terms = db.session.query(func.count(Term.id)).filter(Term.is_active == True, Term.deleted_at.is_(None)).scalar() or 0
 
     score_query = db.session.query(
@@ -339,7 +363,11 @@ def list_department_analytics():
     )
     dept_score_map = {str(r.id): r for r in dept_score_rows}
 
-    departments = db.session.query(Department).filter(Department.deleted_at.is_(None)).all()
+    departments_query = db.session.query(Department).filter(Department.deleted_at.is_(None))
+    selected_department = _scope_args().get("department_id")
+    if selected_department:
+        departments_query = departments_query.filter(Department.id == _parse_uuid(selected_department, "department_id"))
+    departments = departments_query.all()
     results = []
     for dept in departments:
         sid = str(dept.id)

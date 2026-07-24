@@ -33,6 +33,7 @@ def _optional_uuid(value: str | None, field: str) -> str | None:
 
 def _scope_args(*, include_trainer: bool = False, include_student: bool = False) -> dict[str, str | None]:
     scope = {
+        "department_id": _optional_uuid(request.args.get("department_id"), "department_id"),
         "course_id": _optional_uuid(request.args.get("course_id"), "course_id"),
         "module_id": _optional_uuid(request.args.get("module_id"), "module_id"),
         "subject_id": _optional_uuid(request.args.get("subject_id"), "subject_id"),

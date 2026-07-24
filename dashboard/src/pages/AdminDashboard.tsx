@@ -44,8 +44,10 @@ interface AtRiskStudent {
 interface OptionItem {
   id: string;
   name: string;
+  department_id?: string | null;
   course_id?: string | null;
   module_id?: string | null;
+  subject_ids?: string[];
 }
 
 const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#f87171'];
@@ -53,6 +55,7 @@ const COLORS = ['#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#f87171'
 export default function AdminDashboard() {
   const navigate = useNavigate();
   const [scope, setScope] = useState<DashboardScopeFilters>({});
+  const [departmentOptions, setDepartmentOptions] = useState<OptionItem[]>([]);
   const [courseOptions, setCourseOptions] = useState<OptionItem[]>([]);
   const [moduleOptions, setModuleOptions] = useState<OptionItem[]>([]);
   const [subjectOptions, setSubjectOptions] = useState<OptionItem[]>([]);
@@ -68,11 +71,14 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [departmentSort, setDepartmentSort] = useState<'highest' | 'lowest' | 'students'>('highest');
+  const [progressSort, setProgressSort] = useState<'lowest' | 'highest' | 'student' | 'period'>('lowest');
+  const [progressStatus, setProgressStatus] = useState<'all' | 'passed' | 'failed'>('all');
 
   useEffect(() => {
     const loadOptions = async () => {
       try {
-        const [courses, modules, subjects, trainers, students] = await Promise.all([
+        const [departments, courses, modules, subjects, trainers, students] = await Promise.all([
+          apiRequest<any[]>('/departments'),
           apiRequest<any[]>('/courses'),
           apiRequest<any[]>('/modules'),
           apiRequest<any[]>('/subjects'),
@@ -80,12 +86,24 @@ export default function AdminDashboard() {
           apiRequest<any[]>('/students'),
         ]);
 
-        setCourseOptions((Array.isArray(courses) ? courses : []).map((item) => ({ id: String(item.id), name: item.name ?? 'Unnamed course' })));
+        setDepartmentOptions((Array.isArray(departments) ? departments : []).map((item) => ({ id: String(item.id), name: item.name ?? 'Unnamed department' })));
+        setCourseOptions((Array.isArray(courses) ? courses : []).map((item) => ({ id: String(item.id), name: item.name ?? 'Unnamed course', department_id: item.department_id ? String(item.department_id) : null })));
         setModuleOptions((Array.isArray(modules) ? modules : []).map((item) => ({ id: String(item.id), name: item.name ?? 'Unnamed module', course_id: item.course_id ?? null })));
         setSubjectOptions((Array.isArray(subjects) ? subjects : []).map((item) => ({ id: String(item.id), name: item.name ?? 'Unnamed subject', module_id: item.module_id ?? null, course_id: item.course_id ?? null })));
-        setTrainerOptions((Array.isArray(trainers) ? trainers : []).map((item) => ({ id: String(item.id), name: item.user?.name ?? item.name ?? 'Unnamed trainer' })));
-        setStudentOptions((Array.isArray(students) ? students : []).map((item) => ({ id: String(item.id), name: item.user?.name ?? item.name ?? 'Unnamed student' })));
+        setTrainerOptions((Array.isArray(trainers) ? trainers : []).map((item) => ({
+          id: String(item.id),
+          name: item.user?.name ?? item.name ?? 'Unnamed trainer',
+          department_id: item.department_id ? String(item.department_id) : null,
+          subject_ids: Array.isArray(item.subject_ids) ? item.subject_ids.map(String) : [],
+        })));
+        setStudentOptions((Array.isArray(students) ? students : []).map((item) => ({
+          id: String(item.id),
+          name: item.user?.name ?? item.name ?? 'Unnamed student',
+          course_id: item.course_id ? String(item.course_id) : null,
+          subject_ids: Array.isArray(item.subject_ids) ? item.subject_ids.map(String) : [],
+        })));
       } catch (err) {
+        setDepartmentOptions([]);
         setCourseOptions([]);
         setModuleOptions([]);
         setSubjectOptions([]);
@@ -100,6 +118,7 @@ export default function AdminDashboard() {
   useEffect(() => {
     const cacheKey = [
       'lad.admin.dashboard.v3',
+      scope.department_id,
       scope.course_id,
       scope.module_id,
       scope.subject_id,
@@ -201,15 +220,72 @@ export default function AdminDashboard() {
     loadDashboard();
   }, [scope]);
 
-  const filteredModules = scope.course_id
-    ? moduleOptions.filter((module) => module.course_id === scope.course_id)
-    : moduleOptions;
+  const filteredCourses = useMemo(
+    () => scope.department_id
+      ? courseOptions.filter((course) => course.department_id === scope.department_id)
+      : courseOptions,
+    [courseOptions, scope.department_id],
+  );
 
-  const filteredSubjects = scope.module_id
-    ? subjectOptions.filter((subject) => subject.module_id === scope.module_id)
-    : scope.course_id
-      ? subjectOptions.filter((subject) => subject.course_id === scope.course_id)
-      : subjectOptions;
+  const departmentCourseIds = useMemo(
+    () => new Set(filteredCourses.map((course) => course.id)),
+    [filteredCourses],
+  );
+
+  const filteredModules = useMemo(() => {
+    if (scope.course_id) return moduleOptions.filter((module) => module.course_id === scope.course_id);
+    if (scope.department_id) return moduleOptions.filter((module) => module.course_id && departmentCourseIds.has(module.course_id));
+    return moduleOptions;
+  }, [moduleOptions, scope.course_id, scope.department_id, departmentCourseIds]);
+
+  const filteredSubjects = useMemo(() => {
+    if (scope.module_id) return subjectOptions.filter((subject) => subject.module_id === scope.module_id);
+    if (scope.course_id) return subjectOptions.filter((subject) => subject.course_id === scope.course_id);
+    if (scope.department_id) return subjectOptions.filter((subject) => subject.course_id && departmentCourseIds.has(subject.course_id));
+    return subjectOptions;
+  }, [subjectOptions, scope.module_id, scope.course_id, scope.department_id, departmentCourseIds]);
+
+  const allowedSubjectIds = useMemo(
+    () => new Set(filteredSubjects.map((subject) => subject.id)),
+    [filteredSubjects],
+  );
+
+  const filteredTrainers = useMemo(() => trainerOptions.filter((trainer) => {
+    if (
+      scope.department_id
+      && trainer.department_id !== scope.department_id
+      && !trainer.subject_ids?.some((subjectId) => allowedSubjectIds.has(subjectId))
+    ) return false;
+    if (scope.subject_id) return trainer.subject_ids?.includes(scope.subject_id);
+    if (scope.module_id || scope.course_id || scope.department_id) {
+      return trainer.subject_ids?.some((subjectId) => allowedSubjectIds.has(subjectId));
+    }
+    return true;
+  }), [trainerOptions, scope.department_id, scope.course_id, scope.module_id, scope.subject_id, allowedSubjectIds]);
+
+  const selectedTrainerSubjectIds = useMemo(
+    () => new Set(trainerOptions.find((trainer) => trainer.id === scope.trainer_id)?.subject_ids ?? []),
+    [trainerOptions, scope.trainer_id],
+  );
+
+  const filteredStudents = useMemo(() => studentOptions.filter((student) => {
+    if (scope.course_id && student.course_id !== scope.course_id) return false;
+    if (!scope.course_id && scope.department_id && (!student.course_id || !departmentCourseIds.has(student.course_id))) return false;
+    if (scope.subject_id && !student.subject_ids?.includes(scope.subject_id)) return false;
+    if (!scope.subject_id && scope.module_id && !student.subject_ids?.some((subjectId) => allowedSubjectIds.has(subjectId))) return false;
+    if (scope.trainer_id && !student.subject_ids?.some((subjectId) => selectedTrainerSubjectIds.has(subjectId))) return false;
+    return true;
+  }), [
+    studentOptions,
+    scope.department_id,
+    scope.course_id,
+    scope.module_id,
+    scope.subject_id,
+    scope.trainer_id,
+    departmentCourseIds,
+    allowedSubjectIds,
+    selectedTrainerSubjectIds,
+  ]);
 
   const updateScope = (patch: Partial<DashboardScopeFilters>, reset: Array<keyof DashboardScopeFilters> = []) => {
     setScope((current) => {
@@ -226,6 +302,27 @@ export default function AdminDashboard() {
     if (departmentSort === 'students') return b.students_count - a.students_count;
     return b.avg_score - a.avg_score;
   }), [departments, departmentSort]);
+
+  const sortedProgress = useMemo(() => {
+    const items = (advanced?.progress?.items ?? []).filter((item) => {
+      if (progressStatus === 'passed') return Number(item.average_score || 0) >= 50;
+      if (progressStatus === 'failed') return Number(item.average_score || 0) < 50;
+      return true;
+    });
+    items.sort((a, b) => {
+      if (progressSort === 'highest') return Number(b.average_score || 0) - Number(a.average_score || 0);
+      if (progressSort === 'student') return String(a.student_name || '').localeCompare(String(b.student_name || ''));
+      if (progressSort === 'period') return String(b.date || '').localeCompare(String(a.date || ''));
+      return Number(a.average_score || 0) - Number(b.average_score || 0);
+    });
+    return items;
+  }, [advanced?.progress?.items, progressSort, progressStatus]);
+
+  const progressCounts = useMemo(() => {
+    const items = advanced?.progress?.items ?? [];
+    const passed = items.filter((item) => Number(item.average_score || 0) >= 50).length;
+    return { all: items.length, passed, failed: items.length - passed };
+  }, [advanced?.progress?.items]);
 
   if (loading) {
     return (
@@ -256,7 +353,10 @@ export default function AdminDashboard() {
           <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-center gap-2">
               <Filter size={18} className="text-emerald-400" />
-              <h2 className="text-lg font-semibold text-slate-100">Dashboard scope</h2>
+              <div>
+                <h2 className="text-lg font-semibold text-slate-100">Dashboard scope & progress tracking</h2>
+                <p className="text-xs text-slate-500">Choose a department first. Every next list only shows matching records.</p>
+              </div>
             </div>
             <button
               type="button"
@@ -266,16 +366,36 @@ export default function AdminDashboard() {
               Clear filters
             </button>
           </div>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
+            <label className="space-y-2 text-sm text-slate-400">
+              <span>Department</span>
+              <select
+                className="w-full rounded-xl border border-emerald-800 bg-slate-950 px-3 py-2 text-slate-100 outline-none transition focus:border-emerald-500"
+                value={scope.department_id ?? ''}
+                onChange={(event) => updateScope(
+                  { department_id: event.target.value || undefined },
+                  ['course_id', 'module_id', 'subject_id', 'trainer_id', 'student_id'],
+                )}
+              >
+                <option value="">Choose department</option>
+                {departmentOptions.map((department) => (
+                  <option key={department.id} value={department.id}>{department.name}</option>
+                ))}
+              </select>
+            </label>
             <label className="space-y-2 text-sm text-slate-400">
               <span>Course</span>
               <select
                 className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none transition focus:border-emerald-500"
                 value={scope.course_id ?? ''}
-                onChange={(event) => updateScope({ course_id: event.target.value || undefined }, ['module_id', 'subject_id'])}
+                disabled={!scope.department_id}
+                onChange={(event) => updateScope(
+                  { course_id: event.target.value || undefined },
+                  ['module_id', 'subject_id', 'trainer_id', 'student_id'],
+                )}
               >
-                <option value="">All courses</option>
-                {courseOptions.map((course) => (
+                <option value="">{scope.department_id ? 'All department courses' : 'Choose department first'}</option>
+                {filteredCourses.map((course) => (
                   <option key={course.id} value={course.id}>{course.name}</option>
                 ))}
               </select>
@@ -285,9 +405,13 @@ export default function AdminDashboard() {
               <select
                 className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none transition focus:border-emerald-500"
                 value={scope.module_id ?? ''}
-                onChange={(event) => updateScope({ module_id: event.target.value || undefined }, ['subject_id'])}
+                disabled={!scope.course_id}
+                onChange={(event) => updateScope(
+                  { module_id: event.target.value || undefined },
+                  ['subject_id', 'trainer_id', 'student_id'],
+                )}
               >
-                <option value="">All modules</option>
+                <option value="">{scope.course_id ? 'All course modules' : 'Choose course first'}</option>
                 {filteredModules.map((module) => (
                   <option key={module.id} value={module.id}>{module.name}</option>
                 ))}
@@ -298,9 +422,13 @@ export default function AdminDashboard() {
               <select
                 className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none transition focus:border-emerald-500"
                 value={scope.subject_id ?? ''}
-                onChange={(event) => updateScope({ subject_id: event.target.value || undefined })}
+                disabled={!scope.module_id}
+                onChange={(event) => updateScope(
+                  { subject_id: event.target.value || undefined },
+                  ['trainer_id', 'student_id'],
+                )}
               >
-                <option value="">All subjects</option>
+                <option value="">{scope.module_id ? 'All module subjects' : 'Choose module first'}</option>
                 {filteredSubjects.map((subject) => (
                   <option key={subject.id} value={subject.id}>{subject.name}</option>
                 ))}
@@ -311,10 +439,14 @@ export default function AdminDashboard() {
               <select
                 className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none transition focus:border-emerald-500"
                 value={scope.trainer_id ?? ''}
-                onChange={(event) => updateScope({ trainer_id: event.target.value || undefined })}
+                disabled={!scope.subject_id}
+                onChange={(event) => updateScope(
+                  { trainer_id: event.target.value || undefined },
+                  ['student_id'],
+                )}
               >
-                <option value="">All trainers</option>
-                {trainerOptions.map((trainer) => (
+                <option value="">{scope.subject_id ? 'All subject trainers' : 'Choose subject first'}</option>
+                {filteredTrainers.map((trainer) => (
                   <option key={trainer.id} value={trainer.id}>{trainer.name}</option>
                 ))}
               </select>
@@ -324,10 +456,11 @@ export default function AdminDashboard() {
               <select
                 className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-slate-100 outline-none transition focus:border-emerald-500"
                 value={scope.student_id ?? ''}
+                disabled={!scope.trainer_id}
                 onChange={(event) => updateScope({ student_id: event.target.value || undefined })}
               >
-                <option value="">All students</option>
-                {studentOptions.map((student) => (
+                <option value="">{scope.trainer_id ? 'All trainer students' : 'Choose trainer first'}</option>
+                {filteredStudents.map((student) => (
                   <option key={student.id} value={student.id}>{student.name}</option>
                 ))}
               </select>
@@ -359,6 +492,82 @@ export default function AdminDashboard() {
               </div>
             );
           })}
+        </div>
+
+        <div className="mb-8 overflow-hidden rounded-lg border border-slate-800 bg-slate-900 shadow">
+          <div className="flex flex-col gap-3 border-b border-slate-800 p-6 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-slate-100">Progress Tracking</h2>
+              <p className="mt-1 text-sm text-slate-500">Results follow the department-first scope selected above.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <select
+                value={progressStatus}
+                onChange={(event) => setProgressStatus(event.target.value as typeof progressStatus)}
+                className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-300"
+              >
+                <option value="all">All statuses ({progressCounts.all})</option>
+                <option value="passed">Passed ({progressCounts.passed})</option>
+                <option value="failed">Failed ({progressCounts.failed})</option>
+              </select>
+              <select
+                value={progressSort}
+                onChange={(event) => setProgressSort(event.target.value as typeof progressSort)}
+                className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-300"
+              >
+                <option value="lowest">Needs attention first</option>
+                <option value="highest">Highest progress first</option>
+                <option value="student">Student name A–Z</option>
+                <option value="period">Latest period first</option>
+              </select>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="border-b border-slate-700 bg-slate-800">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-400">Student</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-400">Subject</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-400">Period</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-400">Average progress</th>
+                  <th className="px-6 py-3 text-left text-xs font-medium uppercase text-slate-400">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800">
+                {sortedProgress.length ? sortedProgress.slice(0, 12).map((item, index) => (
+                  <tr key={`${item.student_id}-${item.subject_id}-${item.date}-${index}`} className="hover:bg-slate-800/60">
+                    <td className="px-6 py-4 font-medium text-slate-200">{item.student_name || 'Unknown student'}</td>
+                    <td className="px-6 py-4 text-slate-400">{item.subject_name || 'Unassigned subject'}</td>
+                    <td className="px-6 py-4 text-slate-400">{item.date || 'Unassigned'}</td>
+                    <td className="px-6 py-4">
+                      <span className={`rounded-full px-3 py-1 text-sm font-bold ${
+                        Number(item.average_score || 0) >= 75
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : Number(item.average_score || 0) >= 50
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-red-100 text-red-800'
+                      }`}>
+                        {Number(item.average_score || 0).toFixed(1)}%
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      {Number(item.average_score || 0) >= 50 ? (
+                        <span className="rounded-full bg-emerald-500/15 px-3 py-1 text-xs font-bold uppercase tracking-wide text-emerald-300">Passed</span>
+                      ) : (
+                        <span className="rounded-full bg-red-500/15 px-3 py-1 text-xs font-bold uppercase tracking-wide text-red-300">Failed</span>
+                      )}
+                    </td>
+                  </tr>
+                )) : (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-8 text-center text-slate-500">
+                      No {progressStatus === 'all' ? '' : `${progressStatus} `}progress records match this scope.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
 
         {/* Charts Grid */}
