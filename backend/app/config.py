@@ -25,5 +25,12 @@ class Config:
     )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key")
-    CORS_ORIGINS = _parse_cors_origins(os.getenv("CORS_ORIGINS"))
-    MAX_CONTENT_LENGTH = int(os.getenv("MAX_CONTENT_LENGTH", str(25 * 1024 * 1024)))
+    CORS_ORIGINS = _parse_cors_origins(
+        os.getenv(
+            "CORS_ORIGINS",
+            "https://larim.co.ke,https://www.larim.co.ke"
+        )
+    )
+    MAX_CONTENT_LENGTH = int(
+        os.getenv("MAX_CONTENT_LENGTH", str(25 * 1024 * 1024))
+    )
