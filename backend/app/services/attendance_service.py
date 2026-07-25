@@ -18,6 +18,8 @@ from ..models.student import Student
 from ..models.trainer import Trainer
 from ..models.enrollment import Enrollment
 from ..models.course import Course
+from ..models.module import Module
+from ..models.subject import Subject
 from ..models.student_subject import StudentSubject
 from ..extensions import db
 
@@ -187,19 +189,54 @@ class AttendanceService:
             )
         ).first()
         
-        if old_history:
-            old_history.expires_at = datetime.utcnow()
-        
+        # The previous token keeps its own expiry (issued_at + interval + buffer)
+        # so a student who scanned just before rotation can still finish check-in.
+        # It is not force-expired here.
+
         db.session.commit()
         return new_token
 
     @staticmethod
+    def resolve_session_by_token(token: str) -> Optional[AttendanceSession]:
+        """Find the active session a token belongs to, current or within grace."""
+        session = db.session.query(AttendanceSession).filter_by(
+            current_token=token, status="active"
+        ).first()
+        if session:
+            return session
+
+        history = db.session.query(AttendanceTokenHistory).filter(
+            and_(
+                AttendanceTokenHistory.token == token,
+                AttendanceTokenHistory.expires_at > datetime.utcnow(),
+            )
+        ).first()
+        if not history:
+            return None
+        return db.session.query(AttendanceSession).filter_by(id=history.attendance_session_id).first()
+
+    @staticmethod
     def validate_token(session: AttendanceSession, token: str) -> bool:
-        """Validate that token is current and not expired."""
+        """Validate that token is current, or a recent token still in its grace window.
+
+        Tokens rotate every regeneration_interval seconds, but a student needs
+        time to grant location permission and get a GPS fix after scanning.
+        Accepting the previous token until its recorded expiry keeps that flow
+        working without letting stale tokens live indefinitely.
+        """
         if not session.is_active():
             return False
-        
-        return session.current_token == token
+
+        if session.current_token == token:
+            return True
+
+        return db.session.query(AttendanceTokenHistory).filter(
+            and_(
+                AttendanceTokenHistory.attendance_session_id == session.id,
+                AttendanceTokenHistory.token == token,
+                AttendanceTokenHistory.expires_at > datetime.utcnow(),
+            )
+        ).first() is not None
 
     @staticmethod
     def calculate_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -244,12 +281,41 @@ class AttendanceService:
                 subject_uuid = _uuid.UUID(str(subject_id))
             except ValueError:
                 return False
-            return db.session.query(StudentSubject).filter(
+            enrolled = db.session.query(StudentSubject).filter(
                 and_(
                     StudentSubject.student_id == student_id,
                     StudentSubject.subject_id == subject_uuid
                 )
             ).first() is not None
+            if enrolled:
+                return True
+            # No per-subject row: fall back to the subject's module/course so
+            # students enrolled at course level are not locked out.
+            subject = db.session.query(Subject).filter_by(id=subject_uuid).first()
+            if subject and not module_id:
+                module_id = str(subject.module_id)
+
+        # Fallback: module-level check
+        module_uuid = None
+        if module_id:
+            try:
+                module_uuid = _uuid.UUID(str(module_id))
+            except ValueError:
+                module_uuid = None
+        if module_uuid:
+            enrolled = db.session.query(Enrollment).filter(
+                and_(
+                    Enrollment.student_id == student_id,
+                    Enrollment.module_id == module_uuid
+                )
+            ).first() is not None
+            if enrolled:
+                return True
+            # A module belongs to a course; use it if the session had no course.
+            if not course_id:
+                module = db.session.query(Module).filter_by(id=module_uuid).first()
+                if module and module.course_id:
+                    course_id = str(module.course_id)
 
         # Fallback: course-level check
         if course_id:
@@ -267,18 +333,9 @@ class AttendanceService:
                 )
             ).first() is not None
 
-        # Fallback: module-level check
-        if module_id:
-            try:
-                module_uuid = _uuid.UUID(str(module_id))
-            except ValueError:
-                return False
-            return db.session.query(Enrollment).filter(
-                and_(
-                    Enrollment.student_id == student_id,
-                    Enrollment.module_id == module_uuid
-                )
-            ).first() is not None
+        # A scoped session with no matching enrollment anywhere fails closed.
+        if subject_id or module_id:
+            return False
 
         # No scope set — allow through (session has no enrollment restriction)
         return True

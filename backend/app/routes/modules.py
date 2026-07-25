@@ -10,6 +10,7 @@ from ..models.module import Module
 from ..models.course import Course
 from ..models.subject import Subject
 from ..models.competency import Competency
+from ..models.dashboard_metric import DashboardMetric
 from ..models.enrollment import Enrollment
 from ..models.student_subject import StudentSubject
 from .permissions import log_view, require_permission
@@ -23,6 +24,21 @@ def _parse_uuid(value: str | None, field: str) -> uuid.UUID:
         return uuid.UUID(str(value))
     except (ValueError, TypeError) as exc:
         raise ValueError(f"Invalid '{field}'") from exc
+
+def _integrity_message(exc: IntegrityError) -> str:
+    """Turn a database integrity error into something a user can act on."""
+    detail = str(getattr(exc, "orig", exc))
+    lowered = detail.lower()
+    if "modules_code_key" in lowered or "modules_name" in lowered:
+        return "A module with that code or name already exists"
+    if "unique" in lowered or "duplicate key" in lowered:
+        return "A module with those details already exists"
+    if "not-null" in lowered or "null value" in lowered:
+        return "Module is missing required related data"
+    if "foreign key" in lowered:
+        return "Module references a record that does not exist"
+    return "Module could not be saved due to a data conflict"
+
 
 def _module_payload(module: Module) -> dict:
     return {
@@ -64,9 +80,9 @@ def create_module():
     db.session.add(module)
     try:
         db.session.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         db.session.rollback()
-        return {"error": "Module already exists"}, 409
+        return {"error": _integrity_message(exc)}, 409
     return _module_payload(module), 201
 
 @bp.get("")
@@ -142,9 +158,9 @@ def update_module(module_id: str):
         module.description = description.strip() if description else None
     try:
         db.session.commit()
-    except IntegrityError:
+    except IntegrityError as exc:
         db.session.rollback()
-        return {"error": "Module already exists"}, 409
+        return {"error": _integrity_message(exc)}, 409
     return _module_payload(module), 200
 
 @bp.delete("/<module_id>")
@@ -159,8 +175,24 @@ def delete_module(module_id: str):
     module = db.session.get(Module, module_uuid)
     if not module:
         return {"error": "Module not found"}, 404
-    db.session.delete(module)
-    db.session.commit()
+    # Subjects and dashboard metrics require a module; SQLAlchemy would otherwise
+    # try to NULL their module_id on delete and hit a not-null violation.
+    subject_count = db.session.query(Subject.id).filter(Subject.module_id == module_uuid).count()
+    metric_count = (
+        db.session.query(DashboardMetric.id).filter(DashboardMetric.module_id == module_uuid).count()
+    )
+    if subject_count or metric_count:
+        return {
+            "error": "Module has dependent records and cannot be deleted",
+            "subjects": subject_count,
+            "dashboard_metrics": metric_count,
+        }, 409
+    try:
+        db.session.delete(module)
+        db.session.commit()
+    except IntegrityError:
+        db.session.rollback()
+        return {"error": "Module has dependent records and cannot be deleted"}, 409
     return {"status": "deleted"}, 200
 
 @bp.post("/<module_id>/sync-subjects")

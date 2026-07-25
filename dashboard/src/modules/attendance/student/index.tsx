@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { MapPin, Loader, CheckCircle, AlertCircle } from "lucide-react";
 import { useGPSLocation } from "../hooks/useGPSLocation";
 import { AttendanceAPI } from "../services/attendanceAPI";
@@ -22,6 +22,15 @@ export function StudentCheckIn({ onSuccess, onError }: StudentCheckInProps) {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ success: boolean; message: string; distance?: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Ask for GPS while the student is still lining up the QR code. Tokens rotate
+  // every ~25s, so waiting for a fix after the scan is what makes check-ins fail.
+  useEffect(() => {
+    if (step === "scanner" && !location && !locationLoading) {
+      requestLocation();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step]);
 
   const handleQRScan = async (data: string) => {
     setError(null);

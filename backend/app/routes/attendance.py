@@ -435,10 +435,7 @@ def get_session_by_token(token: str):
     Public endpoint to look up an active session by its current QR token.
     Used by students after scanning a QR code.
     """
-    session = db.session.query(AttendanceSession).filter_by(
-        current_token=token,
-        status="active"
-    ).first()
+    session = AttendanceService.resolve_session_by_token(token)
 
     if not session:
         return {"error": "Invalid or expired QR code"}, 404
