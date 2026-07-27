@@ -5,6 +5,7 @@ import {
   BarChart3, Bell, ClipboardList, CalendarCheck, GraduationCap,
   BookOpen, UserCheck, ChevronDown, ChevronRight, LayoutDashboard,
   QrCode, ScanLine, PenLine, HeartPulse,
+  X,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useAuth } from '../../auth/AuthContext';
@@ -175,10 +176,12 @@ function NavGroupSection({
   group,
   isCollapsed,
   location,
+  onNavigate,
 }: {
   group: NavGroup;
   isCollapsed: boolean;
   location: ReturnType<typeof useLocation>;
+  onNavigate: () => void;
 }) {
   const isAnyActive = group.items.some(
     (item) =>
@@ -198,6 +201,7 @@ function NavGroupSection({
             <Link
               key={item.path}
               to={item.path}
+              onClick={onNavigate}
               title={item.name}
               className={`flex items-center justify-center p-3 rounded-lg transition-all mb-0.5 ${
                 active
@@ -237,6 +241,7 @@ function NavGroupSection({
                 <span className="absolute -left-3 top-1/2 -translate-y-1/2 w-3 h-px bg-blue-800" />
                 <Link
                   to={item.path}
+                  onClick={onNavigate}
                   className={`flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all font-medium ${
                     active
                       ? 'bg-teal-500/15 text-teal-200 border-l-2 border-teal-400'
@@ -255,8 +260,15 @@ function NavGroupSection({
   );
 }
 
-const Sidebar = () => {
-  const [isCollapsed, setIsCollapsed] = useState(false);
+type SidebarProps = {
+  mobileOpen: boolean;
+  onMobileClose: () => void;
+};
+
+const Sidebar = ({ mobileOpen, onMobileClose }: SidebarProps) => {
+  const [isCollapsed, setIsCollapsed] = useState(() => (
+    typeof window !== 'undefined' && window.innerWidth < 1440
+  ));
   const location = useLocation();
   const { user } = useAuth();
 
@@ -270,15 +282,29 @@ const Sidebar = () => {
       .filter((group) => group.items.length > 0);
   }, [user]);
 
+  const renderCollapsed = mobileOpen ? false : isCollapsed;
+
   return (
-    <div
-      className={`${theme.layout.sidebar} border-r transition-all duration-300 flex flex-col ${
-        isCollapsed ? 'w-16' : 'w-64'
-      } shadow-2xl shadow-blue-950/30`}
-    >
+    <>
+      {mobileOpen ? (
+        <button
+          type="button"
+          aria-label="Close navigation"
+          onClick={onMobileClose}
+          className="fixed inset-0 z-40 bg-slate-950/75 backdrop-blur-sm md:hidden"
+        />
+      ) : null}
+      <aside
+        aria-label="Primary navigation"
+        className={`${theme.layout.sidebar} fixed inset-y-0 left-0 z-50 flex w-[min(86vw,18rem)] shrink-0 flex-col border-r shadow-2xl shadow-blue-950/30 transition-[width,transform] duration-300 md:static md:z-auto md:translate-x-0 ${
+          mobileOpen ? 'translate-x-0' : '-translate-x-full'
+        } ${
+          renderCollapsed ? 'md:w-16' : 'md:w-60 xl:w-64'
+        }`}
+      >
       {/* Logo */}
       <div className="flex items-center justify-between p-4 border-b border-blue-800 shrink-0">
-        {!isCollapsed && (
+        {!renderCollapsed && (
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 bg-teal-400 rounded-full" />
             <h1 className="text-lg font-bold text-white">
@@ -287,10 +313,20 @@ const Sidebar = () => {
           </div>
         )}
         <button
-          onClick={() => setIsCollapsed((c) => !c)}
-          className="p-2 rounded-md hover:bg-blue-800/70 text-slate-300 transition-all duration-200"
+          type="button"
+          onClick={onMobileClose}
+          className="rounded-md p-2 text-slate-300 transition hover:bg-blue-800/70 md:hidden"
+          aria-label="Close navigation"
         >
-          {isCollapsed ? <ChevronsRight size={18} /> : <ChevronsLeft size={18} />}
+          <X size={19} />
+        </button>
+        <button
+          type="button"
+          onClick={() => setIsCollapsed((c) => !c)}
+          className="hidden rounded-md p-2 text-slate-300 transition-all duration-200 hover:bg-blue-800/70 md:block"
+          aria-label={renderCollapsed ? 'Expand navigation' : 'Collapse navigation'}
+        >
+          {renderCollapsed ? <ChevronsRight size={18} /> : <ChevronsLeft size={18} />}
         </button>
       </div>
 
@@ -300,12 +336,14 @@ const Sidebar = () => {
           <NavGroupSection
             key={group.label}
             group={group}
-            isCollapsed={isCollapsed}
+            isCollapsed={renderCollapsed}
             location={location}
+            onNavigate={onMobileClose}
           />
         ))}
       </nav>
-    </div>
+      </aside>
+    </>
   );
 };
 

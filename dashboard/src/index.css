@@ -28,6 +28,115 @@ body,
 
 body {
   color: var(--app-text);
+  min-width: 320px;
+  overflow-x: hidden;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+img,
+video,
+canvas,
+svg {
+  max-width: 100%;
+}
+
+[data-dashboard-main] {
+  overscroll-behavior: contain;
+}
+
+[data-dashboard-main] > div > .min-h-screen {
+  min-height: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+[data-dashboard-main] h1,
+[data-dashboard-main] h2,
+[data-dashboard-main] h3,
+[data-dashboard-main] p {
+  overflow-wrap: anywhere;
+}
+
+/* Compact the information density on smaller laptops without scaling the UI. */
+@media (min-width: 768px) and (max-width: 1366px) {
+  [data-dashboard-main] {
+    --dashboard-card-gap: 1rem;
+  }
+
+  [data-dashboard-main] .gap-8 {
+    gap: 1.5rem;
+  }
+
+  [data-dashboard-main] .space-y-8 > :not(:last-child) {
+    margin-bottom: 1.5rem;
+  }
+}
+
+@media (max-width: 639px) {
+  [data-dashboard-main] .min-h-screen {
+    min-height: 100%;
+  }
+
+  [data-dashboard-main] .text-5xl {
+    font-size: 2rem;
+    line-height: 1.15;
+  }
+
+  [data-dashboard-main] .text-4xl {
+    font-size: 1.75rem;
+    line-height: 1.2;
+  }
+
+  [data-dashboard-main] .text-3xl {
+    font-size: 1.5rem;
+    line-height: 1.25;
+  }
+
+  [data-dashboard-main] .rounded-\[2rem\],
+  [data-dashboard-main] .rounded-3xl {
+    border-radius: 1rem;
+  }
+
+  [data-dashboard-main] .p-8,
+  [data-dashboard-main] .p-6 {
+    padding: 1rem;
+  }
+
+  [data-dashboard-main] .px-8,
+  [data-dashboard-main] .px-6 {
+    padding-right: 1rem;
+    padding-left: 1rem;
+  }
+
+  [data-dashboard-main] .py-8,
+  [data-dashboard-main] .py-6 {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+  }
+
+  [data-dashboard-main] table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  [data-dashboard-main] th,
+  [data-dashboard-main] td {
+    white-space: nowrap;
+  }
+
+  [data-dashboard-main] input,
+  [data-dashboard-main] select,
+  [data-dashboard-main] textarea {
+    font-size: 16px;
+  }
 }
 
 /*

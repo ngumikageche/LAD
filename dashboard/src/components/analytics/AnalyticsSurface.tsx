@@ -13,7 +13,7 @@ type AnalyticsHeroProps = {
 
 export function AnalyticsHero({ eyebrow, title, description, children }: AnalyticsHeroProps) {
   return (
-    <section className="relative overflow-hidden rounded-[2rem] border border-slate-700/80 bg-[radial-gradient(circle_at_top_left,rgba(20,184,166,0.18),transparent_34%),radial-gradient(circle_at_85%_15%,rgba(59,130,246,0.16),transparent_28%),linear-gradient(135deg,#020617_0%,#0f172a_48%,#111827_100%)] p-8 shadow-[0_24px_80px_-28px_rgba(15,23,42,0.75)]">
+    <section className="relative overflow-hidden rounded-[2rem] border border-slate-700/80 bg-[radial-gradient(circle_at_top_left,rgba(20,184,166,0.18),transparent_34%),radial-gradient(circle_at_85%_15%,rgba(59,130,246,0.16),transparent_28%),linear-gradient(135deg,#020617_0%,#0f172a_48%,#111827_100%)] p-4 shadow-[0_24px_80px_-28px_rgba(15,23,42,0.75)] sm:p-6 lg:p-8">
       <div className="pointer-events-none absolute inset-0 opacity-70">
         <div className="absolute -left-16 top-0 h-40 w-40 rounded-full bg-teal-400/10 blur-3xl" />
         <div className="absolute right-0 top-6 h-44 w-44 rounded-full bg-blue-500/10 blur-3xl" />
@@ -22,7 +22,7 @@ export function AnalyticsHero({ eyebrow, title, description, children }: Analyti
       <div className="relative flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
         <div className="max-w-3xl">
           <p className="text-xs uppercase tracking-[0.35em] text-teal-300">{eyebrow}</p>
-          <h1 className="mt-3 text-4xl font-bold tracking-tight text-slate-50">{title}</h1>
+          <h1 className="mt-3 text-2xl font-bold tracking-tight text-slate-50 sm:text-3xl lg:text-4xl">{title}</h1>
           <p className="mt-3 text-sm leading-6 text-slate-300">{description}</p>
         </div>
         {children ? <div className="relative">{children}</div> : null}
@@ -58,11 +58,11 @@ export function AnalyticsMetricTile({
   accent = 'slate',
 }: AnalyticsMetricTileProps) {
   return (
-    <div className="rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-sm">
+    <div className="rounded-3xl border border-slate-700 bg-slate-900 p-4 shadow-sm sm:p-5 lg:p-6">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-medium text-slate-400">{label}</p>
-          <div className="mt-3 text-3xl font-bold text-slate-100">{value}</div>
+          <div className="mt-3 text-2xl font-bold text-slate-100 sm:text-3xl">{value}</div>
           {helper ? <div className="mt-3 text-xs text-slate-500">{helper}</div> : null}
         </div>
         {Icon ? (
@@ -91,10 +91,10 @@ export function AnalyticsSection({
   className,
 }: AnalyticsSectionProps) {
   return (
-    <section className={cx('rounded-3xl border border-slate-700 bg-slate-900 p-6 shadow-sm', className)}>
-      <div className="mb-5 flex items-start justify-between gap-4">
+    <section className={cx('rounded-3xl border border-slate-700 bg-slate-900 p-4 shadow-sm sm:p-5 lg:p-6', className)}>
+      <div className="mb-5 flex flex-col items-start justify-between gap-4 sm:flex-row">
         <div>
-          <h2 className="text-2xl font-semibold text-slate-100">{title}</h2>
+          <h2 className="text-xl font-semibold text-slate-100 sm:text-2xl">{title}</h2>
           {description ? <p className="mt-1 text-sm text-slate-400">{description}</p> : null}
         </div>
         {action ? <div className="shrink-0">{action}</div> : null}

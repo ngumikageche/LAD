@@ -45,13 +45,13 @@ export const Modal: React.FC<ModalProps> = ({
       <div className={`fixed inset-0 ${theme.surface.overlay} transition-opacity`} />
 
       {/* Modal Container */}
-      <div className="flex items-center justify-center min-h-screen px-4 sm:px-6 lg:px-8 py-12">
+      <div className="flex min-h-dvh items-end justify-center px-0 py-0 sm:items-center sm:px-6 sm:py-8 lg:px-8">
         <div
-          className={`relative ${theme.surface.card} shadow-2xl transform transition-all w-full ${sizeClasses[size]}`}
+          className={`relative flex max-h-dvh w-full flex-col overflow-hidden rounded-b-none shadow-2xl transition-all sm:max-h-[calc(100dvh-4rem)] sm:rounded-lg ${theme.surface.card} ${sizeClasses[size]}`}
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header */}
-          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800">
+          <div className="flex shrink-0 items-center justify-between border-b border-slate-800 px-4 py-4 sm:px-6">
             <div>
               <h2 className="text-xl font-bold text-slate-100">{title}</h2>
               {description && (
@@ -68,7 +68,7 @@ export const Modal: React.FC<ModalProps> = ({
           </div>
 
           {/* Content */}
-          <div className="px-6 py-4">{children}</div>
+          <div className="min-h-0 overflow-y-auto px-4 py-4 sm:px-6">{children}</div>
         </div>
       </div>
     </div>
