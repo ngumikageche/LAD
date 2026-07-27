@@ -1,6 +1,8 @@
-import { forwardRef } from 'react';
+import { forwardRef, useEffect, useState } from 'react';
 import type { ForwardedRef } from 'react';
+import { trainerPracticalAssessmentsAPI } from '../../api/trainer';
 import type { PracticalAssessmentReport } from '../../api/trainer';
+import { resolveApiUrl } from '../../api/client';
 
 const outcomeClass = (outcome: string | null) => {
   switch ((outcome ?? '').toUpperCase()) {
@@ -274,18 +276,11 @@ const PracticalAssessmentReportView = forwardRef(function PracticalAssessmentRep
             <h2 className="text-base font-bold uppercase">Captured Practical Evidence</h2>
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               {mediaAttachments.map((attachment) => (
-                <div key={attachment.id} className="rounded border border-slate-300 p-3">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="truncate text-sm font-semibold">{attachment.file_name}</p>
-                    <span className="text-xs uppercase text-slate-500">{attachment.media_type}</span>
-                  </div>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {formatFileSize(attachment.file_size)} • {formatDateTime(attachment.uploaded_at)}
-                  </p>
-                  <a href={attachment.file_url} target="_blank" rel="noreferrer" className="mt-3 inline-flex text-sm font-medium text-blue-700 underline">
-                    Open evidence
-                  </a>
-                </div>
+                <PublishedEvidencePreview
+                  key={attachment.id}
+                  reportId={report.id}
+                  attachment={attachment}
+                />
               ))}
             </div>
           </div>
@@ -300,6 +295,77 @@ function Detail({ label, value }: { label: string; value: string }) {
     <p className="text-sm">
       <strong>{label}:</strong> {value}
     </p>
+  );
+}
+
+type EvidenceAttachment = NonNullable<PracticalAssessmentReport['media_attachments']>[number];
+
+function PublishedEvidencePreview({
+  reportId,
+  attachment,
+}: {
+  reportId: string;
+  attachment: EvidenceAttachment;
+}) {
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    trainerPracticalAssessmentsAPI
+      .getPracticalAssessmentMediaPreviewUrl(reportId, attachment.id)
+      .then((url) => {
+        if (!cancelled) setPreviewUrl(resolveApiUrl(url));
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : 'Preview unavailable');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [attachment.id, reportId]);
+
+  const isPdf = attachment.file_name.toLowerCase().endsWith('.pdf');
+  const isText = /\.(txt|rtf)$/i.test(attachment.file_name);
+
+  return (
+    <div className="overflow-hidden rounded border border-slate-300">
+      <div className="flex min-h-40 items-center justify-center bg-slate-100">
+        {!previewUrl && !error ? (
+          <span className="text-sm text-slate-500">Loading preview…</span>
+        ) : error ? (
+          <span className="px-4 text-center text-sm text-red-600">{error}</span>
+        ) : attachment.media_type === 'image' ? (
+          <img src={previewUrl} alt={attachment.file_name} className="h-48 w-full object-contain" />
+        ) : attachment.media_type === 'video' ? (
+          <video src={previewUrl} controls preload="metadata" className="h-48 w-full bg-black object-contain">
+            <track kind="captions" />
+          </video>
+        ) : attachment.media_type === 'audio' ? (
+          <audio src={previewUrl} controls preload="metadata" className="w-[90%]" />
+        ) : isPdf || isText ? (
+          <iframe src={previewUrl} title={attachment.file_name} className="h-48 w-full bg-white" />
+        ) : (
+          <a href={previewUrl} target="_blank" rel="noreferrer" className="px-5 text-center text-sm font-semibold text-blue-700 underline">
+            Preview this document in your browser
+          </a>
+        )}
+      </div>
+      <div className="p-3">
+        <div className="flex items-center justify-between gap-3">
+          <p className="truncate text-sm font-semibold">{attachment.file_name}</p>
+          <span className="text-xs uppercase text-slate-500">{attachment.media_type}</span>
+        </div>
+        <p className="mt-1 text-xs text-slate-500">
+          {formatFileSize(attachment.file_size)} • {formatDateTime(attachment.uploaded_at)}
+        </p>
+        {previewUrl ? (
+          <a href={previewUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex text-sm font-medium text-blue-700 underline">
+            Open full preview
+          </a>
+        ) : null}
+      </div>
+    </div>
   );
 }
 

@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import os
 import uuid
+import hashlib
+import hmac
+import mimetypes
+import time
 from datetime import datetime
 
-from flask import Blueprint, request, send_from_directory
+from flask import Blueprint, current_app, request, send_from_directory, url_for
 from sqlalchemy import exists
 from werkzeug.utils import secure_filename
 
@@ -12,6 +16,7 @@ from ..extensions import db
 from ..models.practical_assessment_report import PracticalAssessmentReport
 from ..models.enrollment import Enrollment
 from ..models.institution import Institution
+from ..models.notification import Notification
 from ..models.course import Course
 from ..models.department import Department
 from ..models.student import Student
@@ -30,8 +35,11 @@ PRACTICAL_MEDIA_UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "..", ".
 PRACTICAL_MEDIA_ALLOWED_EXTENSIONS = {
     "png", "jpg", "jpeg", "gif", "webp", "bmp", "heic", "heif",
     "mp4", "mov", "avi", "mkv", "webm", "mpeg", "mpg", "m4v",
+    "mp3", "wav", "ogg", "oga", "m4a", "aac", "flac",
     "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "rtf",
 }
+PRACTICAL_MEDIA_MAX_BYTES = 25 * 1024 * 1024
+PRACTICAL_PREVIEW_TTL_SECONDS = 5 * 60
 
 _STATIC_CONTEXT_VALUES = {
     "institution_name": "Thika Technical Training Institute",
@@ -58,11 +66,42 @@ def _allowed_media_file(filename: str) -> bool:
 
 def _media_kind(filename: str) -> str:
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    if ext in {"mp3", "wav", "ogg", "oga", "m4a", "aac", "flac"}:
+        return "audio"
     if ext in {"mp4", "mov", "avi", "mkv", "webm", "mpeg", "mpg", "m4v"}:
         return "video"
     if ext in {"pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "rtf"}:
         return "document"
     return "image"
+
+
+def _preview_signature(filename: str, expires: int) -> str:
+    secret = str(current_app.config["SECRET_KEY"]).encode("utf-8")
+    message = f"{filename}:{expires}".encode("utf-8")
+    return hmac.new(secret, message, hashlib.sha256).hexdigest()
+
+
+def _valid_preview_signature(filename: str) -> bool:
+    try:
+        expires = int(request.args.get("expires", "0"))
+    except ValueError:
+        return False
+    supplied = request.args.get("signature", "")
+    if not supplied or expires < int(time.time()):
+        return False
+    return hmac.compare_digest(supplied, _preview_signature(filename, expires))
+
+
+def _can_access_report(user: User, report: PracticalAssessmentReport) -> bool:
+    if _is_admin(user):
+        return True
+    if _is_trainer(user):
+        trainer = _trainer_profile(user)
+        return bool(trainer and report.trainer_id == trainer.id)
+    if _is_student(user):
+        student = _student_profile(user)
+        return bool(student and report.student_id == student.id and report.released_at is not None)
+    return False
 
 
 def _load_current_user():
@@ -1174,20 +1213,37 @@ def upload_practical_assessment_media(report_id: str):
     if not _allowed_media_file(media_file.filename):
         allowed = ", ".join(sorted(PRACTICAL_MEDIA_ALLOWED_EXTENSIONS))
         return {"error": f"File type not allowed. Allowed: {allowed}"}, 400
+    evidence_type = request.form.get("evidence_type", "").strip().lower()
+    is_oral_audio = evidence_type == "oral_audio"
+    is_audio_file = is_oral_audio or (media_file.mimetype or "").startswith("audio/")
+    if is_oral_audio and not (
+        (media_file.mimetype or "").startswith("audio/")
+        or (media_file.mimetype or "") in {"video/webm", "application/ogg"}
+    ):
+        return {"error": "The oral evidence recording must be an audio file"}, 400
 
     os.makedirs(PRACTICAL_MEDIA_UPLOAD_FOLDER, exist_ok=True)
     safe_name = secure_filename(media_file.filename)
     unique_name = f"{uuid.uuid4().hex}_{safe_name}"
     save_path = os.path.join(PRACTICAL_MEDIA_UPLOAD_FOLDER, unique_name)
     media_file.save(save_path)
+    file_size = os.path.getsize(save_path)
+    if file_size <= 0 or file_size > PRACTICAL_MEDIA_MAX_BYTES:
+        os.remove(save_path)
+        return {"error": "File must be between 1 byte and 25 MB"}, 413
 
     attachments = report.media_attachments if isinstance(report.media_attachments, list) else []
     attachment = {
         "id": uuid.uuid4().hex,
         "file_name": safe_name,
         "file_url": f"/practical-assessments/media/{unique_name}",
-        "file_size": os.path.getsize(save_path),
-        "media_type": _media_kind(safe_name),
+        "file_size": file_size,
+        "media_type": "audio" if is_audio_file else _media_kind(safe_name),
+        "content_type": (
+            media_file.mimetype
+            if is_audio_file
+            else mimetypes.guess_type(safe_name)[0]
+        ) or "application/octet-stream",
         "uploaded_at": datetime.utcnow().isoformat(),
         "uploaded_by_user_id": str(user.id),
     }
@@ -1203,11 +1259,47 @@ def upload_practical_assessment_media(report_id: str):
     return {"attachment": attachment, "report": _report_payload(report)}, 201
 
 
-@bp.get("/practical-assessments/media/<path:filename>")
-def serve_practical_assessment_media(filename: str):
+@bp.get("/practical-assessments/<report_id>/media/<attachment_id>/preview-link")
+def practical_assessment_media_preview_link(report_id: str, attachment_id: str):
     user, error, status = _load_current_user()
     if error:
         return error, status
+    try:
+        report_uuid = _parse_uuid(report_id, "report_id")
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+
+    report = db.session.get(PracticalAssessmentReport, report_uuid)
+    if not report or report.deleted_at or not _can_access_report(user, report):
+        return {"error": "File not found"}, 404
+
+    attachment = next(
+        (
+            item for item in (report.media_attachments or [])
+            if isinstance(item, dict) and item.get("id") == attachment_id
+        ),
+        None,
+    )
+    if not attachment:
+        return {"error": "File not found"}, 404
+
+    file_url = str(attachment.get("file_url") or "")
+    filename = file_url.rsplit("/", 1)[-1]
+    if not filename or secure_filename(filename) != filename:
+        return {"error": "File not found"}, 404
+
+    expires = int(time.time()) + PRACTICAL_PREVIEW_TTL_SECONDS
+    preview_path = url_for(
+        "practical_assessments.serve_practical_assessment_media",
+        filename=filename,
+        expires=expires,
+        signature=_preview_signature(filename, expires),
+    )
+    return {"url": preview_path, "expires_at": expires}, 200
+
+
+@bp.get("/practical-assessments/media/<path:filename>")
+def serve_practical_assessment_media(filename: str):
     reports = db.session.query(PracticalAssessmentReport).filter(
         PracticalAssessmentReport.deleted_at.is_(None)
     ).all()
@@ -1224,16 +1316,33 @@ def serve_practical_assessment_media(filename: str):
     )
     if not report:
         return {"error": "File not found"}, 404
-    allowed = _is_admin(user)
-    if _is_trainer(user):
-        trainer = _trainer_profile(user)
-        allowed = bool(trainer and report.trainer_id == trainer.id)
-    elif _is_student(user):
-        student = _student_profile(user)
-        allowed = bool(student and report.student_id == student.id and report.released_at is not None)
-    if not allowed:
-        return {"error": "File not found"}, 404
-    return send_from_directory(os.path.abspath(PRACTICAL_MEDIA_UPLOAD_FOLDER), filename)
+
+    if not _valid_preview_signature(filename):
+        user, error, status = _load_current_user()
+        if error:
+            return error, status
+        if not _can_access_report(user, report):
+            return {"error": "File not found"}, 404
+
+    attachment = next(
+        (
+            item for item in (report.media_attachments or [])
+            if isinstance(item, dict)
+            and item.get("file_url") == f"/practical-assessments/media/{filename}"
+        ),
+        {},
+    )
+    response = send_from_directory(
+        os.path.abspath(PRACTICAL_MEDIA_UPLOAD_FOLDER),
+        filename,
+        mimetype=attachment.get("content_type") or mimetypes.guess_type(filename)[0],
+        as_attachment=False,
+        download_name=attachment.get("file_name") or filename,
+        conditional=True,
+    )
+    response.headers["Cache-Control"] = "private, max-age=300"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @bp.post("/practical-assessments/<report_id>/release")
@@ -1259,10 +1368,40 @@ def release_practical_assessment(report_id: str):
         if not trainer or report.trainer_id != trainer.id:
             return {"error": "Access denied"}, 403
 
+    first_release = report.released_at is None
     report.status = "released"
-    report.released_at = datetime.utcnow()
-    report.released_by_user_id = user.id
-    db.session.commit()
+    if first_release:
+        score_percentage = _report_payload(report).get("score_percentage")
+        report.released_at = datetime.utcnow()
+        report.released_by_user_id = user.id
+        if report.student and report.student.user_id:
+            score_text = (
+                f" Your result is {score_percentage:.1f}%"
+                if score_percentage is not None
+                else ""
+            )
+            outcome_text = (
+                f" ({report.competency_outcome})"
+                if report.competency_outcome
+                else ""
+            )
+            db.session.add(
+                Notification(
+                    user_id=report.student.user_id,
+                    title="Practical assessment published",
+                    message=(
+                        f"Your practical assessment for {report.unit_of_competency} "
+                        f"has been published.{score_text}{outcome_text}. "
+                        "Open Practical Assessments to review the report and evidence."
+                    ),
+                    is_read=False,
+                )
+            )
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return {"error": "Practical assessment could not be released"}, 409
     db.session.refresh(report)
     return _report_payload(report), 200
 

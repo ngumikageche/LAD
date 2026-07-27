@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Bell, BellRing, CheckCheck, Megaphone } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Bell, BellRing, CheckCheck, ChevronRight, ClipboardCheck, Megaphone } from 'lucide-react';
 import { studentApi, type StudentAnnouncement, type StudentNotification } from '../services/studentApi';
 
 const StudentNotificationsPage = () => {
@@ -74,38 +75,60 @@ const StudentNotificationsPage = () => {
           </div>
 
           <div className="space-y-4">
-            {notifications.map((notification) => (
-              <article
-                key={notification.id}
-                className={`rounded-2xl border p-4 ${
-                  notification.read ? 'border-slate-700 bg-slate-800' : 'border-amber-500/30 bg-amber-500/10'
-                }`}
-              >
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                  <div>
-                    <h3 className="font-semibold text-slate-100">{notification.title}</h3>
-                    <p className="mt-2 text-sm text-slate-700">{notification.message}</p>
-                    <p className="mt-3 text-xs uppercase tracking-wide text-slate-500">
-                      {notification.created_at ? new Date(notification.created_at).toLocaleString() : 'Unknown time'}
-                    </p>
+            {notifications.map((notification) => {
+              const isPracticalAssessment = notification.title.toLowerCase().includes('practical assessment');
+              return (
+                <article
+                  key={notification.id}
+                  className={`rounded-2xl border p-4 ${
+                    notification.read ? 'border-slate-700 bg-slate-800/60' : 'border-amber-500/30 bg-amber-500/10'
+                  }`}
+                >
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div className="flex min-w-0 gap-3">
+                      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                        isPracticalAssessment ? 'bg-teal-400/10 text-teal-300' : 'bg-amber-400/10 text-amber-300'
+                      }`}>
+                        {isPracticalAssessment ? <ClipboardCheck size={19} /> : <Bell size={19} />}
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-slate-100">{notification.title}</h3>
+                        <p className="mt-2 text-sm leading-6 text-slate-400">{notification.message}</p>
+                        <p className="mt-3 text-xs uppercase tracking-wide text-slate-500">
+                          {notification.created_at ? new Date(notification.created_at).toLocaleString() : 'Unknown time'}
+                        </p>
+                        {isPracticalAssessment ? (
+                          <Link
+                            to="/student/practical-assessments"
+                            onClick={() => {
+                              if (!notification.read) void markAsRead(notification.id);
+                            }}
+                            className="mt-3 inline-flex items-center gap-1 text-sm font-bold text-teal-300 hover:text-teal-200"
+                          >
+                            View practical assessment
+                            <ChevronRight size={15} />
+                          </Link>
+                        ) : null}
+                      </div>
+                    </div>
+                    {!notification.read ? (
+                      <button
+                        onClick={() => markAsRead(notification.id)}
+                        className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+                      >
+                        <CheckCheck className="h-4 w-4" />
+                        Mark as read
+                      </button>
+                    ) : (
+                      <span className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-slate-500">
+                        <Bell className="h-4 w-4" />
+                        Read
+                      </span>
+                    )}
                   </div>
-                  {!notification.read ? (
-                    <button
-                      onClick={() => markAsRead(notification.id)}
-                      className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
-                    >
-                      <CheckCheck className="h-4 w-4" />
-                      Mark as read
-                    </button>
-                  ) : (
-                    <span className="inline-flex items-center gap-2 rounded-2xl bg-slate-900 px-4 py-2 text-sm font-medium text-slate-600">
-                      <Bell className="h-4 w-4" />
-                      Read
-                    </span>
-                  )}
-                </div>
-              </article>
-            ))}
+                </article>
+              );
+            })}
           </div>
 
           {notifications.length === 0 ? (

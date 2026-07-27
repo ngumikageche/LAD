@@ -100,7 +100,8 @@ export interface PracticalAssessmentReport {
     file_name: string;
     file_url: string;
     file_size: number | null;
-    media_type: 'image' | 'video' | 'document';
+    media_type: 'image' | 'video' | 'audio' | 'document';
+    content_type?: string | null;
     uploaded_at: string;
     uploaded_by_user_id?: string | null;
   }>;
@@ -421,13 +422,21 @@ export const trainerPracticalAssessmentsAPI = {
     return response.data as PracticalAssessmentReport;
   },
 
-  async uploadPracticalAssessmentMedia(reportId: string, file: File): Promise<PracticalAssessmentReport> {
+  async uploadPracticalAssessmentMedia(reportId: string, file: File, evidenceType?: 'oral_audio'): Promise<PracticalAssessmentReport> {
     const formData = new FormData();
     formData.append('file', file);
+    if (evidenceType) formData.append('evidence_type', evidenceType);
     const response = await apiClient.post(`/practical-assessments/${reportId}/media`, formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+      headers: {},
     });
     return response.data.report as PracticalAssessmentReport;
+  },
+
+  async getPracticalAssessmentMediaPreviewUrl(reportId: string, attachmentId: string): Promise<string> {
+    const response = await apiClient.get<{ url: string }>(
+      `/practical-assessments/${reportId}/media/${attachmentId}/preview-link`,
+    );
+    return response.data.url;
   },
 
   async releasePracticalAssessment(reportId: string): Promise<PracticalAssessmentReport> {

@@ -1,12 +1,40 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { ChangeEvent } from 'react';
-import { AlertCircle, BarChart3, Camera, CheckCircle2, ClipboardList, FileText, Mic, Plus, Printer, Save, Send, Trash2, Undo2, Upload, User, Video } from 'lucide-react';
+import type { ChangeEvent, ReactNode } from 'react';
+import {
+  AlertCircle,
+  Award,
+  BarChart3,
+  CalendarDays,
+  Camera,
+  CheckCircle2,
+  ChevronRight,
+  ClipboardList,
+  Clock3,
+  Eye,
+  FileCheck2,
+  FileText,
+  Mic,
+  Pencil,
+  Plus,
+  Printer,
+  Save,
+  Search,
+  Send,
+  Sparkles,
+  Square,
+  Trash2,
+  Undo2,
+  Upload,
+  User,
+  Video,
+  X,
+} from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { Button } from '../components/ui/Button';
 import { FormField, Input, Select, TextArea } from '../components/ui/Form';
 import type { PracticalAssessmentPayload, PracticalAssessmentReport } from '../api/trainer';
 import { trainerPracticalAssessmentsAPI, trainerStudentsAPI, trainerSubjectsAPI } from '../api/trainer';
-import { apiRequest } from '../api/client';
+import { apiRequest, resolveApiUrl } from '../api/client';
 
 type StudentOption = {
   id: string;
@@ -255,11 +283,18 @@ export default function TrainerPracticalAssessmentPage() {
   const [releasing, setReleasing] = useState(false);
   const [mutating, setMutating] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [recordingAudio, setRecordingAudio] = useState(false);
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [existingSearch, setExistingSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'all' | PracticalAssessmentReport['status']>('all');
+  const [previewReport, setPreviewReport] = useState<PracticalAssessmentReport | null>(null);
   const mediaInputRef = useRef<HTMLInputElement | null>(null);
-  const reportToOpenRef = useRef<string | undefined>(undefined);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const builderRef = useRef<HTMLDivElement | null>(null);
 
   const selectedSubject = useMemo(
     () => subjectOptions.find((subject) => subject.id === selectedSubjectId) ?? null,
@@ -397,15 +432,12 @@ export default function TrainerPracticalAssessmentPage() {
       const data = await trainerPracticalAssessmentsAPI.listPracticalAssessments({ student_id: studentId });
       const items = Array.isArray(data) ? data : [];
       setReports(items);
-      const nextSelected =
-        (preferredReportId && items.find((item) => item.id === preferredReportId)) ||
-        items[0] ||
-        null;
+      const nextSelected = preferredReportId
+        ? items.find((item) => item.id === preferredReportId) ?? null
+        : null;
       if (nextSelected) {
         setSelectedReportId(nextSelected.id);
         loadFormFromReport(nextSelected);
-      } else {
-        resetEditor();
       }
     } catch (err) {
       setReports([]);
@@ -424,9 +456,7 @@ export default function TrainerPracticalAssessmentPage() {
   };
 
   useEffect(() => {
-    const preferredReportId = reportToOpenRef.current;
-    reportToOpenRef.current = undefined;
-    refreshReports(selectedStudentId, preferredReportId);
+    refreshReports(selectedStudentId);
   }, [selectedStudentId]);
 
   useEffect(() => {
@@ -436,10 +466,15 @@ export default function TrainerPracticalAssessmentPage() {
   }, [loading]);
 
   useEffect(() => {
-    if (selectedReport) {
-      loadFormFromReport(selectedReport);
-    }
-  }, [selectedReport]);
+    if (!recordingAudio) return undefined;
+    const timer = window.setInterval(() => setRecordingSeconds((current) => current + 1), 1000);
+    return () => window.clearInterval(timer);
+  }, [recordingAudio]);
+
+  useEffect(() => () => {
+    if (mediaRecorderRef.current?.state === 'recording') mediaRecorderRef.current.stop();
+    recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+  }, []);
 
   const updateField = <K extends keyof FormState>(key: K, value: FormState[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -637,6 +672,7 @@ export default function TrainerPracticalAssessmentPage() {
       await trainerPracticalAssessmentsAPI.deletePracticalAssessment(selectedReportId);
       await refreshReports(selectedStudentId);
       await refreshAnalyticsReports();
+      resetEditor();
       setSuccess('Assessment deleted.');
       window.setTimeout(() => setSuccess(null), 2500);
     } catch (err) {
@@ -745,20 +781,37 @@ export default function TrainerPracticalAssessmentPage() {
   const visibleExistingReports = useMemo(() => {
     const query = existingSearch.trim().toLowerCase();
     return allReports.filter((report) => (
-      !query
-      || (report.student_name ?? '').toLowerCase().includes(query)
-      || (report.student_registration_number ?? '').toLowerCase().includes(query)
-      || (report.unit_of_competency ?? '').toLowerCase().includes(query)
-      || (report.trainer_name ?? '').toLowerCase().includes(query)
-      || report.status.toLowerCase().includes(query)
+      (statusFilter === 'all' || report.status === statusFilter)
+      && (
+        !query
+        || (report.student_name ?? '').toLowerCase().includes(query)
+        || (report.student_registration_number ?? '').toLowerCase().includes(query)
+        || (report.unit_of_competency ?? '').toLowerCase().includes(query)
+        || (report.trainer_name ?? '').toLowerCase().includes(query)
+        || report.status.toLowerCase().includes(query)
+      )
     ));
-  }, [allReports, existingSearch]);
+  }, [allReports, existingSearch, statusFilter]);
 
   const openExistingReport = (report: PracticalAssessmentReport) => {
-    reportToOpenRef.current = report.id;
+    setPreviewReport(report);
+  };
+
+  const editExistingReport = (report: PracticalAssessmentReport) => {
+    if (!students.some((student) => student.id === report.student_id)) {
+      setSelectedSubjectId('');
+    }
     setSelectedStudentId(report.student_id);
     setSelectedReportId(report.id);
     loadFormFromReport(report);
+    setPreviewReport(null);
+    window.setTimeout(() => builderRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+  };
+
+  const startNewAssessment = () => {
+    resetEditor();
+    setPreviewReport(null);
+    window.setTimeout(() => builderRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
   };
 
   const handleMediaSelected = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -801,6 +854,101 @@ export default function TrainerPracticalAssessmentPage() {
     }
   };
 
+  const saveOralAudio = async (recording: Blob) => {
+    if (recording.size === 0) {
+      setError('The audio recording was empty. Please try again.');
+      return;
+    }
+
+    let reportId = selectedReportId;
+    if (!reportId) {
+      const saved = await persistReport('draft');
+      if (!saved) return;
+      reportId = saved.id;
+    }
+
+    const mimeType = recording.type || 'audio/webm';
+    const extension = mimeType.includes('ogg')
+      ? 'ogg'
+      : mimeType.includes('mp4')
+        ? 'm4a'
+        : 'webm';
+    const file = new File(
+      [recording],
+      `oral-evidence-${new Date().toISOString().replace(/[:.]/g, '-')}.${extension}`,
+      { type: mimeType },
+    );
+
+    try {
+      setUploadingMedia(true);
+      setError(null);
+      const latestReport = await trainerPracticalAssessmentsAPI.uploadPracticalAssessmentMedia(
+        reportId,
+        file,
+        'oral_audio',
+      );
+      setReports((current) => {
+        const next = current.filter((item) => item.id !== latestReport.id);
+        return [latestReport, ...next];
+      });
+      setAllReports((current) => {
+        const next = current.filter((item) => item.id !== latestReport.id);
+        return [latestReport, ...next];
+      });
+      setSelectedReportId(latestReport.id);
+      setSuccess('Oral assessment audio saved securely.');
+      window.setTimeout(() => setSuccess(null), 2500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save oral assessment audio');
+    } finally {
+      setUploadingMedia(false);
+    }
+  };
+
+  const startAudioRecording = async () => {
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
+      setError('Audio recording is not supported by this browser.');
+      return;
+    }
+
+    try {
+      setError(null);
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const preferredTypes = ['audio/webm;codecs=opus', 'audio/ogg;codecs=opus', 'audio/mp4'];
+      const mimeType = preferredTypes.find((type) => MediaRecorder.isTypeSupported(type));
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      recordingStreamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+      setRecordingSeconds(0);
+
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        const recording = new Blob(audioChunksRef.current, { type: recorder.mimeType || 'audio/webm' });
+        audioChunksRef.current = [];
+        stream.getTracks().forEach((track) => track.stop());
+        recordingStreamRef.current = null;
+        mediaRecorderRef.current = null;
+        void saveOralAudio(recording);
+      };
+      recorder.start(1000);
+      setRecordingAudio(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Microphone access was not granted');
+      recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+      recordingStreamRef.current = null;
+    }
+  };
+
+  const stopAudioRecording = () => {
+    const recorder = mediaRecorderRef.current;
+    if (!recorder || recorder.state !== 'recording') return;
+    recorder.stop();
+    setRecordingAudio(false);
+  };
+
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -810,23 +958,38 @@ export default function TrainerPracticalAssessmentPage() {
   }
 
   return (
-    <div className="space-y-8">
-      <div className="rounded-3xl border border-slate-800 bg-slate-900 p-8 shadow-lg shadow-slate-950/30">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.35em] text-teal-300">TVET CDACC</p>
-            <h1 className="mt-2 text-3xl font-bold text-slate-100">
-              {isAdmin ? 'All Practical Assessments' : 'Practical Assessment Builder'}
+    <div className="space-y-7 pb-12">
+      <div className="relative overflow-hidden rounded-[2rem] border border-teal-500/20 bg-[#0b1720] p-6 shadow-2xl shadow-slate-950/40 sm:p-8">
+        <div className="pointer-events-none absolute -right-24 -top-28 h-80 w-80 rounded-full bg-teal-400/10 blur-3xl" />
+        <div className="pointer-events-none absolute -bottom-28 left-1/3 h-64 w-64 rounded-full bg-cyan-500/10 blur-3xl" />
+        <div className="relative flex flex-col gap-7 xl:flex-row xl:items-end xl:justify-between">
+          <div className="max-w-3xl">
+            <div className="inline-flex items-center gap-2 rounded-full border border-teal-400/20 bg-teal-400/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.24em] text-teal-200">
+              <Sparkles size={13} />
+              TVET CDACC workspace
+            </div>
+            <h1 className="mt-5 text-3xl font-black tracking-tight text-white sm:text-4xl">
+              {isAdmin ? 'All Practical Assessments' : 'Practical Assessment Studio'}
             </h1>
-            <p className="mt-2 max-w-2xl text-sm text-slate-400">
-              Build session-based practical assessment reports so the released student view matches the official format more closely.
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400 sm:text-base">
+              Review every candidate assessment at a glance, preview official records safely, and move into editing only when you choose to.
             </p>
           </div>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Stat label="Students" value={String(students.length)} />
-            <Stat label="Drafts" value={String(reports.filter((report) => report.status === 'draft').length)} />
-            <Stat label="Scope" value={isAdmin ? 'Admin / All students' : 'Trainer / Assigned students'} />
-          </div>
+          <button
+            type="button"
+            onClick={startNewAssessment}
+            className="inline-flex items-center justify-center gap-2 rounded-2xl bg-teal-400 px-5 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-teal-500/20 transition hover:-translate-y-0.5 hover:bg-teal-300"
+          >
+            <Plus size={18} />
+            New assessment
+          </button>
+        </div>
+
+        <div className="relative mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          <OverviewStat icon={<FileText size={19} />} label="All records" value={String(allReports.length)} tone="teal" />
+          <OverviewStat icon={<Clock3 size={19} />} label="In draft" value={String(allReports.filter((report) => report.status === 'draft').length)} tone="amber" />
+          <OverviewStat icon={<FileCheck2 size={19} />} label="Released" value={String(allReports.filter((report) => report.status === 'released').length)} tone="blue" />
+          <OverviewStat icon={<Award size={19} />} label="Competent" value={String(allReports.filter((report) => report.competency_outcome === 'COMPETENT').length)} tone="green" />
         </div>
 
         {error ? (
@@ -844,54 +1007,83 @@ export default function TrainerPracticalAssessmentPage() {
         ) : null}
       </div>
 
-      <section className="rounded-3xl border border-slate-800 bg-slate-900 p-5 shadow-lg shadow-slate-950/20">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <section className="rounded-[2rem] border border-slate-800 bg-slate-900/80 p-5 shadow-xl shadow-slate-950/20 sm:p-6">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-slate-100">Existing Practical Assessments</h2>
-            <p className="text-sm text-slate-500">Open any saved assessment in your access scope to review, continue, print, or release it.</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-teal-300">Assessment register</p>
+            <h2 className="mt-1 text-xl font-bold text-white">Browse saved assessments</h2>
+            <p className="mt-1 text-sm text-slate-500">Selecting a record opens a read-only preview. Your builder stays untouched.</p>
           </div>
-          <Input
-            value={existingSearch}
-            onChange={(event) => setExistingSearch(event.target.value)}
-            placeholder="Search student, trainer, unit, or status"
-            className="md:max-w-sm"
-          />
-        </div>
-        <div className="mt-4 overflow-x-auto rounded-2xl border border-slate-800">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-800/80 text-left text-xs uppercase tracking-wider text-slate-400">
-              <tr>
-                <th className="px-4 py-3">Student</th>
-                <th className="px-4 py-3">Unit</th>
-                <th className="px-4 py-3">Trainer</th>
-                <th className="px-4 py-3">Score</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800">
-              {visibleExistingReports.length === 0 ? (
-                <tr><td colSpan={6} className="px-4 py-6 text-center text-slate-500">No saved practical assessments match this view.</td></tr>
-              ) : visibleExistingReports.slice(0, 50).map((report) => (
-                <tr key={report.id} className="text-slate-300 hover:bg-slate-800/50">
-                  <td className="px-4 py-3">
-                    <p className="font-medium text-slate-100">{report.student_name ?? 'Unknown student'}</p>
-                    <p className="text-xs text-slate-500">{report.student_registration_number ?? '—'}</p>
-                  </td>
-                  <td className="px-4 py-3">{report.unit_of_competency || '—'}</td>
-                  <td className="px-4 py-3">{report.trainer_name || '—'}</td>
-                  <td className="px-4 py-3">{report.score_percentage == null ? 'Incomplete' : `${report.score_percentage.toFixed(1)}%`}</td>
-                  <td className="px-4 py-3 capitalize">{report.status}</td>
-                  <td className="px-4 py-3">
-                    <button type="button" onClick={() => openExistingReport(report)} className="font-semibold text-teal-300 hover:text-teal-200">
-                      Open
-                    </button>
-                  </td>
-                </tr>
+          <div className="flex flex-col gap-3 md:flex-row">
+            <div className="relative md:w-80">
+              <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={17} />
+              <Input
+                value={existingSearch}
+                onChange={(event) => setExistingSearch(event.target.value)}
+                placeholder="Search candidate, unit or trainer"
+                className="pl-10"
+              />
+            </div>
+            <div className="flex rounded-xl border border-slate-700 bg-slate-950/70 p-1">
+              {(['all', 'draft', 'complete', 'released'] as const).map((status) => (
+                <button
+                  key={status}
+                  type="button"
+                  onClick={() => setStatusFilter(status)}
+                  className={`rounded-lg px-3 py-2 text-xs font-semibold capitalize transition ${
+                    statusFilter === status ? 'bg-slate-700 text-white shadow' : 'text-slate-500 hover:text-slate-200'
+                  }`}
+                >
+                  {status}
+                </button>
               ))}
-            </tbody>
-          </table>
+            </div>
+          </div>
         </div>
+        <div className="mt-5 grid gap-3 lg:grid-cols-2">
+          {visibleExistingReports.length === 0 ? (
+            <div className="col-span-full flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-700 bg-slate-950/30 px-6 text-center">
+              <Search size={24} className="text-slate-600" />
+              <p className="mt-3 font-semibold text-slate-300">No matching assessments</p>
+              <p className="mt-1 text-sm text-slate-500">Try another search or status filter.</p>
+            </div>
+          ) : visibleExistingReports.slice(0, 50).map((report) => (
+            <button
+              key={report.id}
+              type="button"
+              onClick={() => openExistingReport(report)}
+              className="group rounded-2xl border border-slate-800 bg-slate-950/45 p-4 text-left transition hover:-translate-y-0.5 hover:border-teal-500/30 hover:bg-slate-950/80 hover:shadow-lg"
+            >
+              <div className="flex items-start gap-4">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-teal-500/20 bg-teal-500/10 font-bold text-teal-200">
+                  {(report.student_name ?? '?').slice(0, 1).toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-bold text-slate-100">{report.student_name ?? 'Unknown candidate'}</p>
+                      <p className="mt-0.5 text-xs text-slate-500">{report.student_registration_number ?? 'Registration unavailable'}</p>
+                    </div>
+                    <StatusPill status={report.status} />
+                  </div>
+                  <p className="mt-3 line-clamp-1 text-sm font-medium text-slate-300">{report.unit_of_competency || 'Unit of competency not set'}</p>
+                  <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500">
+                    <span className="inline-flex items-center gap-1.5"><User size={13} /> {report.trainer_name || 'No assessor'}</span>
+                    <span className="inline-flex items-center gap-1.5"><CalendarDays size={13} /> {formatAssessmentDate(report.assessment_date)}</span>
+                    <span className="inline-flex items-center gap-1.5 font-semibold text-slate-300">
+                      <Award size={13} className="text-amber-300" />
+                      {report.score_percentage == null ? 'Not scored' : `${report.score_percentage.toFixed(1)}%`}
+                    </span>
+                  </div>
+                </div>
+                <ChevronRight size={19} className="mt-3 shrink-0 text-slate-600 transition group-hover:translate-x-1 group-hover:text-teal-300" />
+              </div>
+            </button>
+          ))}
+        </div>
+        {visibleExistingReports.length > 50 ? (
+          <p className="mt-4 text-center text-xs text-slate-500">Showing the first 50 of {visibleExistingReports.length} assessments.</p>
+        ) : null}
       </section>
 
       <div className="grid gap-6 xl:grid-cols-[320px_1fr]">
@@ -956,9 +1148,9 @@ export default function TrainerPracticalAssessmentPage() {
               ) : reports.map((report) => (
                 <button
                   key={report.id}
-                  onClick={() => setSelectedReportId(report.id)}
+                  onClick={() => openExistingReport(report)}
                   className={`w-full rounded-xl border px-3 py-2 text-left text-sm transition ${
-                    selectedReportId === report.id
+                    previewReport?.id === report.id
                       ? 'border-indigo-500/40 bg-indigo-500/10 text-slate-100'
                       : 'border-slate-800 text-slate-300 hover:border-slate-700 hover:bg-slate-800/70'
                   }`}
@@ -977,7 +1169,7 @@ export default function TrainerPracticalAssessmentPage() {
         </aside>
 
         <main className="space-y-6">
-          <section className="rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-lg shadow-slate-950/20">
+          <section ref={builderRef} className="scroll-mt-6 rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-lg shadow-slate-950/20">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <div className="flex items-center gap-2">
@@ -1075,15 +1267,11 @@ export default function TrainerPracticalAssessmentPage() {
                 <input
                   ref={mediaInputRef}
                   type="file"
-                  accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.rtf"
+                  accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.rtf"
                   multiple
                   onChange={handleMediaSelected}
                   className="hidden"
                 />
-                <Button variant="secondary" isLoading={uploadingMedia} onClick={() => mediaInputRef.current?.click()}>
-                  <Upload size={16} />
-                  Upload Files
-                </Button>
                 <Button variant="secondary" onClick={() => window.print()}>
                   <Printer size={16} />
                   Print
@@ -1110,6 +1298,72 @@ export default function TrainerPracticalAssessmentPage() {
                   <Trash2 size={16} />
                   Delete
                 </Button>
+              </div>
+            </div>
+
+            <div className="mt-6 overflow-hidden rounded-2xl border border-teal-500/20 bg-slate-950/60">
+              <div className="flex flex-col gap-4 border-b border-slate-800 bg-teal-500/[0.06] p-5 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Camera size={18} className="text-teal-300" />
+                    <h3 className="font-bold text-slate-100">Captured Practical Evidence</h3>
+                  </div>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Type the assessment below or upload a prepared file when the trainer prefers a normal document workflow.
+                  </p>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-400">
+                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-800 px-3 py-1"><Camera size={12} /> Photos</span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-800 px-3 py-1"><Video size={12} /> Videos</span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-800 px-3 py-1"><Mic size={12} /> Oral audio</span>
+                    <span className="inline-flex items-center gap-1 rounded-full bg-slate-800 px-3 py-1"><FileText size={12} /> PDF / Word</span>
+                  </div>
+                </div>
+                <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  {recordingAudio ? (
+                    <>
+                      <span className="inline-flex items-center gap-2 rounded-xl border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-sm font-bold text-rose-200">
+                        <span className="h-2 w-2 animate-pulse rounded-full bg-rose-400" />
+                        {formatRecordingTime(recordingSeconds)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={stopAudioRecording}
+                        className="inline-flex items-center gap-2 rounded-xl bg-rose-500 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-rose-400"
+                      >
+                        <Square size={15} fill="currentColor" />
+                        Stop &amp; save
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={startAudioRecording}
+                      disabled={uploadingMedia}
+                      className="inline-flex items-center gap-2 rounded-xl border border-rose-400/25 bg-rose-400/10 px-4 py-2.5 text-sm font-bold text-rose-200 transition hover:bg-rose-400/20 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <Mic size={16} />
+                      Record oral audio
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => mediaInputRef.current?.click()}
+                    disabled={uploadingMedia || recordingAudio}
+                    className="inline-flex items-center gap-2 rounded-xl bg-teal-400 px-4 py-2.5 text-sm font-bold text-slate-950 transition hover:bg-teal-300 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Upload size={16} />
+                    {uploadingMedia ? 'Saving evidence…' : 'Add evidence'}
+                  </button>
+                </div>
+              </div>
+              <div className="p-5">
+                {(selectedReport?.media_attachments ?? []).length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-slate-700 p-5 text-sm text-slate-500">
+                    Save the report, then upload practical evidence from a camera, gallery, recorded video, oral audio, or a prepared assessment document.
+                  </div>
+                ) : (
+                  <EvidenceGallery report={selectedReport!} />
+                )}
               </div>
             </div>
 
@@ -1167,44 +1421,6 @@ export default function TrainerPracticalAssessmentPage() {
               </div>
             </div>
 
-            <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-slate-200">Captured Practical Evidence</p>
-                  <p className="text-xs text-slate-500">Type the assessment below or upload a prepared file when the trainer prefers a normal document workflow.</p>
-                </div>
-                <div className="flex gap-2 text-xs text-slate-400">
-                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-800 px-3 py-1"><Camera size={12} /> Photos</span>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-800 px-3 py-1"><Video size={12} /> Videos</span>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-slate-800 px-3 py-1"><FileText size={12} /> PDF / Word</span>
-                </div>
-              </div>
-
-              <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-                {(selectedReport?.media_attachments ?? []).length === 0 ? (
-                  <div className="rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-500">
-                    Save the report, then upload practical evidence from a camera, gallery, recorded video, or a prepared assessment document.
-                  </div>
-                ) : (selectedReport?.media_attachments ?? []).map((attachment) => (
-                  <a
-                    key={attachment.id}
-                    href={attachment.file_url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-2xl border border-slate-800 bg-slate-900/60 p-4 transition hover:border-slate-700 hover:bg-slate-900"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="truncate text-sm font-semibold text-slate-100">{attachment.file_name}</p>
-                      <span className="text-xs uppercase text-slate-500">{attachment.media_type}</span>
-                    </div>
-                    <p className="mt-2 text-xs text-slate-500">
-                      {attachment.file_size ? `${(attachment.file_size / 1024 / 1024).toFixed(1)} MB` : 'Size unavailable'}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-500">{new Date(attachment.uploaded_at).toLocaleString()}</p>
-                  </a>
-                ))}
-              </div>
-            </div>
           </section>
 
           <section className="rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-lg shadow-slate-950/20">
@@ -1362,6 +1578,14 @@ export default function TrainerPracticalAssessmentPage() {
           </section>
         </main>
       </div>
+
+      {previewReport ? (
+        <AssessmentPreview
+          report={previewReport}
+          onClose={() => setPreviewReport(null)}
+          onEdit={() => editExistingReport(previewReport)}
+        />
+      ) : null}
     </div>
   );
 }
@@ -1380,6 +1604,331 @@ function MiniStat({ label, value }: { label: string; value: string }) {
     <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
       <p className="text-xs uppercase tracking-widest text-slate-500">{label}</p>
       <p className="mt-1 text-sm font-semibold text-slate-100">{value}</p>
+    </div>
+  );
+}
+
+const formatAssessmentDate = (value: string | null | undefined) => {
+  if (!value) return 'Date not set';
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime())
+    ? value
+    : parsed.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+};
+
+const formatRecordingTime = (seconds: number) => {
+  const minutes = Math.floor(seconds / 60).toString().padStart(2, '0');
+  const remaining = (seconds % 60).toString().padStart(2, '0');
+  return `${minutes}:${remaining}`;
+};
+
+type EvidenceAttachment = NonNullable<PracticalAssessmentReport['media_attachments']>[number];
+
+function EvidenceGallery({ report }: { report: PracticalAssessmentReport }) {
+  return (
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {(report.media_attachments ?? []).map((attachment) => (
+        <EvidencePreview key={attachment.id} reportId={report.id} attachment={attachment} />
+      ))}
+    </div>
+  );
+}
+
+function EvidencePreview({
+  reportId,
+  attachment,
+}: {
+  reportId: string;
+  attachment: EvidenceAttachment;
+}) {
+  const [previewUrl, setPreviewUrl] = useState('');
+  const [previewError, setPreviewError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    trainerPracticalAssessmentsAPI
+      .getPracticalAssessmentMediaPreviewUrl(reportId, attachment.id)
+      .then((url) => {
+        if (!cancelled) setPreviewUrl(resolveApiUrl(url));
+      })
+      .catch((err) => {
+        if (!cancelled) setPreviewError(err instanceof Error ? err.message : 'Preview unavailable');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [attachment.id, reportId]);
+
+  const isPdf = attachment.file_name.toLowerCase().endsWith('.pdf');
+  const isText = /\.(txt|rtf)$/i.test(attachment.file_name);
+
+  return (
+    <article className="overflow-hidden rounded-2xl border border-slate-800 bg-slate-900/80">
+      <div className="flex min-h-44 items-center justify-center bg-slate-950/70">
+        {!previewUrl && !previewError ? (
+          <div className="h-7 w-7 animate-spin rounded-full border-2 border-slate-700 border-t-teal-300" />
+        ) : previewError ? (
+          <div className="px-5 text-center text-sm text-rose-300">{previewError}</div>
+        ) : attachment.media_type === 'image' ? (
+          <img src={previewUrl} alt={attachment.file_name} className="h-48 w-full object-cover" />
+        ) : attachment.media_type === 'video' ? (
+          <video src={previewUrl} controls preload="metadata" className="h-48 w-full bg-black object-contain">
+            <track kind="captions" />
+          </video>
+        ) : attachment.media_type === 'audio' ? (
+          <div className="w-full px-5 text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-rose-400/10 text-rose-300">
+              <Mic size={24} />
+            </div>
+            <audio src={previewUrl} controls preload="metadata" className="w-full" />
+          </div>
+        ) : isPdf || isText ? (
+          <iframe src={previewUrl} title={attachment.file_name} className="h-48 w-full bg-white" />
+        ) : (
+          <a href={previewUrl} target="_blank" rel="noreferrer" className="flex flex-col items-center px-5 text-center text-slate-300 hover:text-teal-200">
+            <FileText size={34} className="text-teal-300" />
+            <span className="mt-3 text-sm font-semibold">Open document preview</span>
+            <span className="mt-1 text-xs text-slate-500">Opens using your browser’s document viewer</span>
+          </a>
+        )}
+      </div>
+      <div className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-bold text-slate-100">{attachment.file_name}</p>
+            <p className="mt-1 text-xs text-slate-500">
+              {attachment.file_size ? `${(attachment.file_size / 1024 / 1024).toFixed(2)} MB` : 'Size unavailable'}
+              {' · '}
+              {new Date(attachment.uploaded_at).toLocaleString()}
+            </p>
+          </div>
+          <span className="rounded-full bg-slate-800 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            {attachment.media_type}
+          </span>
+        </div>
+        {previewUrl ? (
+          <a href={previewUrl} target="_blank" rel="noreferrer" className="mt-3 inline-flex items-center gap-1 text-xs font-bold text-teal-300 hover:text-teal-200">
+            Open full preview
+            <ChevronRight size={13} />
+          </a>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
+function OverviewStat({
+  icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: ReactNode;
+  label: string;
+  value: string;
+  tone: 'teal' | 'amber' | 'blue' | 'green';
+}) {
+  const tones = {
+    teal: 'border-teal-400/20 bg-teal-400/10 text-teal-200',
+    amber: 'border-amber-400/20 bg-amber-400/10 text-amber-200',
+    blue: 'border-blue-400/20 bg-blue-400/10 text-blue-200',
+    green: 'border-emerald-400/20 bg-emerald-400/10 text-emerald-200',
+  };
+  return (
+    <div className="flex items-center gap-4 rounded-2xl border border-white/5 bg-white/[0.035] p-4 backdrop-blur-sm">
+      <div className={`flex h-10 w-10 items-center justify-center rounded-xl border ${tones[tone]}`}>{icon}</div>
+      <div>
+        <p className="text-2xl font-black tracking-tight text-white">{value}</p>
+        <p className="text-xs font-medium text-slate-500">{label}</p>
+      </div>
+    </div>
+  );
+}
+
+function StatusPill({ status }: { status: PracticalAssessmentReport['status'] }) {
+  const styles = {
+    draft: 'border-amber-400/20 bg-amber-400/10 text-amber-200',
+    complete: 'border-blue-400/20 bg-blue-400/10 text-blue-200',
+    released: 'border-emerald-400/20 bg-emerald-400/10 text-emerald-200',
+  };
+  return (
+    <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${styles[status]}`}>
+      {status}
+    </span>
+  );
+}
+
+function AssessmentPreview({
+  report,
+  onClose,
+  onEdit,
+}: {
+  report: PracticalAssessmentReport;
+  onClose: () => void;
+  onEdit: () => void;
+}) {
+  const sections = report.report_sections ?? [];
+  const scoredSections = sections.filter((section) => section.type !== 'narrative');
+
+  return (
+    <div
+      className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/85 p-3 backdrop-blur-md sm:p-6"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Practical assessment preview"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div className="mx-auto max-w-5xl overflow-hidden rounded-[2rem] border border-slate-700 bg-slate-900 shadow-2xl shadow-black/60">
+        <div className="sticky top-0 z-10 flex flex-col gap-4 border-b border-slate-800 bg-slate-900/95 px-5 py-4 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-teal-400/10 text-teal-300">
+              <Eye size={20} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-300">Read-only preview</p>
+              <h2 className="truncate text-lg font-bold text-white">{report.student_name ?? 'Practical assessment'}</h2>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => window.print()}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-700 px-3.5 py-2 text-sm font-semibold text-slate-300 transition hover:bg-slate-800"
+            >
+              <Printer size={16} />
+              Print
+            </button>
+            <button
+              type="button"
+              onClick={onEdit}
+              className="inline-flex items-center gap-2 rounded-xl bg-teal-400 px-4 py-2 text-sm font-bold text-slate-950 transition hover:bg-teal-300"
+            >
+              <Pencil size={16} />
+              Edit assessment
+            </button>
+            <button type="button" onClick={onClose} aria-label="Close preview" className="rounded-xl p-2 text-slate-500 transition hover:bg-slate-800 hover:text-white">
+              <X size={21} />
+            </button>
+          </div>
+        </div>
+
+        <div data-print-root className="bg-slate-950/35 p-4 sm:p-7">
+          <div className="overflow-hidden rounded-3xl border border-slate-800 bg-slate-900">
+            <div className="border-b border-slate-800 bg-[#0b1720] p-6 sm:p-8">
+              <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-[0.25em] text-teal-300">{report.awarding_body || 'TVET CDACC'}</p>
+                  <h3 className="mt-3 max-w-2xl text-2xl font-black uppercase leading-tight text-white">
+                    {report.unit_of_competency || 'Practical Assessment'}
+                  </h3>
+                  <p className="mt-2 text-sm text-slate-400">{report.qualification || 'Qualification not specified'}</p>
+                  <p className="mt-1 text-xs font-semibold text-slate-500">{report.unit_code || 'Unit code not set'}</p>
+                </div>
+                <StatusPill status={report.status} />
+              </div>
+            </div>
+
+            <div className="grid gap-px border-b border-slate-800 bg-slate-800 sm:grid-cols-2 lg:grid-cols-4">
+              <PreviewFact label="Candidate" value={report.student_name ?? 'Unknown candidate'} sub={report.student_registration_number ?? undefined} />
+              <PreviewFact label="Assessor" value={report.trainer_name ?? 'Not assigned'} sub={report.department_name ?? undefined} />
+              <PreviewFact label="Assessment date" value={formatAssessmentDate(report.assessment_date)} sub={report.assessment_venue ?? undefined} />
+              <PreviewFact
+                label="Overall result"
+                value={report.score_percentage == null ? 'Not scored' : `${report.score_percentage.toFixed(1)}%`}
+                sub={report.competency_outcome ?? 'Incomplete'}
+              />
+            </div>
+
+            <div className="space-y-5 p-5 sm:p-7">
+              {(report.media_attachments ?? []).length > 0 ? (
+                <section>
+                  <div className="mb-3 flex items-center gap-2">
+                    <Camera size={16} className="text-teal-300" />
+                    <h4 className="font-bold text-slate-100">Published practical evidence</h4>
+                  </div>
+                  <EvidenceGallery report={report} />
+                </section>
+              ) : null}
+
+              {sections.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-700 p-8 text-center text-sm text-slate-500">
+                  This assessment does not have report sections yet.
+                </div>
+              ) : sections.map((section, sectionIndex) => (
+                <section key={`${section.number}-${sectionIndex}`} className="overflow-hidden rounded-2xl border border-slate-800">
+                  <div className="flex flex-col gap-2 bg-slate-800/50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-teal-300">{section.type}</p>
+                      <h4 className="mt-1 font-bold text-slate-100">{section.title || `Section ${sectionIndex + 1}`}</h4>
+                    </div>
+                    {section.duration_hours ? <span className="text-xs text-slate-500">{section.duration_hours} hours</span> : null}
+                  </div>
+                  <div className="p-5">
+                    {section.description ? <p className="mb-3 text-sm leading-6 text-slate-400">{section.description}</p> : null}
+                    {section.content ? <p className="whitespace-pre-wrap text-sm leading-6 text-slate-300">{section.content}</p> : null}
+                    {section.items?.length ? (
+                      <div className="overflow-x-auto">
+                        <table className="min-w-full text-sm">
+                          <thead className="text-left text-[10px] uppercase tracking-wider text-slate-500">
+                            <tr>
+                              <th className="pb-3 pr-4">Item / question</th>
+                              <th className="pb-3 pr-4">Assessor guide</th>
+                              <th className="pb-3 text-right">Score</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800">
+                            {section.items.map((item) => (
+                              <tr key={`${section.number}-${item.number}`}>
+                                <td className="py-3 pr-4 align-top font-medium text-slate-200">
+                                  {item.prompt || `Item ${item.number}`}
+                                  {item.sub_items?.length ? (
+                                    <ul className="mt-2 list-disc space-y-1 pl-4 text-xs font-normal text-slate-500">
+                                      {item.sub_items.map((subItem, index) => <li key={`${subItem}-${index}`}>{subItem}</li>)}
+                                    </ul>
+                                  ) : null}
+                                </td>
+                                <td className="py-3 pr-4 align-top text-xs text-slate-500">{item.expected_response || item.remark || '—'}</td>
+                                <td className="whitespace-nowrap py-3 text-right align-top font-bold text-slate-200">
+                                  {item.score == null ? '—' : item.score} / {item.max_score ?? (section.type === 'oral' ? 1 : 2)}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : null}
+                  </div>
+                </section>
+              ))}
+
+              {scoredSections.length > 0 ? (
+                <div className="flex flex-col gap-3 rounded-2xl border border-teal-500/20 bg-teal-500/5 p-5 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wider text-teal-300">Assessment outcome</p>
+                    <p className="mt-1 text-lg font-black text-white">{report.competency_outcome ?? 'INCOMPLETE'}</p>
+                  </div>
+                  <p className="text-2xl font-black text-teal-200">
+                    {report.total_score == null ? '—' : report.total_score.toFixed(1)}
+                    <span className="text-sm font-medium text-slate-500"> / {(report.total_max_score ?? 0).toFixed(1)}</span>
+                  </p>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PreviewFact({ label, value, sub }: { label: string; value: string; sub?: string }) {
+  return (
+    <div className="bg-slate-900 p-5">
+      <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">{label}</p>
+      <p className="mt-2 truncate text-sm font-bold text-slate-100">{value}</p>
+      {sub ? <p className="mt-1 truncate text-xs text-slate-500">{sub}</p> : null}
     </div>
   );
 }

@@ -16,11 +16,12 @@ const getStoredToken = (): string | null => {
 
 export const apiRequest = async <T>(path: string, options: RequestOptions = {}): Promise<T> => {
   const { token, body, headers, ...rest } = options;
+  const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
   // Use provided token, or fallback to stored token from sessionStorage
   const authToken = token ?? getStoredToken();
   
   const requestHeaders: HeadersInit = {
-    ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+    ...(body !== undefined && !isFormData ? { 'Content-Type': 'application/json' } : {}),
     ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
     ...headers,
   };
@@ -28,7 +29,11 @@ export const apiRequest = async <T>(path: string, options: RequestOptions = {}):
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...rest,
     headers: requestHeaders,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
+    body: body === undefined
+      ? undefined
+      : isFormData
+        ? body as FormData
+        : JSON.stringify(body),
   });
 
   if (!response.ok) {
@@ -44,6 +49,11 @@ export const apiRequest = async <T>(path: string, options: RequestOptions = {}):
 
   const data = (await response.json()) as T | ApiError;
   return data as T;
+};
+
+export const resolveApiUrl = (path: string): string => {
+  if (/^https?:\/\//i.test(path)) return path;
+  return `${API_BASE_URL}${path.startsWith('/') ? path : `/${path}`}`;
 };
 // API client with common methods
 export const apiClient = {
