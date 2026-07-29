@@ -423,6 +423,7 @@ def get_session_by_code(session_code: str):
     return {
         "id": str(session.id),
         "session_code": session.session_code,
+        "current_token": session.current_token,
         "status": session.status,
         "seconds_until_expiry": session.seconds_until_expiry(),
         "allowed_radius_meters": session.allowed_radius_meters,
