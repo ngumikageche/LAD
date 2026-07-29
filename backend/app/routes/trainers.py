@@ -1,13 +1,19 @@
 from __future__ import annotations
 
 import uuid
+import re
+import secrets
 
-from flask import Blueprint, request, send_file
+from flask import Blueprint, current_app, request, send_file
+from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
+from werkzeug.security import generate_password_hash
 
 from ..extensions import db
 from ..models.course import Course
 from ..models.department import Department
+from ..models.module import Module
+from ..models.role_permission import RolePermission
 from ..models.score import Score
 from ..models.student import Student
 from ..models.student_subject import StudentSubject
@@ -28,6 +34,12 @@ from ..services.trainer_portal import (
     trainer_subject_report,
 )
 from .permissions import get_current_user, log_view, require_permission, trainer_required
+from ..services.bulk_people_import import (
+    build_template,
+    first_value,
+    normalize_lookup,
+    read_people_upload,
+)
 
 
 bp = Blueprint("trainers", __name__, url_prefix="/trainers")
@@ -101,6 +113,251 @@ def _student_payload(student: Student) -> dict:
 
 def _trainer_for_user(user_id: uuid.UUID) -> Trainer | None:
     return db.session.query(Trainer).filter(Trainer.user_id == user_id).first()
+
+
+TRAINER_IMPORT_HEADERS = [
+    "Staff No",
+    "Name",
+    "Email",
+    "Mobile",
+    "Department",
+    "Specialization",
+    "Subjects",
+]
+
+
+@bp.get("/import-template")
+def trainer_import_template():
+    _, error, status = require_permission("trainers.create")
+    if error:
+        return error, status
+    output = build_template(
+        TRAINER_IMPORT_HEADERS,
+        "Trainers Template",
+        [
+            "TRN-001",
+            "Trainer Example",
+            "trainer@example.edu",
+            "0712345678",
+            "Enter exact department name or code",
+            "Electrical installation",
+            "Electrical Safety; Motor Rewinding",
+        ],
+    )
+    return send_file(
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name="trainersTemplate.xlsx",
+    )
+
+
+@bp.post("/bulk-upload")
+def bulk_upload_trainers():
+    actor, error, status = require_permission("trainers.create")
+    if error:
+        return error, status
+    _, user_error, user_status = require_permission("users.create")
+    if user_error:
+        return user_error, user_status
+    upload = request.files.get("file")
+    if not upload or not upload.filename:
+        return {"error": "Select a CSV or XLSX trainer workbook"}, 400
+    try:
+        rows = read_people_upload(upload, preferred_sheet="Trainers Template")
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+
+    role = (
+        db.session.query(RolePermission)
+        .filter(func.lower(RolePermission.role_name) == "trainer")
+        .first()
+    )
+    if not role:
+        return {"error": "Trainer role is not configured"}, 409
+    department_query = db.session.query(Department).filter(Department.deleted_at.is_(None))
+    if actor.institution_id:
+        department_query = department_query.filter(Department.institution_id == actor.institution_id)
+    departments = department_query.all()
+    department_map = {
+        key: department
+        for department in departments
+        for key in {normalize_lookup(department.name), normalize_lookup(department.code)}
+        if key
+    }
+
+    results = []
+    created = 0
+    duplicates = 0
+    failed = 0
+    for row_number, row in enumerate(rows, start=2):
+        staff_number = first_value(row, "Staff No", "Staff Number", "Trainer Code")
+        name = first_value(row, "Name", "Trainer Name")
+        email = first_value(row, "Email").lower()
+        phone = first_value(row, "Mobile", "Phone") or None
+        department_value = first_value(row, "Department", "Department Code")
+        specialization = first_value(row, "Specialization") or None
+        department = department_map.get(normalize_lookup(department_value))
+        if not name or not email or not department_value:
+            failed += 1
+            results.append({
+                "row": row_number,
+                "status": "failed",
+                "staff_number": staff_number,
+                "email": email,
+                "message": "Name, Email, and Department are required",
+            })
+            continue
+        if "@" not in email:
+            failed += 1
+            results.append({"row": row_number, "status": "failed", "email": email, "message": "Invalid email address"})
+            continue
+        if staff_number and len(staff_number) > 16:
+            failed += 1
+            results.append({
+                "row": row_number,
+                "status": "failed",
+                "staff_number": staff_number,
+                "email": email,
+                "message": "Staff No must be 16 characters or fewer",
+            })
+            continue
+        if not department:
+            failed += 1
+            results.append({
+                "row": row_number,
+                "status": "failed",
+                "staff_number": staff_number,
+                "email": email,
+                "message": f"Department not found: {department_value}",
+            })
+            continue
+        existing = (
+            db.session.query(Trainer)
+            .join(User, Trainer.user_id == User.id)
+            .filter(
+                or_(
+                    func.lower(User.email) == email,
+                    (
+                        func.lower(Trainer.code) == staff_number.lower()
+                        if staff_number
+                        else False
+                    ),
+                )
+            )
+            .first()
+        )
+        if existing:
+            duplicates += 1
+            results.append({
+                "row": row_number,
+                "status": "duplicate",
+                "staff_number": staff_number,
+                "email": email,
+                "message": "Trainer already exists",
+            })
+            continue
+
+        subject_links = []
+        subject_value = first_value(row, "Subjects", "Subject", "Units")
+        if subject_value:
+            requested_subjects = [
+                item.strip()
+                for item in re.split(r"[;,|]", subject_value)
+                if item.strip()
+            ]
+            department_subjects = (
+                db.session.query(Subject)
+                .join(Module, Subject.module_id == Module.id)
+                .join(Course, Module.course_id == Course.id)
+                .filter(
+                    Course.department_id == department.id,
+                    Subject.deleted_at.is_(None),
+                )
+                .all()
+            )
+            subject_map = {
+                key: subject
+                for subject in department_subjects
+                for key in {normalize_lookup(subject.name), normalize_lookup(subject.code)}
+                if key
+            }
+            missing_subjects = [item for item in requested_subjects if normalize_lookup(item) not in subject_map]
+            if missing_subjects:
+                failed += 1
+                results.append({
+                    "row": row_number,
+                    "status": "failed",
+                    "staff_number": staff_number,
+                    "email": email,
+                    "message": f"Subject(s) not found in department: {', '.join(missing_subjects)}",
+                })
+                continue
+            subject_links = [subject_map[normalize_lookup(item)] for item in requested_subjects]
+
+        initial_password = secrets.token_urlsafe(9)
+        try:
+            with db.session.begin_nested():
+                user = User(
+                    name=name,
+                    email=email,
+                    phone=phone,
+                    password_hash=generate_password_hash(initial_password),
+                    role_id=role.id,
+                    institution_id=department.institution_id,
+                )
+                db.session.add(user)
+                db.session.flush()
+                trainer = Trainer(
+                    code=staff_number or None,
+                    user_id=user.id,
+                    department_id=department.id,
+                    specialization=specialization,
+                )
+                db.session.add(trainer)
+                db.session.flush()
+                db.session.add_all(
+                    TrainerSubject(trainer_id=trainer.id, subject_id=subject.id)
+                    for subject in subject_links
+                )
+                db.session.flush()
+            created += 1
+            results.append({
+                "row": row_number,
+                "status": "created",
+                "staff_number": trainer.code,
+                "email": email,
+                "initial_password": initial_password,
+                "department": department.name,
+                "subjects_assigned": len(subject_links),
+            })
+        except IntegrityError:
+            duplicates += 1
+            results.append({
+                "row": row_number,
+                "status": "duplicate",
+                "staff_number": staff_number,
+                "email": email,
+                "message": "Email, mobile, or staff number is already in use",
+            })
+        except Exception:
+            current_app.logger.exception("Trainer import failed at row %s", row_number)
+            failed += 1
+            results.append({
+                "row": row_number,
+                "status": "failed",
+                "staff_number": staff_number,
+                "email": email,
+                "message": "This row could not be imported",
+            })
+    db.session.commit()
+    return {
+        "total_rows": len(rows),
+        "created": created,
+        "duplicates": duplicates,
+        "failed": failed,
+        "results": results,
+    }, 200
 
 
 @bp.get("/subjects")

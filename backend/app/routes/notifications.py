@@ -13,6 +13,7 @@ from ..models.notification import Notification
 from ..models.role_permission import RolePermission
 from ..models.student import Student
 from ..models.student_subject import StudentSubject
+from ..services.communications import send_email, send_sms
 from ..models.subject import Subject
 from ..models.user import User
 from .permissions import _is_admin, log_view, require_permission
@@ -55,7 +56,7 @@ def _recipient_payload(user: User) -> dict:
 def _normalize_delivery_channels(payload: dict) -> list[str]:
     raw_channels = payload.get("delivery_channels")
     if raw_channels is None:
-        return ["system"]
+        return ["system", "email"]
     if not isinstance(raw_channels, list):
         raise ValueError("'delivery_channels' must be an array")
 
@@ -162,6 +163,16 @@ def create_notification():
         except IntegrityError:
             db.session.rollback()
             return {"error": "Unable to create notification"}, 409
+    email_result = (
+        send_email(recipient.email, title.strip(), message.strip())
+        if "email" in delivery_channels
+        else {"status": "disabled"}
+    )
+    sms_result = (
+        send_sms(recipient.phone, f"{title.strip()}: {message.strip()}")
+        if "sms" in delivery_channels
+        else {"status": "disabled"}
+    )
 
     return {
         **(
@@ -185,12 +196,12 @@ def create_notification():
             "email": {
                 "enabled": "email" in delivery_channels,
                 "recipient": recipient.email,
-                "status": "ready" if "email" in delivery_channels and recipient.email else "disabled" if "email" not in delivery_channels else "missing_email",
+                **email_result,
             },
             "sms": {
                 "enabled": "sms" in delivery_channels,
                 "recipient": recipient.phone,
-                "status": "ready" if "sms" in delivery_channels and recipient.phone else "disabled" if "sms" not in delivery_channels else "missing_phone",
+                **sms_result,
             },
         },
     }, 201
@@ -245,6 +256,17 @@ def create_bulk_notifications():
     recipients = db.session.query(User).filter(User.id.in_(recipient_ids)).all()
     phone_ready = [recipient for recipient in recipients if recipient.phone]
     email_ready = [recipient for recipient in recipients if recipient.email]
+    email_results = (
+        [send_email(recipient.email, title.strip(), message.strip()) for recipient in email_ready]
+        if "email" in delivery_channels
+        else []
+    )
+    sms_requested = sms_enabled and "sms" in delivery_channels
+    sms_results = (
+        [send_sms(recipient.phone, f"{title.strip()}: {message.strip()}") for recipient in phone_ready]
+        if sms_requested and not bool(sms_config.get("dry_run", True))
+        else []
+    )
 
     log_view(
         user,
@@ -272,7 +294,9 @@ def create_bulk_notifications():
             "enabled": "email" in delivery_channels,
             "email_ready_count": len(email_ready),
             "skipped_no_email_count": len(recipient_ids) - len(email_ready),
-            "status": "ready" if "email" in delivery_channels else "disabled",
+            "sent_count": sum(1 for item in email_results if item.get("status") == "sent"),
+            "failed_count": sum(1 for item in email_results if item.get("status") in {"failed", "not_configured"}),
+            "status": "sent" if email_results and all(item.get("status") == "sent" for item in email_results) else "partial" if email_results else "disabled",
         },
         "sms": {
             "enabled": sms_enabled and "sms" in delivery_channels,
@@ -281,7 +305,9 @@ def create_bulk_notifications():
             "dry_run": bool(sms_config.get("dry_run", True)),
             "phone_ready_count": len(phone_ready),
             "skipped_no_phone_count": len(recipient_ids) - len(phone_ready),
-            "status": "preview" if sms_enabled and "sms" in delivery_channels else "disabled",
+            "sent_count": sum(1 for item in sms_results if item.get("status") == "sent"),
+            "failed_count": sum(1 for item in sms_results if item.get("status") in {"failed", "not_configured"}),
+            "status": "preview" if sms_requested and bool(sms_config.get("dry_run", True)) else "sent" if sms_results and all(item.get("status") == "sent" for item in sms_results) else "partial" if sms_results else "disabled",
         },
     }, 201
 

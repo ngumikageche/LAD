@@ -324,6 +324,44 @@ def add_syllabus_topic(trainer_id: str):
     }, 201
 
 
+@bp.post("/<trainer_id>/syllabus/import-template")
+def import_syllabus_template(trainer_id: str):
+    user, trainer, error, status = _require_trainer_or_admin()
+    if error:
+        return error, status
+    try:
+        t_uuid = parse_uuid(trainer_id, "trainer_id")
+        subject_uuid = parse_uuid((request.get_json(silent=True) or {}).get("subject_id"), "subject_id")
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+    if not _is_admin(user) and (not trainer or trainer.id != t_uuid):
+        return {"error": "Permission denied"}, 403
+    subject = db.session.get(Subject, subject_uuid)
+    if not subject or subject.deleted_at:
+        return {"error": "Subject not found"}, 404
+    if trainer and subject_uuid not in get_trainer_subject_ids(trainer):
+        return {"error": "Subject not found in your assigned subjects"}, 403
+    topics = subject.syllabus_topics if isinstance(subject.syllabus_topics, list) else []
+    if not topics:
+        return {"error": "This subject has no official syllabus topic template"}, 409
+    existing = {
+        topic
+        for (topic,) in db.session.query(LessonPlan.topic).filter(
+            LessonPlan.trainer_id == t_uuid,
+            LessonPlan.subject_id == subject_uuid,
+            LessonPlan.deleted_at.is_(None),
+        ).all()
+    }
+    created = 0
+    for topic in topics:
+        normalized = str(topic).strip()
+        if normalized and normalized not in existing:
+            db.session.add(LessonPlan(trainer_id=t_uuid, subject_id=subject_uuid, topic=normalized))
+            created += 1
+    db.session.commit()
+    return {"created": created, "total_template_topics": len(topics)}, 201
+
+
 @bp.put("/<trainer_id>/syllabus/<plan_id>")
 def update_syllabus_topic(trainer_id: str, plan_id: str):
     user, trainer, error, status = _require_trainer_or_admin()

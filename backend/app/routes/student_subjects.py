@@ -82,12 +82,12 @@ def enroll_student_subject():
     
     # Verify student exists
     student = db.session.get(Student, student_uuid)
-    if not student:
+    if not student or student.deleted_at:
         return {"error": "Student not found"}, 404
     
     # Verify subject exists
     subject = db.session.get(Subject, subject_uuid)
-    if not subject:
+    if not subject or subject.deleted_at:
         return {"error": "Subject not found"}, 404
     
     try:
@@ -98,6 +98,7 @@ def enroll_student_subject():
             "id": str(ss.id),
             "student_id": str(ss.student_id),
             "subject_id": str(ss.subject_id),
+            "subject_name": subject.name,
             "message": "Student enrolled in subject"
         }, 201
     except IntegrityError:

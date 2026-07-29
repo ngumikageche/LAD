@@ -40,6 +40,7 @@ def _subject_payload(subject: Subject) -> dict:
         "department_name": department.name if department else None,
         "name": subject.name,
         "description": subject.description,
+        "syllabus_topics": subject.syllabus_topics if isinstance(subject.syllabus_topics, list) else [],
         "created_at": subject.created_at.isoformat() if subject.created_at else None,
     }
 
@@ -53,6 +54,10 @@ def create_subject():
     name = payload.get("name")
     module_id = payload.get("module_id")
     description = payload.get("description")
+    syllabus_topics = payload.get("syllabus_topics") or []
+    if not isinstance(syllabus_topics, list):
+        return {"error": "'syllabus_topics' must be an array"}, 400
+    syllabus_topics = [str(topic).strip() for topic in syllabus_topics if str(topic).strip()]
 
     if not name or not isinstance(name, str):
         return {"error": "'name' is required"}, 400
@@ -69,6 +74,7 @@ def create_subject():
         name=name.strip(),
         module_id=module_uuid,
         description=description.strip() if description else None,
+        syllabus_topics=syllabus_topics,
     )
     db.session.add(subject)
     try:
@@ -302,6 +308,7 @@ def update_subject(subject_id: str):
     payload = request.get_json(silent=True) or {}
     name = payload.get("name")
     description = payload.get("description")
+    syllabus_topics = payload.get("syllabus_topics")
     if name is not None:
         if not isinstance(name, str) or not name.strip():
             return {"error": "'name' must be a non-empty string"}, 400
@@ -310,6 +317,10 @@ def update_subject(subject_id: str):
         if description and (not isinstance(description, str) or not description.strip()):
             return {"error": "'description' must be a string"}, 400
         subject.description = description.strip() if description else None
+    if syllabus_topics is not None:
+        if not isinstance(syllabus_topics, list):
+            return {"error": "'syllabus_topics' must be an array"}, 400
+        subject.syllabus_topics = [str(topic).strip() for topic in syllabus_topics if str(topic).strip()]
     try:
         db.session.commit()
     except IntegrityError:

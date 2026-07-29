@@ -100,7 +100,12 @@ def _can_access_report(user: User, report: PracticalAssessmentReport) -> bool:
         return bool(trainer and report.trainer_id == trainer.id)
     if _is_student(user):
         student = _student_profile(user)
-        return bool(student and report.student_id == student.id and report.released_at is not None)
+        return bool(
+            student
+            and report.student_id == student.id
+            and report.status == "released"
+            and report.released_at is not None
+        )
     return False
 
 
@@ -780,9 +785,59 @@ def _report_payload(report: PracticalAssessmentReport) -> dict:
         "released_by_user_id": str(report.released_by_user_id) if report.released_by_user_id else None,
         "released_by_name": report.released_by.name if report.released_by else None,
         "status": report.status,
+        "assessment_scope": "formative",
         "created_at": report.created_at.isoformat() if report.created_at else None,
         "updated_at": report.updated_at.isoformat() if report.updated_at else None,
     }
+
+
+def _student_report_payload(report: PracticalAssessmentReport) -> dict:
+    """Return only released learner-safe content; assessor guides stay private."""
+    payload = _report_payload(report)
+    safe_sections = []
+    for section in payload.get("report_sections") or []:
+        if not isinstance(section, dict):
+            continue
+        safe_section = {
+            key: value
+            for key, value in section.items()
+            if key not in {"expected_response", "rubric", "assessor_guide"}
+        }
+        safe_items = []
+        for item in section.get("items") or []:
+            if not isinstance(item, dict):
+                continue
+            safe_items.append(
+                {
+                    key: value
+                    for key, value in item.items()
+                    if key not in {"expected_response", "details", "rubric", "assessor_guide"}
+                }
+            )
+        safe_section["items"] = safe_items
+        safe_sections.append(safe_section)
+    payload["report_sections"] = safe_sections
+    payload["oral_questions"] = [
+        {
+            key: value
+            for key, value in item.items()
+            if key not in {
+                "answer_guidance",
+                "expected_response",
+                "details",
+                "rubric",
+                "assessor_guide",
+            }
+        }
+        for item in (payload.get("oral_questions") or [])
+        if isinstance(item, dict)
+    ]
+    payload["media_attachments"] = [
+        item
+        for item in (payload.get("media_attachments") or [])
+        if isinstance(item, dict) and item.get("student_visible") is True
+    ]
+    return payload
 
 
 def _apply_payload(report: PracticalAssessmentReport, payload: dict) -> PracticalAssessmentReport:
@@ -958,8 +1013,13 @@ def get_practical_assessment(report_id: str):
 
     if _is_student(user):
         student = _student_profile(user)
-        if not student or report.student_id != student.id:
-            return {"error": "Access denied"}, 403
+        if (
+            not student
+            or report.student_id != student.id
+            or report.status != "released"
+            or report.released_at is None
+        ):
+            return {"error": "Report not found"}, 404
     elif _is_trainer(user):
         trainer = _trainer_profile(user)
         if not trainer or report.trainer_id != trainer.id:
@@ -967,7 +1027,7 @@ def get_practical_assessment(report_id: str):
     elif not _is_admin(user):
         return {"error": "Access denied"}, 403
 
-    return _report_payload(report), 200
+    return (_student_report_payload(report) if _is_student(user) else _report_payload(report)), 200
 
 
 @bp.get("/students/<student_id>/practical-assessments")
@@ -989,6 +1049,18 @@ def list_student_practical_assessments(student_id: str):
         current_student = _student_profile(user)
         if not current_student or current_student.id != student_uuid:
             return {"error": "Access denied"}, 403
+        reports = (
+            db.session.query(PracticalAssessmentReport)
+            .filter(
+                PracticalAssessmentReport.student_id == student_uuid,
+                PracticalAssessmentReport.status == "released",
+                PracticalAssessmentReport.released_at.isnot(None),
+                PracticalAssessmentReport.deleted_at.is_(None),
+            )
+            .order_by(PracticalAssessmentReport.created_at.desc())
+            .all()
+        )
+        return [_student_report_payload(report) for report in reports], 200
     elif _is_trainer(user):
         trainer = _trainer_profile(user)
         if not trainer or not _can_trainer_access_student(trainer.id, student_uuid):
@@ -1037,8 +1109,13 @@ def get_student_practical_assessment(student_id: str, report_id: str):
 
     if _is_student(user):
         current_student = _student_profile(user)
-        if not current_student or current_student.id != student_uuid:
-            return {"error": "Access denied"}, 403
+        if (
+            not current_student
+            or current_student.id != student_uuid
+            or report.status != "released"
+            or report.released_at is None
+        ):
+            return {"error": "Report not found"}, 404
     elif _is_trainer(user):
         trainer = _trainer_profile(user)
         if not trainer or report.trainer_id != trainer.id:
@@ -1046,7 +1123,7 @@ def get_student_practical_assessment(student_id: str, report_id: str):
     elif not _is_admin(user):
         return {"error": "Access denied"}, 403
 
-    return _report_payload(report), 200
+    return (_student_report_payload(report) if _is_student(user) else _report_payload(report)), 200
 
 
 @bp.post("/practical-assessments")
@@ -1057,6 +1134,8 @@ def create_practical_assessment():
 
     if not (_is_admin(user) or _is_trainer(user)):
         return {"error": "Trainer or admin access required"}, 403
+    if (request.get_json(silent=True) or {}).get("assessment_scope", "formative") != "formative":
+        return {"error": "Only internal formative practical assessments are permitted"}, 400
 
     payload = request.get_json(silent=True) or {}
     if payload.get("status") == "released":
@@ -1214,6 +1293,8 @@ def upload_practical_assessment_media(report_id: str):
         allowed = ", ".join(sorted(PRACTICAL_MEDIA_ALLOWED_EXTENSIONS))
         return {"error": f"File type not allowed. Allowed: {allowed}"}, 400
     evidence_type = request.form.get("evidence_type", "").strip().lower()
+    section_id = request.form.get("section_id", "").strip() or None
+    student_visible = request.form.get("student_visible", "").strip().lower() in {"1", "true", "yes"}
     is_oral_audio = evidence_type == "oral_audio"
     is_audio_file = is_oral_audio or (media_file.mimetype or "").startswith("audio/")
     if is_oral_audio and not (
@@ -1246,6 +1327,9 @@ def upload_practical_assessment_media(report_id: str):
         ) or "application/octet-stream",
         "uploaded_at": datetime.utcnow().isoformat(),
         "uploaded_by_user_id": str(user.id),
+        "evidence_type": evidence_type or "practical_evidence",
+        "section_id": section_id,
+        "student_visible": student_visible,
     }
     report.media_attachments = [*attachments, attachment]
     try:
@@ -1282,6 +1366,8 @@ def practical_assessment_media_preview_link(report_id: str, attachment_id: str):
     )
     if not attachment:
         return {"error": "File not found"}, 404
+    if _is_student(user) and attachment.get("student_visible") is not True:
+        return {"error": "File not found"}, 404
 
     file_url = str(attachment.get("file_url") or "")
     filename = file_url.rsplit("/", 1)[-1]
@@ -1317,13 +1403,6 @@ def serve_practical_assessment_media(filename: str):
     if not report:
         return {"error": "File not found"}, 404
 
-    if not _valid_preview_signature(filename):
-        user, error, status = _load_current_user()
-        if error:
-            return error, status
-        if not _can_access_report(user, report):
-            return {"error": "File not found"}, 404
-
     attachment = next(
         (
             item for item in (report.media_attachments or [])
@@ -1332,6 +1411,15 @@ def serve_practical_assessment_media(filename: str):
         ),
         {},
     )
+    if not _valid_preview_signature(filename):
+        user, error, status = _load_current_user()
+        if error:
+            return error, status
+        if not _can_access_report(user, report):
+            return {"error": "File not found"}, 404
+        if _is_student(user) and attachment.get("student_visible") is not True:
+            return {"error": "File not found"}, 404
+
     response = send_from_directory(
         os.path.abspath(PRACTICAL_MEDIA_UPLOAD_FOLDER),
         filename,

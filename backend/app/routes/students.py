@@ -2,12 +2,18 @@ from __future__ import annotations
 
 import uuid
 import random
-from flask import Blueprint, request
+import secrets
+from datetime import date, datetime
+
+from flask import Blueprint, current_app, request, send_file
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy import and_
+from sqlalchemy import and_, func, or_
+from werkzeug.security import generate_password_hash
 from ..extensions import db
 from ..models.course import Course
+from ..models.department import Department
 from ..models.module import Module
+from ..models.role_permission import RolePermission
 from ..models.student import Student
 from ..models.user import User
 from ..models.enrollment import Enrollment
@@ -17,6 +23,12 @@ from ..models.trainer_subject import TrainerSubject
 from ..models.trainer import Trainer
 from .permissions import log_view, require_permission
 from .permissions import get_current_user
+from ..services.bulk_people_import import (
+    build_template,
+    first_value,
+    normalize_lookup,
+    read_people_upload,
+)
 
 bp = Blueprint("students", __name__, url_prefix="/students")
 
@@ -171,6 +183,223 @@ def _student_payload(student: Student) -> dict:
         },
         "created_at": student.created_at.isoformat() if student.created_at else None,
     }
+
+
+STUDENT_IMPORT_HEADERS = [
+    "Registration Number",
+    "Name",
+    "Email",
+    "Mobile",
+    "Course",
+    "Admission Date",
+]
+
+
+def _import_enrollment_year(row: dict[str, str]) -> int:
+    raw = first_value(
+        row,
+        "Admission Date",
+        "Date Of Admission(dd/MM/yyyy)",
+        "Date Of Admission",
+        "Enrollment Year",
+    )
+    if raw:
+        for format_value in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%Y"):
+            try:
+                return datetime.strptime(raw[:10], format_value).year
+            except ValueError:
+                continue
+    return date.today().year
+
+
+@bp.get("/import-template")
+def student_import_template():
+    _, error, status = require_permission("students.create")
+    if error:
+        return error, status
+    output = build_template(
+        STUDENT_IMPORT_HEADERS,
+        "Students Template",
+        [
+            "TVET/2026/001",
+            "Amina Example",
+            "amina@example.edu",
+            "0712345678",
+            "Enter exact course name or code",
+            "15/01/2026",
+        ],
+    )
+    return send_file(
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name="studentsTemplate.xlsx",
+    )
+
+
+@bp.post("/bulk-upload")
+def bulk_upload_students():
+    actor, error, status = require_permission("students.create")
+    if error:
+        return error, status
+    _, user_error, user_status = require_permission("users.create")
+    if user_error:
+        return user_error, user_status
+    upload = request.files.get("file")
+    if not upload or not upload.filename:
+        return {"error": "Select a CSV or XLSX learner workbook"}, 400
+    try:
+        rows = read_people_upload(upload, preferred_sheet="Students Template")
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+
+    role = (
+        db.session.query(RolePermission)
+        .filter(func.lower(RolePermission.role_name) == "student")
+        .first()
+    )
+    if not role:
+        return {"error": "Student role is not configured"}, 409
+
+    course_query = db.session.query(Course).join(Department, Course.department_id == Department.id)
+    if actor.institution_id:
+        course_query = course_query.filter(Department.institution_id == actor.institution_id)
+    courses = course_query.filter(Course.deleted_at.is_(None)).all()
+    course_map = {
+        key: course
+        for course in courses
+        for key in {normalize_lookup(course.name), normalize_lookup(course.code)}
+        if key
+    }
+    results = []
+    created = 0
+    duplicates = 0
+    failed = 0
+    for row_number, row in enumerate(rows, start=2):
+        registration_number = first_value(row, "Reg No", "Registration Number")
+        name = first_value(row, "Name", "Student Name")
+        email = first_value(row, "Email").lower()
+        phone = first_value(row, "Mobile", "Phone") or None
+        course_value = first_value(row, "Course", "Course Code")
+        course = course_map.get(normalize_lookup(course_value))
+        if not registration_number or not name or not email or not course_value:
+            failed += 1
+            results.append({
+                "row": row_number,
+                "status": "failed",
+                "registration_number": registration_number,
+                "email": email,
+                "message": "Reg No, Name, Email, and Course are required",
+            })
+            continue
+        if "@" not in email:
+            failed += 1
+            results.append({"row": row_number, "status": "failed", "email": email, "message": "Invalid email address"})
+            continue
+        if not course:
+            failed += 1
+            results.append({
+                "row": row_number,
+                "status": "failed",
+                "registration_number": registration_number,
+                "email": email,
+                "message": f"Course not found: {course_value}",
+            })
+            continue
+        existing = (
+            db.session.query(Student)
+            .join(User, Student.user_id == User.id)
+            .filter(
+                or_(
+                    func.lower(Student.registration_number) == registration_number.lower(),
+                    func.lower(User.email) == email,
+                )
+            )
+            .first()
+        )
+        if existing:
+            duplicates += 1
+            results.append({
+                "row": row_number,
+                "status": "duplicate",
+                "registration_number": registration_number,
+                "email": email,
+                "message": "Learner already exists",
+            })
+            continue
+
+        initial_password = secrets.token_urlsafe(9)
+        try:
+            with db.session.begin_nested():
+                user = User(
+                    name=name,
+                    email=email,
+                    phone=phone,
+                    password_hash=generate_password_hash(initial_password),
+                    role_id=role.id,
+                    institution_id=course.department.institution_id,
+                )
+                db.session.add(user)
+                db.session.flush()
+                student = Student(
+                    user_id=user.id,
+                    registration_number=registration_number,
+                    course_id=course.id,
+                    enrollment_year=_import_enrollment_year(row),
+                )
+                db.session.add(student)
+                db.session.flush()
+                subject_ids = [
+                    item[0]
+                    for item in db.session.query(Subject.id)
+                    .join(Module, Subject.module_id == Module.id)
+                    .filter(
+                        Module.course_id == course.id,
+                        Subject.deleted_at.is_(None),
+                    )
+                    .all()
+                ]
+                db.session.add_all(
+                    StudentSubject(student_id=student.id, subject_id=subject_id)
+                    for subject_id in subject_ids
+                )
+                db.session.flush()
+            created += 1
+            results.append({
+                "row": row_number,
+                "status": "created",
+                "registration_number": registration_number,
+                "email": email,
+                "initial_password": initial_password,
+                "course": course.name,
+            })
+        except IntegrityError:
+            duplicates += 1
+            results.append({
+                "row": row_number,
+                "status": "duplicate",
+                "registration_number": registration_number,
+                "email": email,
+                "message": "Email, mobile, or registration number is already in use",
+            })
+        except Exception:
+            current_app.logger.exception("Learner import failed at row %s", row_number)
+            failed += 1
+            results.append({
+                "row": row_number,
+                "status": "failed",
+                "registration_number": registration_number,
+                "email": email,
+                "message": "This row could not be imported",
+            })
+    db.session.commit()
+    return {
+        "total_rows": len(rows),
+        "created": created,
+        "duplicates": duplicates,
+        "failed": failed,
+        "results": results,
+    }, 200
 
 
 @bp.post("")

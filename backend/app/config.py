@@ -34,3 +34,12 @@ class Config:
     MAX_CONTENT_LENGTH = int(
         os.getenv("MAX_CONTENT_LENGTH", str(25 * 1024 * 1024))
     )
+    SMTP_HOST = os.getenv("SMTP_HOST")
+    SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_USERNAME = os.getenv("SMTP_USERNAME")
+    SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+    SMTP_FROM = os.getenv("SMTP_FROM")
+    SMTP_STARTTLS = os.getenv("SMTP_STARTTLS", "true").lower() in {"1", "true", "yes"}
+    SMS_WEBHOOK_URL = os.getenv("SMS_WEBHOOK_URL")
+    SMS_API_KEY = os.getenv("SMS_API_KEY")
+    SMS_SENDER_ID = os.getenv("SMS_SENDER_ID")

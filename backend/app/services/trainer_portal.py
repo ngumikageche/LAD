@@ -157,6 +157,7 @@ def subject_payload(subject: Subject) -> dict:
         "id": str(subject.id),
         "name": subject.name,
         "description": subject.description,
+        "syllabus_topics": subject.syllabus_topics if isinstance(subject.syllabus_topics, list) else [],
         "module_id": str(subject.module_id),
         "module_name": module.name if module else None,
         "course_id": str(course.id) if course else None,
@@ -266,15 +267,19 @@ def update_feedback(trainer: Trainer, score: Score, feedback: str) -> Score:
     return score
 
 
-def trainer_dashboard(trainer: Trainer) -> dict:
+def trainer_dashboard(trainer: Trainer, subject_id: uuid.UUID | None = None) -> dict:
     subject_ids = get_trainer_subject_ids(trainer)
     subject_count = len(subject_ids)
+    scoped_subject_ids = subject_ids
+    if subject_id:
+        ensure_subject_access(trainer, subject_id)
+        scoped_subject_ids = [subject_id]
 
     total_students = 0
-    if subject_ids:
+    if scoped_subject_ids:
         total_students = (
             db.session.query(func.count(func.distinct(StudentSubject.student_id)))
-            .filter(StudentSubject.subject_id.in_(subject_ids))
+            .filter(StudentSubject.subject_id.in_(scoped_subject_ids))
             .scalar()
         ) or 0
 
@@ -291,11 +296,11 @@ def trainer_dashboard(trainer: Trainer) -> dict:
     pass_rate = 0.0
     pass_count = 0
     fail_count = 0
-    if subject_ids:
+    if scoped_subject_ids:
         recent_scores = (
             db.session.query(Score)
             .filter(
-                Score.subject_id.in_(subject_ids),
+                Score.subject_id.in_(scoped_subject_ids),
                 Score.trainer_id == trainer.id,
             )
             .order_by(Score.created_at.desc())
@@ -305,7 +310,7 @@ def trainer_dashboard(trainer: Trainer) -> dict:
         all_scores = (
             db.session.query(Score)
             .filter(
-                Score.subject_id.in_(subject_ids),
+                Score.subject_id.in_(scoped_subject_ids),
                 Score.trainer_id == trainer.id,
                 Score.deleted_at.is_(None),
             )
@@ -318,7 +323,11 @@ def trainer_dashboard(trainer: Trainer) -> dict:
             fail_count = len(all_scores) - pass_count
             pass_rate = round(pass_count / len(all_scores) * 100, 2)
 
-    advanced = build_role_dashboard("trainer", trainer_id=str(trainer.id))
+    advanced = build_role_dashboard(
+        "trainer",
+        trainer_id=str(trainer.id),
+        subject_id=str(subject_id) if subject_id else None,
+    )
 
     return {
         "subjects_assigned": subject_count,
@@ -332,6 +341,7 @@ def trainer_dashboard(trainer: Trainer) -> dict:
         "summary_panel": advanced["summary_panel"],
         "analytics": advanced,
         "last_updated": advanced["last_updated"],
+        "selected_subject_id": str(subject_id) if subject_id else None,
     }
 
 

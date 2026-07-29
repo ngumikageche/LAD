@@ -31,6 +31,9 @@ class Assessment(BaseModel):
     assessment_type: Mapped[str] = mapped_column(
         String(50), nullable=False, default="exam"
     )  # exam, assignment, quiz, project
+    assessment_scope: Mapped[str] = mapped_column(
+        String(32), nullable=False, default="formative"
+    )  # formative only for institution-managed evidence
     total_marks: Mapped[int] = mapped_column(Integer, nullable=False)
     pass_marks: Mapped[int | None] = mapped_column(Integer, nullable=True)
     weight: Mapped[int | None] = mapped_column(Integer, nullable=True)  # Percentage contribution to final grade

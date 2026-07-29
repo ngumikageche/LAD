@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import mimetypes
+import os
 import uuid
 
-from flask import Blueprint, request
+from flask import Blueprint, request, send_from_directory
 from sqlalchemy import exists
+from werkzeug.utils import secure_filename
 
 from ..extensions import db
 from ..models.notification import Notification
@@ -13,11 +16,17 @@ from ..models.student_subject import StudentSubject
 from ..models.subject import Subject
 from ..models.trainer import Trainer
 from ..models.trainer_subject import TrainerSubject
-from .permissions import _has_permission, _is_admin, _is_trainer, get_current_user
+from ..services.communications import send_email, send_sms
+from .permissions import _has_permission, _is_admin, _is_student, _is_trainer, get_current_user
 
 
 bp = Blueprint("student_reports", __name__, url_prefix="/trainers/students")
 ALLOWED_DELIVERY_CHANNELS = {"system", "email", "sms"}
+REPORT_UPLOAD_FOLDER = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "..", "uploads", "student_feedback")
+)
+REPORT_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "heic", "heif"}
+REPORT_IMAGE_MAX_BYTES = 10 * 1024 * 1024
 
 
 def _parse_uuid(value: str | None, field: str) -> uuid.UUID:
@@ -75,7 +84,7 @@ def _require_report_writer():
 def _normalize_delivery_channels(payload: dict) -> list[str]:
     raw_channels = payload.get("delivery_channels")
     if raw_channels is None:
-        return ["system"]
+        return ["system", "email"]
     if not isinstance(raw_channels, list):
         raise ValueError("'delivery_channels' must be an array")
 
@@ -108,6 +117,7 @@ def _payload(report: StudentReport) -> dict:
         "title": report.title,
         "body": report.body,
         "visibility": report.visibility,
+        "attachments": report.attachments if isinstance(report.attachments, list) else [],
         "created_at": report.created_at.isoformat() if report.created_at else None,
     }
 
@@ -219,6 +229,18 @@ def create_student_report(student_id: str):
         )
         created_system_notification = True
 
+    delivery_subject = f"{'New message' if report_type == 'message' else 'New learner report'}: {title}"
+    email_result = (
+        send_email(recipient_email, delivery_subject, body)
+        if "email" in delivery_channels
+        else {"status": "disabled"}
+    )
+    sms_result = (
+        send_sms(recipient_phone, f"{delivery_subject}\n{body[:320]}")
+        if "sms" in delivery_channels
+        else {"status": "disabled"}
+    )
+
     db.session.commit()
     db.session.refresh(report)
     return {
@@ -232,12 +254,88 @@ def create_student_report(student_id: str):
             "email": {
                 "enabled": "email" in delivery_channels,
                 "recipient": recipient_email,
-                "status": "ready" if "email" in delivery_channels and recipient_email else "disabled" if "email" not in delivery_channels else "missing_email",
+                **email_result,
             },
             "sms": {
                 "enabled": "sms" in delivery_channels,
                 "recipient": recipient_phone,
-                "status": "ready" if "sms" in delivery_channels and recipient_phone else "disabled" if "sms" not in delivery_channels else "missing_phone",
+                **sms_result,
             },
         },
     }, 201
+
+
+@bp.post("/<student_id>/reports/<report_id>/handwritten-feedback")
+def upload_handwritten_feedback(student_id: str, report_id: str):
+    user, trainer, error, status = _require_report_writer()
+    if error:
+        return error, status
+    try:
+        student_uuid = _parse_uuid(student_id, "student_id")
+        report_uuid = _parse_uuid(report_id, "report_id")
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+    report = db.session.get(StudentReport, report_uuid)
+    if not report or report.deleted_at or report.student_id != student_uuid:
+        return {"error": "Report not found"}, 404
+    if trainer and report.trainer_id != trainer.id:
+        return {"error": "Report not found"}, 404
+
+    upload = request.files.get("file")
+    if not upload or not upload.filename:
+        return {"error": "Select a handwritten feedback image"}, 400
+    safe_name = secure_filename(upload.filename)
+    extension = safe_name.rsplit(".", 1)[-1].lower() if "." in safe_name else ""
+    if extension not in REPORT_IMAGE_EXTENSIONS:
+        return {"error": "Handwritten feedback must be a PNG, JPG, WEBP, HEIC, or HEIF image"}, 400
+    os.makedirs(REPORT_UPLOAD_FOLDER, exist_ok=True)
+    stored_name = f"{uuid.uuid4().hex}_{safe_name}"
+    path = os.path.join(REPORT_UPLOAD_FOLDER, stored_name)
+    upload.save(path)
+    size = os.path.getsize(path)
+    if size <= 0 or size > REPORT_IMAGE_MAX_BYTES:
+        os.remove(path)
+        return {"error": "Image must be between 1 byte and 10 MB"}, 413
+    attachment = {
+        "id": uuid.uuid4().hex,
+        "kind": "handwritten_feedback",
+        "file_name": safe_name,
+        "file_url": f"/trainers/students/reports/media/{stored_name}",
+        "file_size": size,
+        "content_type": mimetypes.guess_type(safe_name)[0] or "application/octet-stream",
+    }
+    report.attachments = [*(report.attachments or []), attachment]
+    db.session.commit()
+    db.session.refresh(report)
+    return _payload(report), 201
+
+
+@bp.get("/reports/media/<path:filename>")
+def serve_feedback_media(filename: str):
+    user, error, status = get_current_user()
+    if error:
+        return error, status
+    trainer = db.session.query(Trainer).filter(Trainer.user_id == user.id).first() if _is_trainer(user) else None
+    safe_name = secure_filename(filename)
+    if safe_name != filename:
+        return {"error": "File not found"}, 404
+    report = next(
+        (
+            item
+            for item in db.session.query(StudentReport).filter(StudentReport.deleted_at.is_(None)).all()
+            if any(
+                attachment.get("file_url") == f"/trainers/students/reports/media/{filename}"
+                for attachment in (item.attachments or [])
+                if isinstance(attachment, dict)
+            )
+        ),
+        None,
+    )
+    if (
+        not report
+        or (trainer and report.trainer_id != trainer.id)
+        or (_is_student(user) and (not user.student or report.student_id != user.student.id or report.visibility != "student"))
+        or not (_is_admin(user) or trainer or _is_student(user))
+    ):
+        return {"error": "File not found"}, 404
+    return send_from_directory(REPORT_UPLOAD_FOLDER, filename, as_attachment=False)

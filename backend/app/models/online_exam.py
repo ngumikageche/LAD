@@ -24,6 +24,9 @@ class OnlineExam(BaseModel):
     total_marks: Mapped[float] = mapped_column(Float, nullable=False, default=0)
     questions: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
     published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    available_from: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    available_until: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    resource_document_ids: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
 
     subject = relationship("Subject")
     trainer = relationship("Trainer")
@@ -42,6 +45,12 @@ class OnlineExamSubmission(BaseModel):
     max_score: Mapped[float] = mapped_column(Float, nullable=False, default=0)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="submitted")
     submitted_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    graded_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    graded_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id"), nullable=True
+    )
+    grader_feedback: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     exam = relationship("OnlineExam", back_populates="submissions")
     student = relationship("Student")

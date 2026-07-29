@@ -5,7 +5,7 @@ from collections import defaultdict
 from datetime import datetime
 
 from flask import Blueprint, request
-from sqlalchemy import and_
+from sqlalchemy import and_, func
 
 from ..extensions import db
 from ..models.attendance import Attendance
@@ -18,6 +18,11 @@ from ..models.trainer_subject import TrainerSubject
 from ..models.student_subject import StudentSubject
 from ..models.institution import Institution
 from ..models.student_report import StudentReport
+from ..models.attendance_session import AttendanceRecord, AttendanceSession
+from ..models.practical_assessment_report import PracticalAssessmentReport
+from ..models.score_evidence import ScoreEvidence
+from ..models.trainer import Trainer
+from ..models.user import User
 from .permissions import get_current_user, log_view, _is_admin, _is_trainer, _is_student
 from ..services.report_permissions import check_report_permission
 from ..services import report_queries
@@ -533,4 +538,116 @@ def admin_compliance():
     user, error, status = get_current_user()
     if error:
         return error, status
-    return report_queries.empty_admin_stub(user, "admin_compliance", "Compliance")
+    if not _is_admin(user):
+        return {"error": "Admin access required"}, 403
+    minimum_attendance = float(request.args.get("minimum_attendance", 75))
+    students = db.session.query(Student).filter(Student.deleted_at.is_(None)).all()
+    learner_rows = []
+    for student in students:
+        subject_ids = [
+            row[0]
+            for row in db.session.query(StudentSubject.subject_id).filter(
+                StudentSubject.student_id == student.id
+            ).all()
+        ]
+        expected_subjects = len(set(subject_ids))
+        completed_subjects = (
+            db.session.query(func.count(func.distinct(Score.subject_id)))
+            .filter(
+                Score.student_id == student.id,
+                Score.subject_id.in_(subject_ids) if subject_ids else False,
+                Score.deleted_at.is_(None),
+            )
+            .scalar()
+        ) or 0
+        session_ids = [
+            row[0]
+            for row in db.session.query(AttendanceSession.id).filter(
+                AttendanceSession.subject_id.in_(subject_ids) if subject_ids else False,
+                AttendanceSession.deleted_at.is_(None),
+            ).all()
+        ]
+        successful_checkins = (
+            db.session.query(func.count(AttendanceRecord.id))
+            .filter(
+                AttendanceRecord.student_id == student.id,
+                AttendanceRecord.attendance_session_id.in_(session_ids) if session_ids else False,
+                AttendanceRecord.status.in_(["success", "manual"]),
+                AttendanceRecord.deleted_at.is_(None),
+            )
+            .scalar()
+        ) or 0
+        attendance_rate = round(successful_checkins / len(session_ids) * 100, 1) if session_ids else 0.0
+        assessments_complete = expected_subjects > 0 and completed_subjects >= expected_subjects
+        attendance_compliant = attendance_rate >= minimum_attendance
+        learner_rows.append({
+            "student_id": str(student.id),
+            "student_name": student.user.name if student.user else student.registration_number,
+            "registration_number": student.registration_number,
+            "attendance_rate": attendance_rate,
+            "attendance_sessions": len(session_ids),
+            "successful_checkins": successful_checkins,
+            "subjects_expected": expected_subjects,
+            "subjects_with_formative_scores": int(completed_subjects),
+            "assessments_complete": assessments_complete,
+            "attendance_compliant": attendance_compliant,
+            "ready_for_final_assessment": attendance_compliant and assessments_complete,
+        })
+
+    trainer_rows = []
+    trainers = db.session.query(Trainer).filter(Trainer.deleted_at.is_(None)).all()
+    for trainer in trainers:
+        subject_ids = [
+            row[0]
+            for row in db.session.query(TrainerSubject.subject_id).filter(
+                TrainerSubject.trainer_id == trainer.id
+            ).all()
+        ]
+        attendance_sessions = db.session.query(func.count(AttendanceSession.id)).filter(
+            AttendanceSession.trainer_id == trainer.id,
+            AttendanceSession.deleted_at.is_(None),
+        ).scalar() or 0
+        scored_records = db.session.query(func.count(Score.id)).filter(
+            Score.trainer_id == trainer.id,
+            Score.deleted_at.is_(None),
+        ).scalar() or 0
+        marked_scripts = db.session.query(func.count(ScoreEvidence.id)).filter(
+            ScoreEvidence.trainer_id == trainer.id,
+            ScoreEvidence.deleted_at.is_(None),
+        ).scalar() or 0
+        practical_reports = db.session.query(PracticalAssessmentReport).filter(
+            PracticalAssessmentReport.trainer_id == trainer.id,
+            PracticalAssessmentReport.deleted_at.is_(None),
+        ).all()
+        practical_evidence = sum(len(report.media_attachments or []) for report in practical_reports)
+        oral_evidence = sum(
+            1
+            for report in practical_reports
+            for attachment in (report.media_attachments or [])
+            if isinstance(attachment, dict) and attachment.get("evidence_type") == "oral_audio"
+        )
+        trainer_rows.append({
+            "trainer_id": str(trainer.id),
+            "trainer_name": trainer.user.name if trainer.user else "Unknown trainer",
+            "assigned_subjects": len(subject_ids),
+            "attendance_sessions": int(attendance_sessions),
+            "scored_records": int(scored_records),
+            "marked_script_files": int(marked_scripts),
+            "practical_evidence_files": practical_evidence,
+            "oral_evidence_files": oral_evidence,
+            "compliant": bool(attendance_sessions and scored_records and marked_scripts),
+        })
+    ready_count = sum(1 for row in learner_rows if row["ready_for_final_assessment"])
+    return {
+        "minimum_attendance": minimum_attendance,
+        "summary": {
+            "learners": len(learner_rows),
+            "ready": ready_count,
+            "not_ready": len(learner_rows) - ready_count,
+            "trainer_compliance": sum(1 for row in trainer_rows if row["compliant"]),
+            "trainers": len(trainer_rows),
+        },
+        "learners": learner_rows,
+        "trainers": trainer_rows,
+        "generated_at": datetime.utcnow().isoformat(),
+    }, 200

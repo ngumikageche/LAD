@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import uuid
+import csv
+import io
 
-from flask import Blueprint, g, request
+from flask import Blueprint, Response, g, request
 from sqlalchemy import func, or_
 from werkzeug.exceptions import HTTPException
 
@@ -185,7 +187,11 @@ def get_trainer_session_records(session_id: str):
 @bp.get("/dashboard")
 @trainer_required("scores.read")
 def get_dashboard():
-    return trainer_dashboard(g.current_trainer), 200
+    subject_id = request.args.get("subject_id")
+    return trainer_dashboard(
+        g.current_trainer,
+        parse_uuid(subject_id, "subject_id") if subject_id else None,
+    ), 200
 
 
 @bp.get("/subjects")
@@ -311,6 +317,88 @@ def list_students():
         ],
         "pagination": pagination_meta(page, per_page, total),
     }, 200
+
+
+def _enroll_student_identity(trainer, subject_uuid: uuid.UUID, identity: str) -> tuple[dict, int]:
+    ensure_subject_access(trainer, subject_uuid)
+    normalized = identity.strip()
+    student = (
+        db.session.query(Student)
+        .outerjoin(User, User.id == Student.user_id)
+        .filter(
+            or_(
+                func.lower(Student.registration_number) == normalized.lower(),
+                func.lower(User.email) == normalized.lower(),
+            )
+        )
+        .first()
+    )
+    if not student or student.deleted_at:
+        return {"identity": normalized, "status": "not_found"}, 404
+    existing = db.session.query(StudentSubject).filter_by(
+        student_id=student.id,
+        subject_id=subject_uuid,
+    ).first()
+    if existing:
+        return {"identity": normalized, "student_id": str(student.id), "status": "already_enrolled"}, 200
+    db.session.add(StudentSubject(student_id=student.id, subject_id=subject_uuid))
+    return {"identity": normalized, "student_id": str(student.id), "status": "enrolled"}, 201
+
+
+@bp.post("/enrollments")
+@trainer_required("students.read")
+def enroll_student_in_assigned_subject():
+    payload = request.get_json(silent=True) or {}
+    subject_uuid = parse_uuid(payload.get("subject_id"), "subject_id")
+    identity = str(payload.get("student_identity") or "").strip()
+    if not identity:
+        return {"error": "'student_identity' is required"}, 400
+    result, status = _enroll_student_identity(g.current_trainer, subject_uuid, identity)
+    if status < 400:
+        db.session.commit()
+    return result, status
+
+
+@bp.post("/enrollments/import")
+@trainer_required("students.read")
+def import_students_into_assigned_subject():
+    subject_uuid = parse_uuid(request.form.get("subject_id"), "subject_id")
+    ensure_subject_access(g.current_trainer, subject_uuid)
+    upload = request.files.get("file")
+    if not upload or not upload.filename:
+        return {"error": "Select a CSV learner list"}, 400
+    try:
+        text = upload.read().decode("utf-8-sig")
+        reader = csv.DictReader(io.StringIO(text))
+    except UnicodeDecodeError:
+        return {"error": "CSV file must use UTF-8 encoding"}, 400
+    if not reader.fieldnames or not ({"registration_number", "email"} & set(reader.fieldnames)):
+        return {"error": "CSV requires a registration_number or email column"}, 400
+    results = []
+    for index, row in enumerate(reader, start=2):
+        identity = (row.get("registration_number") or row.get("email") or "").strip()
+        if not identity:
+            results.append({"row": index, "status": "skipped", "reason": "Missing registration number/email"})
+            continue
+        result, _ = _enroll_student_identity(g.current_trainer, subject_uuid, identity)
+        results.append({"row": index, **result})
+    db.session.commit()
+    return {
+        "results": results,
+        "enrolled": sum(1 for item in results if item.get("status") == "enrolled"),
+        "already_enrolled": sum(1 for item in results if item.get("status") == "already_enrolled"),
+        "not_found": sum(1 for item in results if item.get("status") == "not_found"),
+    }, 200
+
+
+@bp.get("/enrollments/template")
+@trainer_required("students.read")
+def enrollment_import_template():
+    return Response(
+        "registration_number,email\nTVET-001,student@example.edu\n",
+        mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=learner_enrollment_template.csv"},
+    )
 
 
 @bp.get("/students/<student_id>")

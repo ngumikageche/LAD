@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from sqlalchemy import ForeignKey, String, event
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from .base import BaseModel
 
@@ -13,6 +13,7 @@ class Subject(BaseModel):
     module_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("modules.id"), nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    syllabus_topics: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
 
     module = relationship("Module", back_populates="subjects")
     trainer_subjects = relationship("TrainerSubject", back_populates="subject")

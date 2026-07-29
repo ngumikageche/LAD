@@ -169,6 +169,35 @@ def get_notifications():
     return student_notifications(g.current_student, page, per_page), 200
 
 
+@bp.get("/feedback-reports")
+@student_required()
+def get_feedback_reports():
+    from ..models.student_report import StudentReport
+    reports = (
+        db.session.query(StudentReport)
+        .filter(
+            StudentReport.student_id == g.current_student.id,
+            StudentReport.visibility == "student",
+            StudentReport.deleted_at.is_(None),
+        )
+        .order_by(StudentReport.created_at.desc())
+        .all()
+    )
+    return [
+        {
+            "id": str(report.id),
+            "title": report.title,
+            "body": report.body,
+            "report_type": report.report_type,
+            "subject_name": report.subject.name if report.subject else None,
+            "trainer_name": report.trainer.user.name if report.trainer and report.trainer.user else report.author.name if report.author else None,
+            "attachments": report.attachments if isinstance(report.attachments, list) else [],
+            "created_at": report.created_at.isoformat() if report.created_at else None,
+        }
+        for report in reports
+    ], 200
+
+
 @bp.put("/notifications/<notification_id>/read")
 @student_required()
 def mark_notification_read(notification_id: str):

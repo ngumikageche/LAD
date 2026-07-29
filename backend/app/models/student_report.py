@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 
 from sqlalchemy import ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import BaseModel
@@ -28,6 +28,7 @@ class StudentReport(BaseModel):
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     visibility: Mapped[str] = mapped_column(String(32), nullable=False, default="student")
+    attachments: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
 
     student = relationship("Student")
     trainer = relationship("Trainer")

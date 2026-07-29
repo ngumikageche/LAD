@@ -49,7 +49,10 @@ def create_score_route():
         "subject_id": request.form.get("subject_id"),
         "term": request.form.get("term"),
         "feedback": request.form.get("feedback") or None,
+        "assessment_scope": request.form.get("assessment_scope") or "formative",
     }
+    if payload["assessment_scope"] != "formative":
+        return {"error": "Only internal formative assessment evidence may be uploaded"}, 400
     try:
         payload["score"] = float(request.form.get("score", ""))
     except (TypeError, ValueError):

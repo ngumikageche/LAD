@@ -82,6 +82,7 @@ def list_assessments():
 
     course_id = request.args.get("course_id")
     q = db.session.query(Assessment)
+    q = q.filter(Assessment.assessment_scope == "formative")
     if course_id:
         try:
             q = q.filter(Assessment.course_id == uuid.UUID(course_id))
@@ -93,6 +94,7 @@ def list_assessments():
             "code": a.code,
             "name": a.name,
             "assessment_type": a.assessment_type,
+            "assessment_scope": a.assessment_scope,
             "total_marks": a.total_marks,
             "pass_marks": a.pass_marks,
             "course_id": str(a.course_id) if a.course_id else None,
@@ -179,6 +181,8 @@ def preview_bulk():
             assessment = assessment_cache.get(assessment_id_str)
             if not assessment:
                 errors.append(f"Assessment '{assessment_id_str}' not found")
+            elif assessment.assessment_scope != "formative":
+                errors.append("Only internal formative assessments can be uploaded")
         else:
             errors.append("assessment_id is required")
 
@@ -299,6 +303,10 @@ def commit_bulk():
 
         assessment = db.session.get(Assessment, assessment_uuid)
         if not assessment:
+            skipped += 1
+            continue
+        if assessment.assessment_scope != "formative":
+            errors.append(f"Row {row.get('row')}: summative/external assessment evidence is not permitted")
             skipped += 1
             continue
         assessment_ids.add(assessment_uuid)

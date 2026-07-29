@@ -73,3 +73,43 @@ def test_practical_section_score_cannot_exceed_configured_maximum():
 def test_practical_status_is_restricted_to_supported_workflow_values():
     with pytest.raises(ValueError, match="must be draft, complete, or released"):
         practical_assessments._validate_task_descriptions({"status": "published"})
+
+
+def test_student_payload_hides_assessor_guidance_and_private_evidence(monkeypatch):
+    monkeypatch.setattr(
+        practical_assessments,
+        "_report_payload",
+        lambda report: {
+            "report_sections": [
+                {
+                    "title": "Oral check",
+                    "assessor_guide": "Private section guide",
+                    "items": [
+                        {
+                            "prompt": "Explain the test",
+                            "expected_response": "Private marking points",
+                            "remark": "Clear explanation",
+                        }
+                    ],
+                }
+            ],
+            "oral_questions": [
+                {
+                    "question": "Name the tool",
+                    "answer_guidance": "Private answer",
+                    "awarded_score": 1,
+                }
+            ],
+            "media_attachments": [
+                {"id": "private", "student_visible": False},
+                {"id": "shared", "student_visible": True},
+            ],
+        },
+    )
+
+    payload = practical_assessments._student_report_payload(object())
+
+    assert "assessor_guide" not in payload["report_sections"][0]
+    assert "expected_response" not in payload["report_sections"][0]["items"][0]
+    assert "answer_guidance" not in payload["oral_questions"][0]
+    assert [item["id"] for item in payload["media_attachments"]] == ["shared"]

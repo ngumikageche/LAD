@@ -112,7 +112,7 @@ def create_session():
         latitude = float(data.get("latitude"))
         longitude = float(data.get("longitude"))
         allowed_radius = int(data.get("allowed_radius_meters", 100))
-        duration = int(data.get("duration_minutes", 60))
+        duration = int(data.get("duration_minutes", 5))
         regen_interval = int(data.get("regeneration_interval", 25))
         
         if not subject_id and not course_id and not module_id:
@@ -124,8 +124,8 @@ def create_session():
         if regen_interval < 10 or regen_interval > 300:
             return {"error": "Regeneration interval must be 10-300 seconds"}, 400
         
-        if allowed_radius < 10 or allowed_radius > 1000:
-            return {"error": "Allowed radius must be 10-1000 meters"}, 400
+        if allowed_radius < 20 or allowed_radius > 100:
+            return {"error": "Allowed radius must be 20-100 meters"}, 400
         
         # Create session
         secret_key = current_app.config.get("SECRET_KEY", "default-secret")
