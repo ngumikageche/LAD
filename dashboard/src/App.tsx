@@ -47,6 +47,7 @@ import TrainerPracticalAssessmentPage from './pages/TrainerPracticalAssessmentPa
 import TrainerEnrollmentPage from './pages/TrainerEnrollmentPage';
 import AdminCompliancePage from './pages/AdminCompliancePage';
 import StudentFeedbackPage from './pages/StudentFeedbackPage';
+import StudentDisciplinaryRecordsPage from './pages/StudentDisciplinaryRecordsPage';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import ProtectedRoute, { UserTypeRoute, PermissionRoute } from './auth/ProtectedRoute';
 
@@ -87,6 +88,7 @@ function App() {
                 <Route path="/student/documents" element={<DocumentsPage />} />
                 <Route path="/student/online-exams" element={<StudentOnlineExamsPage />} />
                 <Route path="/student/feedback" element={<StudentFeedbackPage />} />
+                <Route path="/student/disciplinary-records" element={<StudentDisciplinaryRecordsPage />} />
               </Route>
               <Route element={<UserTypeRoute allowedTypes={['trainer']} />}>
                 <Route path="/trainer-hub" element={<TrainerDashboardPage />} />

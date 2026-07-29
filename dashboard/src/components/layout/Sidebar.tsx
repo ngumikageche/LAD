@@ -51,6 +51,7 @@ const studentGroups: NavGroup[] = [
         { name: 'Report Card',       icon: ClipboardList,   path: '/student/report-card',       color: 'text-blue-300', permission: 'reports.student.term' },
         { name: 'Practical Reports', icon: FileText,        path: '/student/practical-assessments', color: 'text-teal-300' },
         { name: 'Attendance',        icon: CalendarCheck,   path: '/student/attendance-report', color: 'text-green-400', permission: 'reports.student.attendance' },
+        { name: 'Disciplinary Records', icon: HeartPulse,   path: '/student/disciplinary-records', color: 'text-rose-300' },
       ],
   },
   {

@@ -194,11 +194,15 @@ export interface StudentWrittenReport {
   delivery_channels?: Array<'system' | 'email' | 'sms'>;
   attachments?: Array<{
     id: string;
-    kind: 'handwritten_feedback';
+    kind: 'handwritten_feedback' | 'supporting_document' | 'student_response';
     file_name: string;
     file_url: string;
     file_size: number;
     content_type: string;
+    uploaded_by_user_id?: string;
+    uploaded_by_name?: string;
+    uploaded_by_role?: 'student' | 'trainer' | 'admin';
+    uploaded_at?: string;
   }>;
 }
 
@@ -295,6 +299,21 @@ export const trainerStudentsAPI = {
     formData.append('file', file);
     const response = await apiClient.post(
       `/trainers/students/${studentId}/reports/${reportId}/handwritten-feedback`,
+      formData,
+      { headers: {} },
+    );
+    return response.data as StudentWrittenReport;
+  },
+
+  async uploadReportAttachment(
+    studentId: string,
+    reportId: string,
+    file: File,
+  ): Promise<StudentWrittenReport> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await apiClient.post(
+      `/trainers/students/${studentId}/reports/${reportId}/attachments`,
       formData,
       { headers: {} },
     );

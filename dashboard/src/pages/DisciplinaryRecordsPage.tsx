@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, CheckCircle2, Download, FileText, HeartPulse, Printer, User } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Download, FileText, HeartPulse, Paperclip, Printer, Upload, User } from 'lucide-react';
 import { apiRequest } from '../api/client';
 import { trainerStudentsAPI, trainerSubjectsAPI, type StudentWrittenReport } from '../api/trainer';
 import { useAuth } from '../auth/AuthContext';
@@ -17,6 +17,18 @@ type SubjectOption = {
   label: string;
 };
 
+type ReportAttachment = {
+  id: string;
+  kind: 'handwritten_feedback' | 'supporting_document' | 'student_response';
+  file_name: string;
+  file_url: string;
+  file_size: number;
+  content_type: string;
+  uploaded_by_name?: string;
+  uploaded_by_role?: 'student' | 'trainer' | 'admin';
+  uploaded_at?: string;
+};
+
 type DisciplineIncident = {
   id: string;
   title: string;
@@ -26,6 +38,7 @@ type DisciplineIncident = {
   recorded_by: string | null;
   notes: string | null;
   action_taken: string | null;
+  attachments: ReportAttachment[];
   created_at: string | null;
 };
 
@@ -142,6 +155,8 @@ export default function DisciplinaryRecordsPage() {
   const [selectedSubjectId, setSelectedSubjectId] = useState('');
   const [actionTaken, setActionTaken] = useState('');
   const [notes, setNotes] = useState('');
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [uploadingReportId, setUploadingReportId] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -206,6 +221,7 @@ export default function DisciplinaryRecordsPage() {
     setSelectedSubjectId('');
     setActionTaken('');
     setNotes('');
+    setAttachmentFile(null);
   };
 
   const handleSave = async () => {
@@ -221,12 +237,30 @@ export default function DisciplinaryRecordsPage() {
     try {
       setSubmitting(true);
       setError(null);
-      await trainerStudentsAPI.createStudentReport(selectedStudent.id, {
+      const createdReport = await trainerStudentsAPI.createStudentReport(selectedStudent.id, {
         title: title.trim(),
         body: buildBehaviourBody({ incidentDate, category, actionTaken, notes }),
         report_type: 'behaviour',
         subject_id: selectedSubjectId || undefined,
       });
+      if (attachmentFile) {
+        try {
+          await trainerStudentsAPI.uploadReportAttachment(
+            selectedStudent.id,
+            createdReport.id,
+            attachmentFile,
+          );
+        } catch (uploadError) {
+          await loadStudentData(selectedStudent);
+          resetForm();
+          setError(
+            `The disciplinary record was saved, but its document failed to upload: ${
+              uploadError instanceof Error ? uploadError.message : 'Upload failed'
+            }`,
+          );
+          return;
+        }
+      }
       await loadStudentData(selectedStudent);
       resetForm();
       setSuccess('Disciplinary record added successfully.');
@@ -235,6 +269,33 @@ export default function DisciplinaryRecordsPage() {
       setError(err instanceof Error ? err.message : 'Failed to save disciplinary record');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleExistingAttachmentUpload = async (reportId: string, file: File) => {
+    if (!selectedStudent) return;
+    try {
+      setUploadingReportId(reportId);
+      setError(null);
+      await trainerStudentsAPI.uploadReportAttachment(selectedStudent.id, reportId, file);
+      await loadStudentData(selectedStudent);
+      setSuccess('Document uploaded successfully.');
+      setTimeout(() => setSuccess(null), 3000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to upload document');
+    } finally {
+      setUploadingReportId(null);
+    }
+  };
+
+  const openAttachment = async (fileUrl: string) => {
+    try {
+      const blob = await apiRequest<Blob>(fileUrl, { token, responseType: 'blob' });
+      const objectUrl = URL.createObjectURL(blob);
+      window.open(objectUrl, '_blank', 'noopener,noreferrer');
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to open document');
     }
   };
 
@@ -421,6 +482,21 @@ export default function DisciplinaryRecordsPage() {
                     />
                   </div>
 
+                  <div className="mt-4">
+                    <label className="mb-2 block text-sm font-medium text-slate-300">
+                      Supporting Document <span className="text-slate-500">(optional)</span>
+                    </label>
+                    <input
+                      type="file"
+                      accept=".pdf,.doc,.docx,.odt,.txt,.png,.jpg,.jpeg,.webp,.heic,.heif"
+                      onChange={(event) => setAttachmentFile(event.target.files?.[0] ?? null)}
+                      className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-2 text-sm text-slate-300"
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
+                      PDF, Word, text, or image · maximum 10 MB
+                    </p>
+                  </div>
+
                   <div className="mt-5 flex gap-3">
                     <button
                       onClick={handleSave}
@@ -470,6 +546,37 @@ export default function DisciplinaryRecordsPage() {
                                 Action: {parsed.actionTaken}
                               </p>
                             ) : null}
+                            {(item.attachments ?? []).length > 0 ? (
+                              <div className="mt-3 flex flex-wrap gap-2">
+                                {(item.attachments ?? []).map((attachment) => (
+                                  <button
+                                    key={attachment.id}
+                                    type="button"
+                                    onClick={() => openAttachment(attachment.file_url)}
+                                    className="inline-flex items-center gap-2 rounded-lg border border-cyan-400/20 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-200"
+                                  >
+                                    <Paperclip size={14} />
+                                    {attachment.file_name}
+                                    {attachment.kind === 'student_response' ? ' · Student response' : ''}
+                                  </button>
+                                ))}
+                              </div>
+                            ) : null}
+                            <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-lg bg-slate-800 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-700">
+                              <Upload size={14} />
+                              {uploadingReportId === item.id ? 'Uploading…' : 'Attach document'}
+                              <input
+                                type="file"
+                                className="hidden"
+                                disabled={uploadingReportId === item.id}
+                                accept=".pdf,.doc,.docx,.odt,.txt,.png,.jpg,.jpeg,.webp,.heic,.heif"
+                                onChange={(event) => {
+                                  const file = event.target.files?.[0];
+                                  if (file) handleExistingAttachmentUpload(item.id, file);
+                                  event.target.value = '';
+                                }}
+                              />
+                            </label>
                           </div>
                         );
                       })}
@@ -549,6 +656,22 @@ export default function DisciplinaryRecordsPage() {
                               <p className="mt-3 whitespace-pre-wrap text-sm text-slate-300">{incident.notes || 'No notes provided.'}</p>
                               {incident.action_taken ? (
                                 <p className="mt-3 text-sm text-rose-300">Action taken: {incident.action_taken}</p>
+                              ) : null}
+                              {incident.attachments.length > 0 ? (
+                                <div className="mt-3 flex flex-wrap gap-2">
+                                  {incident.attachments.map((attachment) => (
+                                    <button
+                                      key={attachment.id}
+                                      type="button"
+                                      onClick={() => openAttachment(attachment.file_url)}
+                                      className="inline-flex items-center gap-2 rounded-lg border border-cyan-400/20 bg-cyan-500/10 px-3 py-2 text-xs font-semibold text-cyan-200"
+                                    >
+                                      <Paperclip size={14} />
+                                      {attachment.file_name}
+                                      {attachment.kind === 'student_response' ? ' · Student response' : ''}
+                                    </button>
+                                  ))}
+                                </div>
                               ) : null}
                             </div>
                           ))}

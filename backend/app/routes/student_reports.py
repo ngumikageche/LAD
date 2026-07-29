@@ -3,6 +3,7 @@ from __future__ import annotations
 import mimetypes
 import os
 import uuid
+from datetime import datetime
 
 from flask import Blueprint, request, send_from_directory
 from sqlalchemy import exists
@@ -27,6 +28,11 @@ REPORT_UPLOAD_FOLDER = os.path.abspath(
 )
 REPORT_IMAGE_EXTENSIONS = {"png", "jpg", "jpeg", "webp", "heic", "heif"}
 REPORT_IMAGE_MAX_BYTES = 10 * 1024 * 1024
+REPORT_DOCUMENT_EXTENSIONS = {
+    "pdf", "doc", "docx", "odt", "txt",
+    *REPORT_IMAGE_EXTENSIONS,
+}
+REPORT_DOCUMENT_MAX_BYTES = 10 * 1024 * 1024
 
 
 def _parse_uuid(value: str | None, field: str) -> uuid.UUID:
@@ -303,6 +309,78 @@ def upload_handwritten_feedback(student_id: str, report_id: str):
         "file_url": f"/trainers/students/reports/media/{stored_name}",
         "file_size": size,
         "content_type": mimetypes.guess_type(safe_name)[0] or "application/octet-stream",
+    }
+    report.attachments = [*(report.attachments or []), attachment]
+    db.session.commit()
+    db.session.refresh(report)
+    return _payload(report), 201
+
+
+@bp.post("/<student_id>/reports/<report_id>/attachments")
+def upload_report_attachment(student_id: str, report_id: str):
+    user, error, status = get_current_user()
+    if error:
+        return error, status
+    try:
+        student_uuid = _parse_uuid(student_id, "student_id")
+        report_uuid = _parse_uuid(report_id, "report_id")
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+
+    report = db.session.get(StudentReport, report_uuid)
+    if (
+        not report
+        or report.deleted_at
+        or report.student_id != student_uuid
+        or report.report_type != "behaviour"
+    ):
+        return {"error": "Disciplinary record not found"}, 404
+
+    trainer = (
+        db.session.query(Trainer).filter(Trainer.user_id == user.id).first()
+        if _is_trainer(user)
+        else None
+    )
+    student_is_owner = bool(
+        _is_student(user)
+        and user.student
+        and user.student.id == student_uuid
+        and report.visibility == "student"
+    )
+    trainer_owns_report = bool(trainer and report.trainer_id == trainer.id)
+    if not (_is_admin(user) or trainer_owns_report or student_is_owner):
+        return {"error": "Disciplinary record not found"}, 404
+
+    upload = request.files.get("file")
+    if not upload or not upload.filename:
+        return {"error": "Select a document to upload"}, 400
+    safe_name = secure_filename(upload.filename)
+    extension = safe_name.rsplit(".", 1)[-1].lower() if "." in safe_name else ""
+    if extension not in REPORT_DOCUMENT_EXTENSIONS:
+        return {
+            "error": "Use PDF, DOC, DOCX, ODT, TXT, PNG, JPG, WEBP, HEIC, or HEIF"
+        }, 400
+
+    os.makedirs(REPORT_UPLOAD_FOLDER, exist_ok=True)
+    stored_name = f"{uuid.uuid4().hex}_{safe_name}"
+    path = os.path.join(REPORT_UPLOAD_FOLDER, stored_name)
+    upload.save(path)
+    size = os.path.getsize(path)
+    if size <= 0 or size > REPORT_DOCUMENT_MAX_BYTES:
+        os.remove(path)
+        return {"error": "Document must be between 1 byte and 10 MB"}, 413
+
+    attachment = {
+        "id": uuid.uuid4().hex,
+        "kind": "student_response" if student_is_owner else "supporting_document",
+        "file_name": safe_name,
+        "file_url": f"/trainers/students/reports/media/{stored_name}",
+        "file_size": size,
+        "content_type": mimetypes.guess_type(safe_name)[0] or "application/octet-stream",
+        "uploaded_by_user_id": str(user.id),
+        "uploaded_by_name": user.name,
+        "uploaded_by_role": "student" if student_is_owner else ("admin" if _is_admin(user) else "trainer"),
+        "uploaded_at": datetime.utcnow().isoformat(),
     }
     report.attachments = [*(report.attachments or []), attachment]
     db.session.commit()

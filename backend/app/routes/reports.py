@@ -405,7 +405,8 @@ def discipline(student_id: str):
         return {"error": "Student not found"}, 404
 
     access = check_report_permission(user, "student_discipline", student_id)
-    if not access.canView:
+    student_is_owner = bool(_is_student(user) and user.student and user.student.id == sid)
+    if not access.canView and not student_is_owner:
         return {"error": access.reason}, 403
 
     query = db.session.query(StudentReport).filter(
@@ -413,6 +414,8 @@ def discipline(student_id: str):
         StudentReport.report_type == "behaviour",
         StudentReport.deleted_at.is_(None),
     )
+    if student_is_owner:
+        query = query.filter(StudentReport.visibility == "student")
     if _is_trainer(user) and user.trainer and not _is_admin(user):
         query = query.filter(StudentReport.trainer_id == user.trainer.id)
 
@@ -431,6 +434,7 @@ def discipline(student_id: str):
             "recorded_by": report.author.name if report.author else None,
             "notes": parsed["notes"],
             "action_taken": parsed["action_taken"],
+            "attachments": report.attachments if isinstance(report.attachments, list) else [],
             "created_at": report.created_at.isoformat() if report.created_at else None,
         }
         incidents.append(incident)
@@ -453,7 +457,10 @@ def discipline(student_id: str):
         "incidents": incidents,
         "actions": actions,
         "note": "Generated from existing behaviour records.",
-        "permissions": {"canPrint": access.canPrint, "canExport": access.canExport},
+        "permissions": {
+            "canPrint": access.canPrint if not student_is_owner else False,
+            "canExport": access.canExport if not student_is_owner else False,
+        },
         "generated_at": datetime.utcnow().isoformat(),
     }, 200
 
