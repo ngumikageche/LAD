@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { CheckCircle2, FileQuestion, Send } from 'lucide-react';
+import { BookOpen, CheckCircle2, FileQuestion, Send } from 'lucide-react';
 import { apiRequest } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 
@@ -24,7 +24,11 @@ type OnlineExam = {
     max_score: number;
     status: string;
     submitted_at: string;
+    started_at: string | null;
+    seconds_remaining: number | null;
+    grader_feedback?: string | null;
   } | null;
+  resource_documents: Array<{ id: string; title: string; file_name: string }>;
 };
 
 export default function StudentOnlineExamsPage() {
@@ -34,6 +38,7 @@ export default function StudentOnlineExamsPage() {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [secondsRemaining, setSecondsRemaining] = useState<number | null>(null);
 
   const loadExams = async () => {
     try {
@@ -49,11 +54,24 @@ export default function StudentOnlineExamsPage() {
     loadExams();
   }, [token]);
 
+  useEffect(() => {
+    if (secondsRemaining == null || secondsRemaining <= 0) return;
+    const timer = window.setInterval(() => setSecondsRemaining((value) => value == null ? null : Math.max(0, value - 1)), 1000);
+    return () => window.clearInterval(timer);
+  }, [secondsRemaining != null]);
+
   const openExam = async (examId: string) => {
     try {
       setError(null);
-      const exam = await apiRequest<OnlineExam>(`/online-exams/student/${examId}`, { token });
+      let exam = await apiRequest<OnlineExam>(`/online-exams/student/${examId}`, { token });
+      if (!exam.submission) {
+        exam = await apiRequest<OnlineExam>(`/online-exams/student/${examId}/start`, {
+          method: 'POST',
+          token,
+        });
+      }
       setSelectedExam(exam);
+      setSecondsRemaining(exam.submission?.seconds_remaining ?? null);
       setAnswers({});
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to open exam');
@@ -97,7 +115,7 @@ export default function StudentOnlineExamsPage() {
             >
               <p className="font-semibold text-slate-100">{exam.title}</p>
               <p className="mt-1 text-xs text-slate-400">{exam.subject_name ?? 'Subject'} • {exam.total_marks} marks</p>
-              {exam.submission && (
+              {exam.submission && exam.submission.status !== 'in_progress' && (
                 <p className="mt-2 inline-flex items-center gap-1 rounded bg-green-500/10 px-2 py-1 text-xs text-green-300">
                   <CheckCircle2 size={13} /> Submitted
                 </p>
@@ -124,9 +142,21 @@ export default function StudentOnlineExamsPage() {
                 {selectedExam.duration_minutes ? ` • ${selectedExam.duration_minutes} minutes` : ''}
               </p>
               {selectedExam.description && <p className="mt-3 text-slate-300">{selectedExam.description}</p>}
+              {secondsRemaining != null ? (
+                <p className={`mt-3 font-mono text-sm font-bold ${secondsRemaining <= 60 ? 'text-rose-300' : 'text-cyan-300'}`}>
+                  Time remaining: {Math.floor(secondsRemaining / 60)}:{String(secondsRemaining % 60).padStart(2, '0')}
+                </p>
+              ) : null}
+              {selectedExam.resource_documents?.length ? (
+                <div className="mt-4 rounded-xl border border-indigo-400/20 bg-indigo-500/10 p-4">
+                  <p className="flex items-center gap-2 font-semibold text-indigo-200"><BookOpen size={16} /> Linked study resources</p>
+                  <p className="mt-2 text-sm text-slate-300">{selectedExam.resource_documents.map((document) => document.title).join(', ')}</p>
+                  <a href="/student/documents" className="mt-2 inline-block text-sm font-semibold text-cyan-300">Open Documents</a>
+                </div>
+              ) : null}
             </div>
 
-            {selectedExam.submission ? (
+            {selectedExam.submission && selectedExam.submission.status !== 'in_progress' ? (
               <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-4 text-green-300">
                 {selectedExam.submission.score === null
                   ? 'You already submitted this exam. It is waiting for marking.'
@@ -163,7 +193,7 @@ export default function StudentOnlineExamsPage() {
                   </div>
                 ))}
 
-                <button type="button" onClick={submitExam} disabled={submitting} className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">
+                <button type="button" onClick={submitExam} disabled={submitting || secondsRemaining === 0} className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-5 py-3 text-sm font-semibold text-white disabled:opacity-50">
                   <Send size={16} /> {submitting ? 'Submitting...' : 'Submit Exam'}
                 </button>
               </>

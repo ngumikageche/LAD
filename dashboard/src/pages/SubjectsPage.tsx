@@ -19,12 +19,14 @@ type Subject = {
   department_id?: string | null;
   department_name?: string | null;
   description?: string;
+  syllabus_topics?: string[];
 };
 
 const emptySubjectForm = {
   name: '',
   module_id: '',
   description: '',
+  syllabus_topics: [],
 };
 
 type ModuleForm = {
@@ -201,7 +203,7 @@ const SubjectsPage = () => {
 
   const closeModal = () => {
     setIsModalOpen(false);
-    setFormState(emptyForm);
+    setSubjectForm(emptySubjectForm);
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
@@ -213,6 +215,7 @@ const SubjectsPage = () => {
       name: subjectForm.name.trim(),
       module_id: subjectForm.module_id,
       description: subjectForm.description?.trim() || undefined,
+      syllabus_topics: subjectForm.syllabus_topics ?? [],
     };
 
     try {
@@ -443,6 +446,23 @@ const SubjectsPage = () => {
                   disabled={isSubmitting}
                 />
               </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1">
+                  Syllabus Topics (one per line)
+                </label>
+                <textarea
+                  className="w-full px-4 py-2 rounded-lg border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  value={(subjectForm.syllabus_topics ?? []).join('\n')}
+                  onChange={(event) => setSubjectForm((form) => ({
+                    ...form,
+                    syllabus_topics: event.target.value.split('\n').map((topic) => topic.trim()).filter(Boolean),
+                  }))}
+                  rows={7}
+                  placeholder="Topic 1&#10;Topic 2&#10;Topic 3"
+                  disabled={isSubmitting}
+                />
+                <p className="mt-1 text-xs text-slate-500">Add the official 7–10 unit topics used by the trainer checklist.</p>
+              </div>
               <div className="flex justify-end">
                 <button
                   type="submit"
@@ -462,7 +482,7 @@ const SubjectsPage = () => {
         <UploadMarksModal
           open={uploadModalOpen}
           onClose={() => setUploadModalOpen(false)}
-          token={token}
+          token={token ?? undefined}
           modules={modules}
           courses={courses}
           subjects={subjects}

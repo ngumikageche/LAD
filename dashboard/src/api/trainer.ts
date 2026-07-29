@@ -192,6 +192,14 @@ export interface StudentWrittenReport {
   visibility: string;
   created_at: string | null;
   delivery_channels?: Array<'system' | 'email' | 'sms'>;
+  attachments?: Array<{
+    id: string;
+    kind: 'handwritten_feedback';
+    file_name: string;
+    file_url: string;
+    file_size: number;
+    content_type: string;
+  }>;
 }
 
 // API Service Objects
@@ -275,6 +283,21 @@ export const trainerStudentsAPI = {
     }
   ): Promise<StudentWrittenReport> {
     const response = await apiClient.post(`/trainers/students/${studentId}/reports`, data);
+    return response.data as StudentWrittenReport;
+  },
+
+  async uploadHandwrittenFeedback(
+    studentId: string,
+    reportId: string,
+    file: File,
+  ): Promise<StudentWrittenReport> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await apiClient.post(
+      `/trainers/students/${studentId}/reports/${reportId}/handwritten-feedback`,
+      formData,
+      { headers: {} },
+    );
     return response.data as StudentWrittenReport;
   },
 };
@@ -422,10 +445,17 @@ export const trainerPracticalAssessmentsAPI = {
     return response.data as PracticalAssessmentReport;
   },
 
-  async uploadPracticalAssessmentMedia(reportId: string, file: File, evidenceType?: 'oral_audio'): Promise<PracticalAssessmentReport> {
+  async uploadPracticalAssessmentMedia(
+    reportId: string,
+    file: File,
+    evidenceType?: 'oral_audio' | 'practical_evidence',
+    options?: { sectionId?: string; studentVisible?: boolean },
+  ): Promise<PracticalAssessmentReport> {
     const formData = new FormData();
     formData.append('file', file);
     if (evidenceType) formData.append('evidence_type', evidenceType);
+    if (options?.sectionId) formData.append('section_id', options.sectionId);
+    if (options?.studentVisible) formData.append('student_visible', 'true');
     const response = await apiClient.post(`/practical-assessments/${reportId}/media`, formData, {
       headers: {},
     });
@@ -504,6 +534,12 @@ export const trainerReportCardsAPI = {
   async addSyllabusTopic(trainerId: string, data: { topic: string; subject_id: string; term_id?: string; planned_date?: string; description?: string }) {
     const response = await apiClient.post(`/reports/trainer/${trainerId}/syllabus`, data);
     return response.data;
+  },
+  async importSyllabusTemplate(trainerId: string, subjectId: string) {
+    const response = await apiClient.post(`/reports/trainer/${trainerId}/syllabus/import-template`, {
+      subject_id: subjectId,
+    });
+    return response.data as { created: number; total_template_topics: number };
   },
   async updateSyllabusTopic(trainerId: string, planId: string, data: { topic?: string; planned_date?: string; covered_date?: string; mark_covered?: boolean }) {
     const response = await apiClient.put(`/reports/trainer/${trainerId}/syllabus/${planId}`, data);

@@ -3,6 +3,7 @@ import { FileText, Send, AlertCircle, CheckCircle2, User, Mail, BarChart3 } from
 import { apiRequest } from '../api/client';
 import { trainerStudentsAPI, trainerSubjectsAPI, type StudentWrittenReport } from '../api/trainer';
 import { useAuth } from '../auth/AuthContext';
+import { useSearchParams } from 'react-router-dom';
 
 interface Student {
   id: string;
@@ -29,6 +30,7 @@ type TrainerSubjectRow = {
 
 export default function ProvideFeedbackPage() {
   const { token, user } = useAuth();
+  const [searchParams] = useSearchParams();
   const isAdmin = user?.user_type === 'admin';
   const [students, setStudents] = useState<Student[]>([]);
   const [subjects, setSubjects] = useState<SubjectOption[]>([]);
@@ -40,11 +42,12 @@ export default function ProvideFeedbackPage() {
   const [reportTitle, setReportTitle] = useState('');
   const [reportType, setReportType] = useState<StudentWrittenReport['report_type']>('general');
   const [reportBody, setReportBody] = useState('');
+  const [handwrittenFeedback, setHandwrittenFeedback] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [reportHistory, setReportHistory] = useState<StudentWrittenReport[]>([]);
   const [deliveryChannels, setDeliveryChannels] = useState({
     system: true,
-    email: false,
+    email: true,
     sms: false,
   });
 
@@ -100,7 +103,8 @@ export default function ProvideFeedbackPage() {
     setReportTitle('');
     setReportBody('');
     setReportType('general');
-    setDeliveryChannels({ system: true, email: false, sms: false });
+    setDeliveryChannels({ system: true, email: true, sms: false });
+    setHandwrittenFeedback(null);
     setError(null);
     try {
       const reports = await trainerStudentsAPI.getStudentReports(student.id);
@@ -110,6 +114,17 @@ export default function ProvideFeedbackPage() {
       setError(err instanceof Error ? err.message : 'Failed to load student reports');
     }
   };
+
+  useEffect(() => {
+    const studentId = searchParams.get('student_id');
+    if (!studentId || students.length === 0 || selectedStudent?.id === studentId) return;
+    const student = students.find((item) => item.id === studentId);
+    if (student) {
+      void handleSelectStudent(student);
+      const subjectId = searchParams.get('subject_id');
+      if (subjectId) setSelectedSubjectId(subjectId);
+    }
+  }, [searchParams, students, selectedStudent?.id]);
 
   const handleSubmitReport = async () => {
     if (!selectedStudent || !reportTitle.trim() || !reportBody.trim()) {
@@ -125,7 +140,7 @@ export default function ProvideFeedbackPage() {
       setSubmitting(true);
       setError(null);
 
-      const report = await trainerStudentsAPI.createStudentReport(selectedStudent.id, {
+      let report = await trainerStudentsAPI.createStudentReport(selectedStudent.id, {
         title: reportTitle.trim(),
         body: reportBody.trim(),
         report_type: reportType,
@@ -134,6 +149,13 @@ export default function ProvideFeedbackPage() {
           .filter(([, enabled]) => enabled)
           .map(([channel]) => channel) as Array<'system' | 'email' | 'sms'>),
       });
+      if (handwrittenFeedback) {
+        report = await trainerStudentsAPI.uploadHandwrittenFeedback(
+          selectedStudent.id,
+          report.id,
+          handwrittenFeedback,
+        );
+      }
 
       const selectedChannels = Object.entries(deliveryChannels)
         .filter(([, enabled]) => enabled)
@@ -143,6 +165,7 @@ export default function ProvideFeedbackPage() {
       setReportTitle('');
       setReportBody('');
       setSelectedSubjectId('');
+      setHandwrittenFeedback(null);
       setReportHistory([report, ...reportHistory]);
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
@@ -327,6 +350,25 @@ export default function ProvideFeedbackPage() {
                     <p className="text-xs text-slate-400 mt-2">
                       {reportBody.length}/5000 characters
                     </p>
+                  </div>
+
+                  <div className="mb-4 rounded-lg border border-slate-700 bg-slate-800/70 p-4">
+                    <label className="block text-sm font-medium text-slate-200">
+                      Handwritten feedback photo
+                    </label>
+                    <p className="mt-1 text-xs text-slate-400">
+                      Optional. Photograph the trainer’s handwritten remarks and attach them to this learner report.
+                    </p>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/heic,image/heif"
+                      capture="environment"
+                      onChange={(event) => setHandwrittenFeedback(event.target.files?.[0] ?? null)}
+                      className="mt-3 block w-full text-sm text-slate-300 file:mr-4 file:rounded-lg file:border-0 file:bg-cyan-600 file:px-4 file:py-2 file:font-semibold file:text-white"
+                    />
+                    {handwrittenFeedback ? (
+                      <p className="mt-2 text-xs text-cyan-300">Selected: {handwrittenFeedback.name}</p>
+                    ) : null}
                   </div>
 
                   <div className="mb-4 rounded-lg border border-slate-700 bg-slate-800/70 p-4">

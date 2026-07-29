@@ -7,6 +7,7 @@ export type TrainerSubject = {
   id: string;
   name: string;
   description: string | null;
+  syllabus_topics?: string[];
   module_id: string;
   module_name: string | null;
   course_id: string | null;
@@ -108,8 +109,10 @@ trainerClient.interceptors.request.use((config) => {
 });
 
 export const trainerApi = {
-  async getDashboard() {
-    const response = await trainerClient.get<TrainerDashboardResponse>('/api/v1/trainer/dashboard');
+  async getDashboard(subjectId?: string) {
+    const response = await trainerClient.get<TrainerDashboardResponse>('/api/v1/trainer/dashboard', {
+      params: subjectId ? { subject_id: subjectId } : undefined,
+    });
     return response.data;
   },
 
@@ -164,6 +167,7 @@ export const trainerApi = {
     formData.append('subject_id', payload.subject_id);
     formData.append('score', String(payload.score));
     formData.append('term', payload.term);
+    formData.append('assessment_scope', 'formative');
     if (payload.feedback) {
       formData.append('feedback', payload.feedback);
     }

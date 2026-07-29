@@ -57,28 +57,28 @@ export const resolveApiUrl = (path: string): string => {
 };
 // API client with common methods
 export const apiClient = {
-  async get<T>(path: string, options?: RequestOptions): Promise<{ data: T }> {
+  async get<T = any>(path: string, options?: RequestOptions): Promise<{ data: T }> {
     const { responseType, ...rest } = options || {};
     const data = await apiRequest<T>(path, { ...rest, method: 'GET', responseType });
     return { data };
   },
   
-  async post<T>(path: string, body?: unknown, options?: RequestOptions): Promise<{ data: T }> {
+  async post<T = any>(path: string, body?: unknown, options?: RequestOptions): Promise<{ data: T }> {
     const data = await apiRequest<T>(path, { ...options, method: 'POST', body });
     return { data };
   },
   
-  async put<T>(path: string, body?: unknown, options?: RequestOptions): Promise<{ data: T }> {
+  async put<T = any>(path: string, body?: unknown, options?: RequestOptions): Promise<{ data: T }> {
     const data = await apiRequest<T>(path, { ...options, method: 'PUT', body });
     return { data };
   },
   
-  async patch<T>(path: string, body?: unknown, options?: RequestOptions): Promise<{ data: T }> {
+  async patch<T = any>(path: string, body?: unknown, options?: RequestOptions): Promise<{ data: T }> {
     const data = await apiRequest<T>(path, { ...options, method: 'PATCH', body });
     return { data };
   },
   
-  async delete<T>(path: string, options?: RequestOptions): Promise<{ data: T }> {
+  async delete<T = any>(path: string, options?: RequestOptions): Promise<{ data: T }> {
     const data = await apiRequest<T>(path, { ...options, method: 'DELETE' });
     return { data };
   },

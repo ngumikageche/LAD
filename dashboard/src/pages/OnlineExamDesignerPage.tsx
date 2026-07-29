@@ -30,6 +30,25 @@ type OnlineExam = {
   questions: ExamQuestion[];
   published_at: string | null;
   created_at: string | null;
+  available_from: string | null;
+  available_until: string | null;
+  resource_documents: Array<{ id: string; title: string }>;
+};
+
+type ResourceDocument = { id: string; title: string; subject_id: string | null };
+type ExamSubmission = {
+  id: string;
+  student_name: string | null;
+  score: number | null;
+  max_score: number;
+  status: string;
+  submitted_at: string;
+};
+
+const toLocalDateTimeInput = (value: string | null) => {
+  if (!value) return '';
+  const date = new Date(value);
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000).toISOString().slice(0, 16);
 };
 
 const emptyQuestion = (): ExamQuestion => ({
@@ -52,6 +71,11 @@ export default function OnlineExamDesignerPage() {
   const [durationMinutes, setDurationMinutes] = useState(60);
   const [autoMarking, setAutoMarking] = useState(true);
   const [questions, setQuestions] = useState<ExamQuestion[]>([emptyQuestion()]);
+  const [availableFrom, setAvailableFrom] = useState('');
+  const [availableUntil, setAvailableUntil] = useState('');
+  const [documents, setDocuments] = useState<ResourceDocument[]>([]);
+  const [resourceDocumentIds, setResourceDocumentIds] = useState<string[]>([]);
+  const [submissions, setSubmissions] = useState<ExamSubmission[]>([]);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [error, setError] = useState<string | null>(null);
 
@@ -83,6 +107,7 @@ export default function OnlineExamDesignerPage() {
     };
     loadSubjects();
     loadExistingExams();
+    apiRequest<ResourceDocument[]>('/documents', { token }).then(setDocuments).catch(() => setDocuments([]));
   }, [token, user?.user_type]);
 
   const resetForm = () => {
@@ -92,6 +117,10 @@ export default function OnlineExamDesignerPage() {
     setDurationMinutes(60);
     setAutoMarking(true);
     setQuestions([emptyQuestion()]);
+    setAvailableFrom('');
+    setAvailableUntil('');
+    setResourceDocumentIds([]);
+    setSubmissions([]);
     setSubjectId((current) => current || subjects[0]?.id || '');
     setError(null);
   };
@@ -104,6 +133,12 @@ export default function OnlineExamDesignerPage() {
     setDurationMinutes(exam.duration_minutes ?? 60);
     setAutoMarking(exam.auto_marking ?? true);
     setQuestions(Array.isArray(exam.questions) && exam.questions.length > 0 ? exam.questions : [emptyQuestion()]);
+    setAvailableFrom(toLocalDateTimeInput(exam.available_from));
+    setAvailableUntil(toLocalDateTimeInput(exam.available_until));
+    setResourceDocumentIds((exam.resource_documents ?? []).map((document) => document.id));
+    apiRequest<ExamSubmission[]>(`/online-exams/${exam.id}/submissions`, { token })
+      .then(setSubmissions)
+      .catch(() => setSubmissions([]));
     setError(null);
   };
 
@@ -141,6 +176,9 @@ export default function OnlineExamDesignerPage() {
           subject_id: subjectId,
           duration_minutes: durationMinutes,
           auto_marking: autoMarking,
+          available_from: availableFrom ? new Date(availableFrom).toISOString() : null,
+          available_until: availableUntil ? new Date(availableUntil).toISOString() : null,
+          resource_document_ids: resourceDocumentIds,
           status: publish ? 'published' : (currentExam?.status ?? 'draft'),
           questions: questions.map((question) => ({
             ...question,
@@ -159,6 +197,23 @@ export default function OnlineExamDesignerPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save online exam');
       setSaveStatus('idle');
+    }
+  };
+
+  const gradeSubmission = async (submission: ExamSubmission) => {
+    const scoreText = window.prompt(`Score for ${submission.student_name ?? 'learner'} (0–${submission.max_score})`, String(submission.score ?? ''));
+    if (scoreText === null) return;
+    const feedback = window.prompt('Trainer feedback (optional)', '') ?? '';
+    try {
+      await apiRequest(`/online-exams/${selectedExamId}/submissions/${submission.id}/grade`, {
+        method: 'PUT',
+        token,
+        body: { score: Number(scoreText), feedback },
+      });
+      const rows = await apiRequest<ExamSubmission[]>(`/online-exams/${selectedExamId}/submissions`, { token });
+      setSubmissions(rows);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to grade submission');
     }
   };
 
@@ -253,6 +308,28 @@ export default function OnlineExamDesignerPage() {
           <span className="mb-2 block text-sm font-medium text-slate-300">Description</span>
           <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-slate-100" />
         </label>
+        <label className="block">
+          <span className="mb-2 block text-sm font-medium text-slate-300">Available From</span>
+          <input type="datetime-local" value={availableFrom} onChange={(event) => setAvailableFrom(event.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-slate-100" />
+        </label>
+        <label className="block">
+          <span className="mb-2 block text-sm font-medium text-slate-300">Available Until</span>
+          <input type="datetime-local" value={availableUntil} onChange={(event) => setAvailableUntil(event.target.value)} className="w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-slate-100" />
+        </label>
+        <label className="block md:col-span-2">
+          <span className="mb-2 block text-sm font-medium text-slate-300">Study Resources</span>
+          <select
+            multiple
+            value={resourceDocumentIds}
+            onChange={(event) => setResourceDocumentIds(Array.from(event.target.selectedOptions, (option) => option.value))}
+            className="min-h-32 w-full rounded-lg border border-slate-700 bg-slate-800 px-4 py-3 text-slate-100"
+          >
+            {documents.filter((document) => !document.subject_id || document.subject_id === subjectId).map((document) => (
+              <option key={document.id} value={document.id}>{document.title}</option>
+            ))}
+          </select>
+          <span className="mt-1 block text-xs text-slate-500">Use Ctrl/Cmd to select multiple documents.</span>
+        </label>
       </div>
 
       <div className="space-y-4">
@@ -316,6 +393,25 @@ export default function OnlineExamDesignerPage() {
           <Send size={16} /> Publish to Students
         </button>
       </div>
+      {selectedExamId ? (
+        <section className="rounded-lg border border-slate-800 bg-slate-900 p-6">
+          <h2 className="text-xl font-bold text-white">Learner submissions</h2>
+          <div className="mt-4 space-y-3">
+            {submissions.map((submission) => (
+              <div key={submission.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950 p-4">
+                <div>
+                  <p className="font-semibold text-slate-100">{submission.student_name ?? 'Learner'}</p>
+                  <p className="text-xs text-slate-500">{submission.status} • {new Date(submission.submitted_at).toLocaleString()}</p>
+                </div>
+                <button onClick={() => gradeSubmission(submission)} className="rounded-lg bg-cyan-500 px-4 py-2 text-sm font-bold text-slate-950">
+                  {submission.score == null ? 'Mark' : `Review ${submission.score}/${submission.max_score}`}
+                </button>
+              </div>
+            ))}
+            {submissions.length === 0 ? <p className="text-sm text-slate-500">No submitted attempts yet.</p> : null}
+          </div>
+        </section>
+      ) : null}
       </div>
     </div>
   );

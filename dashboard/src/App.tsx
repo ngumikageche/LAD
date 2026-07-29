@@ -44,6 +44,9 @@ import StudentAttendanceCheckInPage from './pages/StudentAttendanceCheckInPage';
 import OnlineExamDesignerPage from './pages/OnlineExamDesignerPage';
 import StudentOnlineExamsPage from './pages/StudentOnlineExamsPage';
 import TrainerPracticalAssessmentPage from './pages/TrainerPracticalAssessmentPage';
+import TrainerEnrollmentPage from './pages/TrainerEnrollmentPage';
+import AdminCompliancePage from './pages/AdminCompliancePage';
+import StudentFeedbackPage from './pages/StudentFeedbackPage';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import ProtectedRoute, { UserTypeRoute, PermissionRoute } from './auth/ProtectedRoute';
 
@@ -83,6 +86,7 @@ function App() {
                 <Route path="/student/attendance/checkin" element={<StudentAttendanceCheckInPage />} />
                 <Route path="/student/documents" element={<DocumentsPage />} />
                 <Route path="/student/online-exams" element={<StudentOnlineExamsPage />} />
+                <Route path="/student/feedback" element={<StudentFeedbackPage />} />
               </Route>
               <Route element={<UserTypeRoute allowedTypes={['trainer']} />}>
                 <Route path="/trainer-hub" element={<TrainerDashboardPage />} />
@@ -96,6 +100,7 @@ function App() {
                 <Route path="/trainer/attendance/manual" element={<TrainerManualAttendancePage />} />
                 <Route path="/trainer/documents" element={<DocumentsPage />} />
                 <Route path="/trainer/online-exams" element={<OnlineExamDesignerPage />} />
+                <Route path="/trainer/enrollment" element={<TrainerEnrollmentPage />} />
               </Route>
               {/* Attendance session management: trainer OR admin, never student */}
               <Route element={<PermissionRoute permissionKey="attendance.create" deniedTypes={['student']} />}>
@@ -122,6 +127,7 @@ function App() {
                 <Route path="/admin/reports/enrolment" element={<AdminEnrolmentPage />} />
                 <Route path="/admin/attendance" element={<AdminAttendancePage />} />
                 <Route path="/admin/attendance/manual" element={<TrainerManualAttendancePage />} />
+                <Route path="/admin/compliance" element={<AdminCompliancePage />} />
                 <Route path="/roles" element={<RolesPage />} />
                 <Route path="/institutions" element={<InstitutionsPage />} />
                 <Route path="/departments" element={<DepartmentsPage />} />

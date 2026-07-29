@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Activity, BookOpen, ClipboardList, ShieldAlert, Users } from 'lucide-react';
 import ScoreForm from './ScoreForm';
 import ScoresTable from './ScoresTable';
@@ -12,12 +12,14 @@ import WidgetHelp from '../ui/WidgetHelp';
 import { loadCachedDashboard, saveCachedDashboard } from '../../utils/dashboardCache';
 import type { CohortComparisonResponse } from '../../services/analyticsApi';
 import { AnalyticsHero, AnalyticsMetricTile, AnalyticsNarrative, AnalyticsSection } from '../analytics/AnalyticsSurface';
+import { useNavigate } from 'react-router-dom';
 
 const CACHE_KEY = 'lad.trainer.dashboard.v2';
 
 const fmtPct = (value: number | null | undefined) => `${Number(value ?? 0).toFixed(1)}%`;
 
 const TrainerDashboard = () => {
+  const navigate = useNavigate();
   const [dashboard, setDashboard] = useState<TrainerDashboardResponse | null>(null);
   const [subjects, setSubjects] = useState<TrainerSubject[]>([]);
   const [atRiskStudents, setAtRiskStudents] = useState<AtRiskStudent[]>([]);
@@ -25,15 +27,16 @@ const TrainerDashboard = () => {
   const [error, setError] = useState<string | null>(null);
   const [refreshToken, setRefreshToken] = useState(0);
   const [comparison, setComparison] = useState<CohortComparisonResponse | null>(null);
+  const [selectedSubjectId, setSelectedSubjectId] = useState('');
 
   const loadDashboard = async () => {
     try {
       setIsLoading(true);
       setError(null);
       const [dashboardData, subjectData, atRiskData] = await Promise.all([
-        trainerApi.getDashboard(),
+        trainerApi.getDashboard(selectedSubjectId || undefined),
         trainerApi.getSubjects(),
-        trainerApi.getAtRiskStudents(),
+        trainerApi.getAtRiskStudents(selectedSubjectId || undefined),
       ]);
       setDashboard(dashboardData);
       setSubjects(subjectData);
@@ -63,10 +66,14 @@ const TrainerDashboard = () => {
       setIsLoading(false);
     }
     loadDashboard();
-  }, [refreshToken]);
+  }, [refreshToken, selectedSubjectId]);
 
-  const strongestSubject = [...subjects].sort((a, b) => b.average_score - a.average_score)[0] ?? null;
-  const weakestSubject = [...subjects].sort((a, b) => a.average_score - b.average_score)[0] ?? null;
+  const scopedSubjects = useMemo(
+    () => selectedSubjectId ? subjects.filter((subject) => subject.id === selectedSubjectId) : subjects,
+    [selectedSubjectId, subjects],
+  );
+  const strongestSubject = [...scopedSubjects].sort((a, b) => b.average_score - a.average_score)[0] ?? null;
+  const weakestSubject = [...scopedSubjects].sort((a, b) => a.average_score - b.average_score)[0] ?? null;
   const recentScoreCount = dashboard?.recent_scores.length ?? 0;
   const passRate = dashboard?.pass_rate ?? 0;
   const attendanceRate = dashboard?.summary_panel?.attendance_rate ?? 0;
@@ -119,6 +126,21 @@ const TrainerDashboard = () => {
           {error}
         </div>
       ) : null}
+
+      <label className="block rounded-3xl border border-cyan-400/20 bg-slate-900/80 p-5">
+        <span className="block text-xs font-bold uppercase tracking-[0.22em] text-cyan-300">Assigned subject scope</span>
+        <select
+          value={selectedSubjectId}
+          onChange={(event) => setSelectedSubjectId(event.target.value)}
+          className="mt-3 w-full rounded-2xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-100 md:max-w-xl"
+        >
+          <option value="">All assigned subjects</option>
+          {subjects.map((subject) => (
+            <option key={subject.id} value={subject.id}>{subject.name}</option>
+          ))}
+        </select>
+        <span className="mt-2 block text-xs text-slate-400">All metrics and charts below update to this subject.</span>
+      </label>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <AnalyticsMetricTile
@@ -194,6 +216,13 @@ const TrainerDashboard = () => {
                   <p className="mt-3 text-xs text-slate-300">
                     Weak subjects: {student.weak_subjects.length > 0 ? student.weak_subjects.join(', ') : 'None listed'}
                   </p>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/trainer/feedback?student_id=${encodeURIComponent(student.student_id)}${selectedSubjectId ? `&subject_id=${encodeURIComponent(selectedSubjectId)}` : ''}`)}
+                    className="mt-3 rounded-xl bg-cyan-500 px-3 py-2 text-xs font-bold text-slate-950 hover:bg-cyan-400"
+                  >
+                    Send targeted feedback
+                  </button>
                 </div>
               ))}
             </div>
@@ -268,7 +297,7 @@ const TrainerDashboard = () => {
           {subjects.length === 0 ? (
             <p className="text-sm text-slate-500">No subjects assigned to this trainer.</p>
           ) : (
-            subjects.map((subject) => (
+            scopedSubjects.map((subject) => (
               <div key={subject.id} className="rounded-2xl border border-slate-700 bg-slate-800/80 p-5">
                 <p className="text-lg font-semibold text-slate-100">{subject.name}</p>
                 <p className="mt-1 text-sm text-slate-400">{subject.course_name ?? 'Unmapped course'}</p>

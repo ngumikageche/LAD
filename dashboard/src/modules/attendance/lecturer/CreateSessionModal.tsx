@@ -36,7 +36,7 @@ export function CreateSessionModal({ isOpen, onClose, onSubmit, isLoading = fals
     latitude: 0,
     longitude: 0,
     allowed_radius_meters: 100,
-    duration_minutes: 60,
+    duration_minutes: 5,
     regeneration_interval: 25,
   });
 
@@ -201,7 +201,7 @@ export function CreateSessionModal({ isOpen, onClose, onSubmit, isLoading = fals
               onChange={(e) => setFormData({ ...formData, duration_minutes: parseInt(e.target.value) })}
               className={inputCls}
             />
-            <p className="text-xs text-slate-500 mt-1">Recommended: 30–120 minutes</p>
+            <p className="text-xs text-slate-500 mt-1">Recommended secure scan window: 5 minutes</p>
           </div>
 
           {/* Radius */}
@@ -210,12 +210,12 @@ export function CreateSessionModal({ isOpen, onClose, onSubmit, isLoading = fals
               <Radius size={14} /> Allowed Radius (meters)
             </label>
             <input
-              type="number" min={10} max={1000}
+              type="number" min={20} max={100}
               value={formData.allowed_radius_meters}
               onChange={(e) => setFormData({ ...formData, allowed_radius_meters: parseInt(e.target.value) })}
               className={inputCls}
             />
-            <p className="text-xs text-slate-500 mt-1">Default: 100m (classroom size)</p>
+            <p className="text-xs text-slate-500 mt-1">Secure workshop range: 20–100m</p>
           </div>
 
           {/* Token Refresh */}

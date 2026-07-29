@@ -120,7 +120,7 @@ const reportCards: ReportCard[] = [
     description: 'Regulatory and accreditation report shell for available evidence.',
     category: 'Compliance',
     permission: 'reports.admin.compliance',
-    path: '/reports/admin/compliance',
+    path: '/admin/compliance',
     icon: Scale,
     roles: ['admin'],
   },

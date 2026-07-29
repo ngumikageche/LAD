@@ -20,7 +20,7 @@ interface RecentSubject {
 
 interface AtRiskAlert {
   student_name: string;
-  severity: 'critical' | 'high' | 'medium';
+  severity: 'critical' | 'high' | 'medium' | 'low';
   subject: string;
 }
 

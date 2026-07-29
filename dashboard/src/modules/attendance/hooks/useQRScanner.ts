@@ -7,7 +7,7 @@ export function useQRScanner(onScan: (result: string) => void) {
   const [isScanning, setIsScanning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [cameraSupported, setCameraSupported] = useState(true);
-  const scannerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const scannerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const startScanning = useCallback(async () => {
     if (!navigator.mediaDevices?.getUserMedia) {

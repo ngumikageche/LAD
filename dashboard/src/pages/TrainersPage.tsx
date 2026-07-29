@@ -4,6 +4,7 @@ import { apiRequest } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useTableControls } from '../hooks/useTableControls';
 import { TableFooter, SortableTh } from '../components/ui/TableControls';
+import BulkPeopleUploadPanel from '../components/admin/BulkPeopleUploadPanel';
 
 type Department = {
   id: string;
@@ -43,27 +44,35 @@ const emptyForm: TrainerForm = {
   specialization: '',
 };
 
+type CourseOption = { id: string; name: string };
+type ModuleOption = { id: string; name: string; course_id: string };
+type SubjectOption = { id: string; name: string; module_id: string };
+type AssignSubjectsModalProps = {
+  isOpen: boolean;
+  onClose: () => void;
+  trainer: Trainer | null;
+  token: string | null;
+};
 
-
-const AssignSubjectsModal = ({ isOpen, onClose, trainer, token }) => {
-  const [courses, setCourses] = useState([]);
-  const [modules, setModules] = useState([]);
-  const [subjects, setSubjects] = useState([]);
+const AssignSubjectsModal = ({ isOpen, onClose, trainer, token }: AssignSubjectsModalProps) => {
+  const [courses, setCourses] = useState<CourseOption[]>([]);
+  const [modules, setModules] = useState<ModuleOption[]>([]);
+  const [subjects, setSubjects] = useState<SubjectOption[]>([]);
   const [selectedCourseId, setSelectedCourseId] = useState('');
   const [selectedModuleId, setSelectedModuleId] = useState('');
-  const [selectedSubjectIds, setSelectedSubjectIds] = useState([]);
+  const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState('');
 
   useEffect(() => {
     if (!isOpen) return;
-    apiRequest('/courses', { token })
+    apiRequest<CourseOption[]>('/courses', { token })
       .then(setCourses)
       .catch(() => setCourses([]));
-    apiRequest('/modules', { token })
+    apiRequest<ModuleOption[]>('/modules', { token })
       .then(setModules)
       .catch(() => setModules([]));
-    apiRequest('/subjects', { token })
+    apiRequest<SubjectOption[]>('/subjects', { token })
       .then(setSubjects)
       .catch(() => setSubjects([]));
     setSelectedCourseId('');
@@ -173,7 +182,7 @@ const AssignSubjectsModal = ({ isOpen, onClose, trainer, token }) => {
 
 const TrainersPage = () => {
     const [assignModalOpen, setAssignModalOpen] = useState(false);
-    const [selectedTrainer, setSelectedTrainer] = useState(null);
+    const [selectedTrainer, setSelectedTrainer] = useState<Trainer | null>(null);
   const { token, user } = useAuth();
   const [trainers, setTrainers] = useState<Trainer[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -187,6 +196,7 @@ const TrainersPage = () => {
 
   const canReadTrainers = Boolean(user?.permissions?.['trainers.read'] || user?.permissions?.['*']);
   const canCreateTrainers = Boolean(user?.permissions?.['trainers.create'] || user?.permissions?.['*']);
+  const canCreateUsers = Boolean(user?.permissions?.['users.create'] || user?.permissions?.['*']);
   const canUpdateTrainers = Boolean(user?.permissions?.['trainers.update'] || user?.permissions?.['*']);
   const canDeleteTrainers = Boolean(user?.permissions?.['trainers.delete'] || user?.permissions?.['*']);
   const canReadUsers = Boolean(user?.permissions?.['users.read'] || user?.permissions?.['*']);
@@ -334,6 +344,17 @@ const TrainersPage = () => {
           </button>
         ) : null}
       </div>
+
+      {canCreateTrainers && canCreateUsers ? (
+        <BulkPeopleUploadPanel
+          personLabel="trainers"
+          uploadPath="/trainers/bulk-upload"
+          templatePath="/trainers/import-template"
+          templateFilename="LAD-trainers-template.xlsx"
+          requiredColumns="Name, Email, Department; Staff No and Subjects are optional"
+          onComplete={loadData}
+        />
+      ) : null}
 
       <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-lg border border-slate-800 overflow-hidden">
         <div className="p-6 border-b border-slate-700">

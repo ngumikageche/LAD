@@ -38,7 +38,7 @@ const DashboardPage = () => {
         const overallAvg = totalMarks.length ? Math.round((totalMarks.reduce((a, b) => a + b, 0) / totalMarks.length) * 10) / 10 : 0;
         const atRisk = totalMarks.filter(v => v < 50).length;
         const top = subjectAvgs.sort((a, b) => b.avg - a.avg)[0];
-        setStats({ subjectsCount: subjects.length, avgScore: overallAvg, topSubject: top ? top.name : '-', atRisk });
+        setStats({ subjectsCount: subjects.length, avgScore: overallAvg, topSubject: top ? top.name : '-', atRisk, totalStudents: 0 });
         } catch (e) {
           // ignore
         }
@@ -58,7 +58,7 @@ const DashboardPage = () => {
             totalMarks = totalMarks.concat(marks);
           }
           const overallAvg = totalMarks.length ? Math.round((totalMarks.reduce((a, b) => a + b, 0) / totalMarks.length) * 10) / 10 : 0;
-          setStats({ subjectsCount: subs.length, avgScore: overallAvg, topSubject: subs.length ? subs[0].name : '-', atRisk: t.total_students || 0 });
+          setStats({ subjectsCount: subs.length, avgScore: overallAvg, topSubject: subs.length ? subs[0].name : '-', atRisk: t.total_students || 0, totalStudents: t.total_students || 0 });
         } catch (e) {
           // ignore
         }

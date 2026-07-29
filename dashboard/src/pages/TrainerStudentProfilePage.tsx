@@ -309,12 +309,12 @@ const TrainerStudentProfilePage = () => {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {student.subjects && student.subjects.length > 0 ? (
               student.subjects.map((subject) => (
-                <div key={subject.id} className="rounded-lg border border-slate-700 p-4 transition hover:bg-slate-800">
-                  <p className="font-semibold text-slate-100">{subject.name}</p>
+                <div key={subject} className="rounded-lg border border-slate-700 p-4 transition hover:bg-slate-800">
+                  <p className="font-semibold text-slate-100">{subject}</p>
                   <div className="mt-2 flex gap-4 text-sm text-slate-400">
-                    <span>Avg: {subject.average.toFixed(1)}%</span>
+                    <span>Overall avg: {student.overall_avg.toFixed(1)}%</span>
                     <span>•</span>
-                    <span>Assessments: {subject.assessments_count}</span>
+                    <span>Assessments: {student.assessments_taken}</span>
                   </div>
                 </div>
               ))

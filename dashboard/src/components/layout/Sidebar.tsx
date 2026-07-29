@@ -6,6 +6,7 @@ import {
   BookOpen, UserCheck, ChevronDown, ChevronRight, LayoutDashboard,
   QrCode, ScanLine, PenLine, HeartPulse,
   X,
+  Scale,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useAuth } from '../../auth/AuthContext';
@@ -30,6 +31,7 @@ const studentGroups: NavGroup[] = [
     items: [
       { name: 'Dashboard',         icon: LayoutDashboard, path: '/student/dashboard',         color: 'text-blue-300' },
       { name: 'Notifications',     icon: Bell,            path: '/student/notifications',     color: 'text-amber-400'  },
+      { name: 'Trainer Feedback',  icon: MessageSquare,   path: '/student/feedback',          color: 'text-cyan-300' },
       { name: 'My Profile',        icon: UserCog,         path: '/student/profile',           color: 'text-teal-300' },
     ],
   },
@@ -70,6 +72,7 @@ const trainerGroups: NavGroup[] = [
     label: 'Students',
     items: [
       { name: 'Student Profile',   icon: TrendingUp,      path: '/trainer/student-profile',   color: 'text-teal-300' },
+      { name: 'Learner Enrollment', icon: UserCheck,      path: '/trainer/enrollment',        color: 'text-cyan-300' },
       { name: 'Users',             icon: Shield,          path: '/users',                     color: 'text-red-400', permission: 'users.read' },
       { name: 'Provide Feedback',  icon: MessageSquare,   path: '/trainer/feedback',          color: 'text-amber-400'   },
       { name: 'Online Exams',      icon: ClipboardList,   path: '/trainer/online-exams',      color: 'text-indigo-300' },
@@ -85,7 +88,7 @@ const trainerGroups: NavGroup[] = [
       { name: 'Disciplinary Records', icon: HeartPulse,   path: '/disciplinary-records',      color: 'text-rose-300', permission: 'reports.student.discipline' },
       { name: 'Practical Assess.', icon: FileText,        path: '/trainer/practical-assessments', color: 'text-teal-300' },
       { name: 'Syllabus Coverage', icon: BookOpen,        path: '/trainer/syllabus',          color: 'text-green-400', permission: 'reports.teacher.syllabus' },
-      { name: 'My Attendance',     icon: UserCheck,       path: '/trainer/attendance',        color: 'text-amber-400', permission: 'reports.teacher.attendance' },
+      { name: 'Learner Attendance', icon: UserCheck,      path: '/trainer/attendance',        color: 'text-amber-400', permission: 'reports.teacher.attendance' },
       { name: 'Manual Attendance',  icon: PenLine,         path: '/trainer/attendance/manual', color: 'text-orange-400' },
     ],
   },
@@ -144,6 +147,7 @@ const adminGroups: NavGroup[] = [
       { name: 'Enrolment',         icon: ClipboardList,   path: '/admin/reports/enrolment',    color: 'text-amber-400', permission: 'reports.admin.enrolment' },
       { name: 'Disciplinary Records', icon: HeartPulse,   path: '/disciplinary-records',       color: 'text-rose-300', permission: 'reports.student.discipline' },
       { name: 'All Reports',       icon: FileText,        path: '/reports',                    color: 'text-teal-300', permission: 'reports.*' },
+      { name: 'Compliance',        icon: Scale,           path: '/admin/compliance',           color: 'text-emerald-300', permission: 'reports.admin.compliance' },
     ],
   },
   {

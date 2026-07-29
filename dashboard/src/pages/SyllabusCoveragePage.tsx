@@ -42,6 +42,7 @@ export default function SyllabusCoveragePage() {
   const [showAdd, setShowAdd] = useState(false);
   const [newTopic, setNewTopic] = useState({ topic: '', subject_id: '', planned_date: '', description: '' });
   const [saving, setSaving] = useState(false);
+  const [importing, setImporting] = useState(false);
 
   // Get trainer ID from user object - could be trainer_id, id, or other field
   const trainerId = user?.trainer_id || user?.id;
@@ -107,6 +108,23 @@ export default function SyllabusCoveragePage() {
     }
   };
 
+  const importChecklist = async () => {
+    if (!trainerId || !selectedSubjectId) {
+      setError('Choose a subject before importing its official checklist.');
+      return;
+    }
+    try {
+      setImporting(true);
+      setError(null);
+      await trainerReportCardsAPI.importSyllabusTemplate(trainerId, selectedSubjectId);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to import syllabus checklist');
+    } finally {
+      setImporting(false);
+    }
+  };
+
   if (loading) return (
     <ReportPage>
       <div className="flex items-center justify-center min-h-screen">
@@ -136,6 +154,9 @@ export default function SyllabusCoveragePage() {
       >
         <ReportActionButton onClick={() => setShowAdd(!showAdd)} icon={Plus} variant="primary">
           {showAdd ? 'Close Topic Form' : 'Add Topic'}
+        </ReportActionButton>
+        <ReportActionButton onClick={importChecklist} disabled={importing || !selectedSubjectId} icon={CheckCircle2}>
+          {importing ? 'Importing…' : 'Import Official Checklist'}
         </ReportActionButton>
         <div className="w-full sm:min-w-[240px]">
           <label className="mb-2 block text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400">

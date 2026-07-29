@@ -4,6 +4,7 @@ export interface AttendanceSession {
   trainer_id: string;
   course_id: string | null;
   module_id: string | null;
+  subject_id?: string | null;
   session_code: string;
   latitude: number;
   longitude: number;

@@ -283,6 +283,8 @@ export default function TrainerPracticalAssessmentPage() {
   const [releasing, setReleasing] = useState(false);
   const [mutating, setMutating] = useState(false);
   const [uploadingMedia, setUploadingMedia] = useState(false);
+  const [evidenceSectionId, setEvidenceSectionId] = useState('');
+  const [evidenceStudentVisible, setEvidenceStudentVisible] = useState(false);
   const [recordingAudio, setRecordingAudio] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -831,7 +833,15 @@ export default function TrainerPracticalAssessmentPage() {
       setError(null);
       let latestReport: PracticalAssessmentReport | null = null;
       for (const file of files) {
-        latestReport = await trainerPracticalAssessmentsAPI.uploadPracticalAssessmentMedia(reportId, file);
+        latestReport = await trainerPracticalAssessmentsAPI.uploadPracticalAssessmentMedia(
+          reportId,
+          file,
+          'practical_evidence',
+          {
+            sectionId: evidenceSectionId || undefined,
+            studentVisible: evidenceStudentVisible,
+          },
+        );
       }
       if (latestReport) {
         setReports((current) => {
@@ -1258,6 +1268,9 @@ export default function TrainerPracticalAssessmentPage() {
           </section>
 
           <section className="rounded-3xl border border-slate-800 bg-slate-900 p-6 shadow-lg shadow-slate-950/20">
+            <div className="mb-5 rounded-2xl border border-amber-400/25 bg-amber-500/10 p-4 text-sm text-amber-100">
+              Internal formative assessment only. Do not upload KNEC, CDACC, or other externally owned summative examination scripts.
+            </div>
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div>
                 <h2 className="text-xl font-bold text-slate-100">Report Header</h2>
@@ -1319,6 +1332,27 @@ export default function TrainerPracticalAssessmentPage() {
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center gap-2">
+                  <select
+                    value={evidenceSectionId}
+                    onChange={(event) => setEvidenceSectionId(event.target.value)}
+                    className="rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-sm text-slate-200"
+                    aria-label="Evidence session"
+                  >
+                    <option value="">Whole assessment</option>
+                    {sections.map((section, index) => (
+                      <option key={`${section.type}-${index}`} value={`section-${index + 1}`}>
+                        {section.title || `${section.type} ${index + 1}`}
+                      </option>
+                    ))}
+                  </select>
+                  <label className="inline-flex items-center gap-2 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2.5 text-xs text-slate-300">
+                    <input
+                      type="checkbox"
+                      checked={evidenceStudentVisible}
+                      onChange={(event) => setEvidenceStudentVisible(event.target.checked)}
+                    />
+                    Student can view
+                  </label>
                   {recordingAudio ? (
                     <>
                       <span className="inline-flex items-center gap-2 rounded-xl border border-rose-400/20 bg-rose-400/10 px-3 py-2 text-sm font-bold text-rose-200">

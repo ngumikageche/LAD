@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from "react";
-import { QRCode } from "react-qr-code";
+import QRCode from "react-qr-code";
 import { Clock, Copy, LogOut, RefreshCw } from "lucide-react";
 import type { AttendanceSession } from "../types";
 import { AttendanceAPI } from "../services/attendanceAPI";

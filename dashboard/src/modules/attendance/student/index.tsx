@@ -63,7 +63,11 @@ export function StudentCheckIn({ onSuccess, onError }: StudentCheckInProps) {
     setError(null);
     try {
       const response = await AttendanceAPI.submitAttendance(sessionId, scannedToken, location.latitude, location.longitude);
-      setResult({ success: response.success, message: response.message, distance: response.record?.distance_from_trainer });
+      setResult({
+        success: response.success,
+        message: response.message,
+        distance: response.record?.distance_from_trainer ?? undefined,
+      });
       setStep("result");
       if (response.success) onSuccess?.();
       else onError?.(response.message);

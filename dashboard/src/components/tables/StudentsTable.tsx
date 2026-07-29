@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Search } from 'lucide-react';
+import { BookPlus, Search } from 'lucide-react';
 import { apiRequest } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
 import type { Course, Module } from '../../types/backend';
@@ -18,6 +18,13 @@ interface StudentWithUser {
   email?: string;
 }
 
+interface SubjectOption {
+  id: string;
+  name: string;
+  module_id?: string;
+  module?: { id: string; name: string } | null;
+}
+
 function studentName(s: StudentWithUser) {
   return s.user?.name ?? s.name ?? '—';
 }
@@ -28,7 +35,7 @@ import { useTableControls } from '../../hooks/useTableControls';
 import { TableFooter, SortableTh } from '../ui/TableControls';
 
 const StudentsTable = () => {
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [students, setStudents] = useState<StudentWithUser[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -45,18 +52,29 @@ const StudentsTable = () => {
   const [selectedCourseId, setSelectedCourseId] = useState('');
   const [selectedModuleId, setSelectedModuleId] = useState('');
   const [subjects, setSubjects] = useState<any[]>([]);
+  const [isSubjectAssignOpen, setIsSubjectAssignOpen] = useState(false);
+  const [subjectStudent, setSubjectStudent] = useState<StudentWithUser | null>(null);
+  const [selectedSubjectId, setSelectedSubjectId] = useState('');
+  const [assignedSubjectIds, setAssignedSubjectIds] = useState<string[]>([]);
+  const [assignmentMessage, setAssignmentMessage] = useState('');
+  const [isAssigning, setIsAssigning] = useState(false);
+  const canAssignSubject = Boolean(
+    user?.permissions?.['student_subjects.create'] || user?.permissions?.['*'],
+  );
 
   useEffect(() => {
     const loadAll = async () => {
       try {
-        const [studentData, courseData, moduleData] = await Promise.all([
+        const [studentData, courseData, moduleData, subjectData] = await Promise.all([
           apiRequest<StudentWithUser[]>('/students', { token }),
           apiRequest<Course[]>('/courses', { token }),
           apiRequest<Module[]>('/modules', { token }),
+          apiRequest<SubjectOption[]>('/subjects', { token }),
         ]);
         setStudents(studentData);
         setCourses(courseData);
         setModules(moduleData);
+        setSubjects(subjectData);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to load students';
         setError(message);
@@ -66,6 +84,48 @@ const StudentsTable = () => {
     };
     loadAll();
   }, [token]);
+
+  const openSubjectAssignment = async (student: StudentWithUser) => {
+    try {
+      setError(null);
+      setAssignmentMessage('');
+      const current = await apiRequest<{ subjects: SubjectOption[] }>(
+        `/student-subjects/${student.id}`,
+        { token },
+      );
+      const ids = current.subjects.map((subject) => subject.id);
+      setAssignedSubjectIds(ids);
+      setSubjectStudent(student);
+      setSelectedSubjectId(subjects.find((subject) => !ids.includes(subject.id))?.id ?? '');
+      setIsSubjectAssignOpen(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load learner subjects');
+    }
+  };
+
+  const assignOneSubject = async () => {
+    if (!subjectStudent || !selectedSubjectId) return;
+    try {
+      setIsAssigning(true);
+      setAssignmentMessage('');
+      const result = await apiRequest<{ subject_id: string; subject_name: string }>(
+        '/student-subjects',
+        {
+          method: 'POST',
+          token,
+          body: { student_id: subjectStudent.id, subject_id: selectedSubjectId },
+        },
+      );
+      const nextIds = [...assignedSubjectIds, result.subject_id];
+      setAssignedSubjectIds(nextIds);
+      setAssignmentMessage(`${result.subject_name} assigned successfully.`);
+      setSelectedSubjectId(subjects.find((subject) => !nextIds.includes(subject.id))?.id ?? '');
+    } catch (err) {
+      setAssignmentMessage(err instanceof Error ? err.message : 'Subject assignment failed');
+    } finally {
+      setIsAssigning(false);
+    }
+  };
 
   const filteredStudents = useMemo(() => {
     const search = searchTerm.toLowerCase();
@@ -141,14 +201,14 @@ const StudentsTable = () => {
                       // For demo, just pick first module in course
                       const module = modules.find(m => m.course_id === student.course_id);
                       setViewModule(module ? module.name : '');
-                      // Fetch subjects for the module
-                      let subs: any[] = [];
-                      if (module) {
-                        try {
-                          subs = await apiRequest<any[]>(`/subjects?module_id=${module.id}`, { token });
-                        } catch {}
-                      }
-                      setViewSubjects(subs);
+                      const enrollment = await apiRequest<{ subjects: SubjectOption[] }>(
+                        `/student-subjects/${student.id}`,
+                        { token },
+                      ).catch(() => ({ subjects: [] }));
+                      setViewSubjects(enrollment.subjects);
+                      setViewModule(
+                        [...new Set(enrollment.subjects.map((subject) => subject.module?.name).filter(Boolean))].join(', '),
+                      );
                       setIsViewOpen(true);
                     }}
                   >View</button>
@@ -163,6 +223,14 @@ const StudentsTable = () => {
                       setIsEditOpen(true);
                     }}
                   >Edit</button>
+                  {canAssignSubject ? (
+                    <button
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-emerald-400 hover:underline rounded"
+                      onClick={() => openSubjectAssignment(student)}
+                    >
+                      <BookPlus size={14} /> Assign Subject
+                    </button>
+                  ) : null}
                 </td>
               </tr>
             ))}
@@ -190,7 +258,7 @@ const StudentsTable = () => {
                   <span className="font-medium">Subjects:</span>
                   <ul className="list-disc pl-5 mt-1 text-sm text-slate-300">
                     {viewSubjects.length > 0 ? viewSubjects.map(sub => (
-                      <li key={sub.id}>{sub.name}</li>
+                      <li key={sub.id}>{sub.name}{sub.module?.name ? ` — ${sub.module.name}` : ''}</li>
                     )) : <li className="text-slate-500">No subjects found</li>}
                   </ul>
                 </div>
@@ -286,6 +354,63 @@ const StudentsTable = () => {
           </div>
         </div>
       )}
+
+      {isSubjectAssignOpen && subjectStudent ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-slate-800 bg-slate-900 p-6 shadow-xl">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <h2 className="text-xl font-bold text-slate-100">Assign one subject</h2>
+                <p className="mt-1 text-sm text-slate-400">
+                  {studentName(subjectStudent)} · {subjectStudent.registration_number}
+                </p>
+              </div>
+              <button
+                onClick={() => setIsSubjectAssignOpen(false)}
+                className="rounded-full p-2 text-slate-400 hover:bg-slate-800"
+              >
+                &times;
+              </button>
+            </div>
+            <label className="mt-6 block text-sm font-medium text-slate-300">Subject</label>
+            <select
+              value={selectedSubjectId}
+              onChange={(event) => setSelectedSubjectId(event.target.value)}
+              className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-slate-100"
+            >
+              <option value="">Select one subject…</option>
+              {subjects
+                .filter((subject) => !assignedSubjectIds.includes(subject.id))
+                .map((subject) => (
+                  <option key={subject.id} value={subject.id}>{subject.name}</option>
+                ))}
+            </select>
+            {assignmentMessage ? (
+              <p className="mt-3 rounded-lg bg-slate-800 p-3 text-sm text-slate-200">{assignmentMessage}</p>
+            ) : null}
+            {subjects.every((subject) => assignedSubjectIds.includes(subject.id)) ? (
+              <p className="mt-3 text-sm text-slate-400">This learner is already assigned to every available subject.</p>
+            ) : null}
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setIsSubjectAssignOpen(false)}
+                className="rounded-lg bg-slate-800 px-4 py-2 text-sm text-slate-200"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={assignOneSubject}
+                disabled={!selectedSubjectId || isAssigning}
+                className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                {isAssigning ? 'Assigning…' : 'Assign subject'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 };

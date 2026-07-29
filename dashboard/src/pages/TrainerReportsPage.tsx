@@ -18,6 +18,15 @@ interface Report {
   generated_date: string;
 }
 
+const toReport = (report: Awaited<ReturnType<typeof trainerReportsAPI.generateSubjectReport>>): Report => ({
+  id: `${report.subject_id}-${Date.now()}`,
+  subject_name: report.subject_name,
+  total_students: report.total_students,
+  avg_score: report.avg_score,
+  pass_rate: report.pass_rate,
+  generated_date: new Date().toISOString(),
+});
+
 export default function TrainerReportsPage() {
   const { user } = useAuth();
   const [subjects, setSubjects] = useState<Subject[]>([]);
@@ -63,7 +72,7 @@ export default function TrainerReportsPage() {
     try {
       setGenerating(true);
       setError(null);
-      const report = await trainerReportsAPI.generateSubjectReport(selectedSubject);
+      const report = toReport(await trainerReportsAPI.generateSubjectReport(selectedSubject));
       // Avoid duplicate reports - filter out any existing report with the same ID
       setReports(prev => [report, ...prev.filter(r => r.id !== report.id)]);
       setSuccess('Report generated successfully!');
@@ -98,7 +107,7 @@ export default function TrainerReportsPage() {
     try {
       setGeneratingTemplate('class-summary');
       setError(null);
-      const report = await trainerReportsAPI.generateSubjectReport(selectedSubject, 'class-summary');
+      const report = toReport(await trainerReportsAPI.generateSubjectReport(selectedSubject, 'class-summary'));
       setReports(prev => [report, ...prev.filter(r => r.id !== report.id)]);
       setSuccess('Class Summary Report generated successfully!');
       setTimeout(() => setSuccess(null), 3000);
@@ -118,7 +127,7 @@ export default function TrainerReportsPage() {
     try {
       setGeneratingTemplate('performance-trends');
       setError(null);
-      const report = await trainerReportsAPI.generateSubjectReport(selectedSubject, 'performance-trends');
+      const report = toReport(await trainerReportsAPI.generateSubjectReport(selectedSubject, 'performance-trends'));
       setReports(prev => [report, ...prev.filter(r => r.id !== report.id)]);
       setSuccess('Performance Trends Report generated successfully!');
       setTimeout(() => setSuccess(null), 3000);
@@ -138,7 +147,7 @@ export default function TrainerReportsPage() {
     try {
       setGeneratingTemplate('at-risk');
       setError(null);
-      const report = await trainerReportsAPI.generateSubjectReport(selectedSubject, 'at-risk');
+      const report = toReport(await trainerReportsAPI.generateSubjectReport(selectedSubject, 'at-risk'));
       setReports(prev => [report, ...prev.filter(r => r.id !== report.id)]);
       setSuccess('At-Risk Analysis Report generated successfully!');
       setTimeout(() => setSuccess(null), 3000);

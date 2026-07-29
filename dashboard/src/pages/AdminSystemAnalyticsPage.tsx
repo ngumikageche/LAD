@@ -112,6 +112,7 @@ interface OptionItem {
 }
 
 const filterLabelMap: Record<keyof DashboardScopeFilters, string> = {
+  department_id: 'Department',
   course_id: 'Course',
   module_id: 'Module',
   subject_id: 'Subject',
@@ -285,7 +286,8 @@ export default function AdminSystemAnalyticsPage() {
   const courseTc = useTableControls(courseAnalytics);
   const deptTc = useTableControls(deptAnalytics);
 
-  const scopeOptionMap = {
+  const scopeOptionMap: Record<keyof DashboardScopeFilters, OptionItem[]> = {
+    department_id: deptAnalytics.map((item) => ({ id: item.department_id, name: item.name })),
     course_id: courseOptions,
     module_id: moduleOptions,
     subject_id: subjectOptions,

@@ -95,8 +95,8 @@ export default function TrainerAttendancePage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-slate-200">My Attendance</h1>
-          <p className="text-sm text-slate-500 mt-1">All attendance sessions you have run</p>
+          <h1 className="text-2xl font-bold text-slate-200">Learner Attendance Record</h1>
+          <p className="text-sm text-slate-500 mt-1">Learner check-ins from every attendance session you have run</p>
         </div>
         <button onClick={load} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm font-medium">
           <RefreshCw size={15} /> Refresh
