@@ -128,7 +128,7 @@ TRAINER_IMPORT_HEADERS = [
 
 @bp.get("/import-template")
 def trainer_import_template():
-    _, error, status = require_permission("trainers.create")
+    _, error, status = require_permission("data.import")
     if error:
         return error, status
     output = build_template(
@@ -154,12 +154,9 @@ def trainer_import_template():
 
 @bp.post("/bulk-upload")
 def bulk_upload_trainers():
-    actor, error, status = require_permission("trainers.create")
+    actor, error, status = require_permission("data.import")
     if error:
         return error, status
-    _, user_error, user_status = require_permission("users.create")
-    if user_error:
-        return user_error, user_status
     upload = request.files.get("file")
     if not upload or not upload.filename:
         return {"error": "Select a CSV or XLSX trainer workbook"}, 400

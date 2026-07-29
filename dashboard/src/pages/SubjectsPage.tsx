@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useState, FormEvent } from 'react';
-import { Plus, X } from 'lucide-react';
+import { Eye, Plus, X } from 'lucide-react';
 import ViewMarksModal, { type Mark } from '../components/ViewMarksModal';
 import { apiRequest } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import type { Module, Course } from '../types/backend';
 import { useTableControls } from '../hooks/useTableControls';
 import { TableFooter, SortableTh } from '../components/ui/TableControls';
+import AcademicStructurePreviewModal from '../components/admin/AcademicStructurePreviewModal';
 
 
 
@@ -61,6 +62,7 @@ const SubjectsPage = () => {
   const [marks, setMarks] = useState<Mark[]>([]);
   const [marksSubjectName, setMarksSubjectName] = useState('');
   const [autoOpened, setAutoOpened] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   // Fetch marks for a subject
   const handleViewMarks = async (subject: Subject) => {
@@ -266,6 +268,17 @@ const SubjectsPage = () => {
     );
   }
 
+  const canPreviewStructure = Boolean(
+    user?.permissions?.['*']
+    || (
+      user?.permissions?.['institutions.read']
+      && user?.permissions?.['departments.read']
+      && user?.permissions?.['courses.read']
+      && user?.permissions?.['modules.read']
+      && user?.permissions?.['subjects.read']
+    ),
+  );
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -273,23 +286,34 @@ const SubjectsPage = () => {
           <h1 className="text-3xl font-bold text-slate-200">Subjects</h1>
           <p className="text-sm text-slate-500">Define subjects (modules) for each course.</p>
         </div>
-        {user?.permissions?.['subjects.create'] || user?.permissions?.['*'] ? (
-          <button
-            onClick={openCreate}
-            className="flex items-center px-4 py-2.5 text-sm font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
-          >
-            <Plus className="w-4 h-4 mr-2 text-white" />
-            Add Subject
-          </button>
-        ) : null}
-        {user?.permissions?.['scores.create'] || user?.permissions?.['*'] ? (
-          <button
-            onClick={() => setUploadModalOpen(true)}
-            className="ml-3 flex items-center px-4 py-2.5 text-sm font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors"
-          >
-            Upload Marks
-          </button>
-        ) : null}
+        <div className="flex flex-wrap items-center gap-2">
+          {canPreviewStructure ? (
+            <button
+              type="button"
+              onClick={() => setPreviewOpen(true)}
+              className="inline-flex items-center gap-2 rounded-md border border-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-200 hover:bg-slate-800"
+            >
+              <Eye size={16} /> Preview hierarchy
+            </button>
+          ) : null}
+          {user?.permissions?.['subjects.create'] || user?.permissions?.['*'] ? (
+            <button
+              onClick={openCreate}
+              className="flex items-center px-4 py-2.5 text-sm font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              <Plus className="w-4 h-4 mr-2 text-white" />
+              Add Subject
+            </button>
+          ) : null}
+          {user?.permissions?.['scores.create'] || user?.permissions?.['*'] ? (
+            <button
+              onClick={() => setUploadModalOpen(true)}
+              className="flex items-center px-4 py-2.5 text-sm font-bold text-white bg-emerald-600 rounded-lg hover:bg-emerald-700 transition-colors"
+            >
+              Upload Marks
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-lg border border-slate-800 overflow-hidden">
@@ -377,6 +401,12 @@ const SubjectsPage = () => {
         </div>
         <TableFooter page={tc.page} totalPages={tc.totalPages} total={tc.total} pageSize={tc.pageSize} onPage={tc.setPage} />
       </div>
+
+      <AcademicStructurePreviewModal
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        level="subject"
+      />
 
       {/* Modal for create/edit */}
       {isModalOpen && (

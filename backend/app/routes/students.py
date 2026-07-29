@@ -23,12 +23,7 @@ from ..models.trainer_subject import TrainerSubject
 from ..models.trainer import Trainer
 from .permissions import log_view, require_permission
 from .permissions import get_current_user
-from ..services.bulk_people_import import (
-    build_template,
-    first_value,
-    normalize_lookup,
-    read_people_upload,
-)
+from ..services.bulk_people_import import build_template, first_value, read_people_upload
 
 bp = Blueprint("students", __name__, url_prefix="/students")
 
@@ -190,7 +185,7 @@ STUDENT_IMPORT_HEADERS = [
     "Name",
     "Email",
     "Mobile",
-    "Course",
+    "Course ID",
     "Admission Date",
 ]
 
@@ -214,9 +209,17 @@ def _import_enrollment_year(row: dict[str, str]) -> int:
 
 @bp.get("/import-template")
 def student_import_template():
-    _, error, status = require_permission("students.create")
+    actor, error, status = require_permission("data.import")
     if error:
         return error, status
+    course_query = (
+        db.session.query(Course)
+        .join(Department, Course.department_id == Department.id)
+        .filter(Course.deleted_at.is_(None))
+    )
+    if actor.institution_id:
+        course_query = course_query.filter(Department.institution_id == actor.institution_id)
+    courses = course_query.order_by(Course.name.asc()).all()
     output = build_template(
         STUDENT_IMPORT_HEADERS,
         "Students Template",
@@ -225,9 +228,30 @@ def student_import_template():
             "Amina Example",
             "amina@example.edu",
             "0712345678",
-            "Enter exact course name or code",
+            "00000000-0000-0000-0000-000000000000",
             "15/01/2026",
         ],
+        reference_sheets={
+            "Course IDs": (
+                [
+                    "Course ID",
+                    "Course Name",
+                    "Course Code",
+                    "Institution ID",
+                    "Institution Name",
+                ],
+                [
+                    [
+                        str(course.id),
+                        course.name,
+                        course.code,
+                        str(course.department.institution.id),
+                        course.department.institution.name,
+                    ]
+                    for course in courses
+                ],
+            ),
+        },
     )
     return send_file(
         output,
@@ -239,12 +263,9 @@ def student_import_template():
 
 @bp.post("/bulk-upload")
 def bulk_upload_students():
-    actor, error, status = require_permission("students.create")
+    actor, error, status = require_permission("data.import")
     if error:
         return error, status
-    _, user_error, user_status = require_permission("users.create")
-    if user_error:
-        return user_error, user_status
     upload = request.files.get("file")
     if not upload or not upload.filename:
         return {"error": "Select a CSV or XLSX learner workbook"}, 400
@@ -265,12 +286,7 @@ def bulk_upload_students():
     if actor.institution_id:
         course_query = course_query.filter(Department.institution_id == actor.institution_id)
     courses = course_query.filter(Course.deleted_at.is_(None)).all()
-    course_map = {
-        key: course
-        for course in courses
-        for key in {normalize_lookup(course.name), normalize_lookup(course.code)}
-        if key
-    }
+    course_map = {str(course.id).lower(): course for course in courses}
     results = []
     created = 0
     duplicates = 0
@@ -280,16 +296,16 @@ def bulk_upload_students():
         name = first_value(row, "Name", "Student Name")
         email = first_value(row, "Email").lower()
         phone = first_value(row, "Mobile", "Phone") or None
-        course_value = first_value(row, "Course", "Course Code")
-        course = course_map.get(normalize_lookup(course_value))
-        if not registration_number or not name or not email or not course_value:
+        course_id = first_value(row, "Course ID")
+        course = course_map.get(course_id.lower())
+        if not registration_number or not name or not email or not course_id:
             failed += 1
             results.append({
                 "row": row_number,
                 "status": "failed",
                 "registration_number": registration_number,
                 "email": email,
-                "message": "Reg No, Name, Email, and Course are required",
+                "message": "Reg No, Name, Email, and Course ID are required",
             })
             continue
         if "@" not in email:
@@ -303,7 +319,7 @@ def bulk_upload_students():
                 "status": "failed",
                 "registration_number": registration_number,
                 "email": email,
-                "message": f"Course not found: {course_value}",
+                "message": f"Course ID not found or unavailable: {course_id}",
             })
             continue
         existing = (

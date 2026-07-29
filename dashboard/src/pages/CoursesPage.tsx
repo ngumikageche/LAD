@@ -1,9 +1,10 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Plus, X } from 'lucide-react';
+import { Eye, Plus, X } from 'lucide-react';
 import { apiRequest } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useTableControls } from '../hooks/useTableControls';
 import { TableFooter, SortableTh } from '../components/ui/TableControls';
+import AcademicStructurePreviewModal from '../components/admin/AcademicStructurePreviewModal';
 
 type Department = {
   id: string;
@@ -42,6 +43,7 @@ const CoursesPage = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formState, setFormState] = useState<CourseForm>(emptyForm);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -153,6 +155,15 @@ const CoursesPage = () => {
     }
   };
 
+  const canPreviewStructure = Boolean(
+    user?.permissions?.['*']
+    || (
+      user?.permissions?.['institutions.read']
+      && user?.permissions?.['departments.read']
+      && user?.permissions?.['courses.read']
+    ),
+  );
+
   if (!user?.permissions?.['courses.read'] && !user?.permissions?.['*']) {
     return (
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
@@ -168,15 +179,26 @@ const CoursesPage = () => {
           <h1 className="text-3xl font-bold text-slate-200">Courses</h1>
           <p className="text-sm text-slate-500">Define courses and CBET levels.</p>
         </div>
-        {user?.permissions?.['courses.create'] || user?.permissions?.['*'] ? (
-          <button
-            onClick={openCreate}
-            className="flex items-center px-4 py-2.5 text-sm font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
-          >
-            <Plus className="w-4 h-4 mr-2 text-white" />
-            Add Course
-          </button>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {canPreviewStructure ? (
+            <button
+              type="button"
+              onClick={() => setPreviewOpen(true)}
+              className="inline-flex items-center gap-2 rounded-md border border-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-200 hover:bg-slate-800"
+            >
+              <Eye size={16} /> Preview by institution
+            </button>
+          ) : null}
+          {user?.permissions?.['courses.create'] || user?.permissions?.['*'] ? (
+            <button
+              onClick={openCreate}
+              className="flex items-center px-4 py-2.5 text-sm font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              <Plus className="w-4 h-4 mr-2 text-white" />
+              Add Course
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-lg border border-slate-800 overflow-hidden">
@@ -243,6 +265,12 @@ const CoursesPage = () => {
         )}
         <TableFooter page={tc.page} totalPages={tc.totalPages} total={tc.total} pageSize={tc.pageSize} onPage={tc.setPage} />
       </div>
+
+      <AcademicStructurePreviewModal
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        level="course"
+      />
 
       {isModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">

@@ -200,6 +200,7 @@ const TrainersPage = () => {
   const canUpdateTrainers = Boolean(user?.permissions?.['trainers.update'] || user?.permissions?.['*']);
   const canDeleteTrainers = Boolean(user?.permissions?.['trainers.delete'] || user?.permissions?.['*']);
   const canReadUsers = Boolean(user?.permissions?.['users.read'] || user?.permissions?.['*']);
+  const canImportData = Boolean(user?.permissions?.['data.import'] || user?.permissions?.['*']);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -345,7 +346,7 @@ const TrainersPage = () => {
         ) : null}
       </div>
 
-      {canCreateTrainers && canCreateUsers ? (
+      {canImportData ? (
         <BulkPeopleUploadPanel
           personLabel="trainers"
           uploadPath="/trainers/bulk-upload"

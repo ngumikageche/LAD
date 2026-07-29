@@ -17,13 +17,13 @@ const StudentsPage = () => {
   return (
     <div className="space-y-6">
       <h1 className="text-3xl font-bold text-slate-200 mb-6">Students</h1>
-      {(user.permissions?.['students.create'] && user.permissions?.['users.create']) || user.permissions?.['*'] ? (
+      {user.permissions?.['data.import'] || user.permissions?.['*'] ? (
         <BulkPeopleUploadPanel
           personLabel="learners"
           uploadPath="/students/bulk-upload"
           templatePath="/students/import-template"
           templateFilename="LAD-learners-template.xlsx"
-          requiredColumns="Registration Number, Name, Email, Course"
+          requiredColumns="Registration Number, Name, Email, Course ID"
           onComplete={() => setRefreshKey((value) => value + 1)}
         />
       ) : null}

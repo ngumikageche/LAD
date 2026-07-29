@@ -92,18 +92,33 @@ def first_value(row: dict[str, str], *aliases: str) -> str:
     return ""
 
 
-def build_template(headers: list[str], sheet_name: str, example: list[str] | None = None) -> io.BytesIO:
+def _format_worksheet(worksheet) -> None:
+    worksheet.freeze_panes = "A2"
+    worksheet.auto_filter.ref = f"A1:{worksheet.cell(row=1, column=worksheet.max_column).coordinate}"
+    for column in worksheet.columns:
+        width = min(max(len(str(cell.value or "")) for cell in column) + 2, 42)
+        worksheet.column_dimensions[column[0].column_letter].width = width
+
+
+def build_template(
+    headers: list[str],
+    sheet_name: str,
+    example: list[str] | None = None,
+    reference_sheets: dict[str, tuple[list[str], list[list[str]]]] | None = None,
+) -> io.BytesIO:
     workbook = Workbook()
     worksheet = workbook.active
     worksheet.title = sheet_name
     worksheet.append(headers)
     if example:
         worksheet.append(example)
-    worksheet.freeze_panes = "A2"
-    worksheet.auto_filter.ref = f"A1:{worksheet.cell(row=1, column=len(headers)).coordinate}"
-    for column in worksheet.columns:
-        width = min(max(len(str(cell.value or "")) for cell in column) + 2, 42)
-        worksheet.column_dimensions[column[0].column_letter].width = width
+    _format_worksheet(worksheet)
+    for reference_name, (reference_headers, reference_rows) in (reference_sheets or {}).items():
+        reference_sheet = workbook.create_sheet(reference_name)
+        reference_sheet.append(reference_headers)
+        for row in reference_rows:
+            reference_sheet.append(row)
+        _format_worksheet(reference_sheet)
     output = io.BytesIO()
     workbook.save(output)
     output.seek(0)

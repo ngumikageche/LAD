@@ -13,6 +13,7 @@ import InstitutionsPage from './pages/InstitutionsPage';
 import DepartmentsPage from './pages/DepartmentsPage';
 import CoursesPage from './pages/CoursesPage';
 import TrainersPage from './pages/TrainersPage';
+import DataImportPage from './pages/DataImportPage';
 import TrainerDashboardPage from './pages/TrainerDashboardPage';
 import TrainerReportsPage from './pages/TrainerReportsPage';
 import ProvideFeedbackPage from './pages/ProvideFeedbackPage';
@@ -113,6 +114,9 @@ function App() {
               </Route>
               <Route element={<PermissionRoute permissionKey="users.read" deniedTypes={['student']} />}>
                 <Route path="/users" element={<UsersPage />} />
+              </Route>
+              <Route element={<PermissionRoute permissionKey="data.import" deniedTypes={['student']} />}>
+                <Route path="/data-import" element={<DataImportPage />} />
               </Route>
               <Route element={<UserTypeRoute allowedTypes={['admin']} />}>
                 <Route path="/admin/dashboard" element={<AdminDashboard />} />

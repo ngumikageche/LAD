@@ -122,6 +122,7 @@ const PERMISSION_TABS: Array<{ label: string; permissions: PermDef[] }> = [
       { key: 'trainers.read',   label: 'Read Trainers' },
       { key: 'trainers.update', label: 'Update Trainers' },
       { key: 'trainers.delete', label: 'Delete Trainers' },
+      { key: 'data.import',     label: 'Import Data' },
     ],
   },
   {

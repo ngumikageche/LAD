@@ -74,6 +74,7 @@ const trainerGroups: NavGroup[] = [
     items: [
       { name: 'Student Profile',   icon: TrendingUp,      path: '/trainer/student-profile',   color: 'text-teal-300' },
       { name: 'Learner Enrollment', icon: UserCheck,      path: '/trainer/enrollment',        color: 'text-cyan-300' },
+      { name: 'Data Import',       icon: Upload,          path: '/data-import',               color: 'text-cyan-300', permission: 'data.import' },
       { name: 'Users',             icon: Shield,          path: '/users',                     color: 'text-red-400', permission: 'users.read' },
       { name: 'Provide Feedback',  icon: MessageSquare,   path: '/trainer/feedback',          color: 'text-amber-400'   },
       { name: 'Online Exams',      icon: ClipboardList,   path: '/trainer/online-exams',      color: 'text-indigo-300' },
@@ -118,6 +119,7 @@ const adminGroups: NavGroup[] = [
       { name: 'Student Reports',   icon: FileText,        path: '/admin/student-reports',      color: 'text-indigo-300', permission: 'reports.student.write' },
       { name: 'Users',             icon: Shield,          path: '/users',                      color: 'text-red-400'   },
       { name: 'Roles',             icon: KeyRound,        path: '/roles',                      color: 'text-amber-400' },
+      { name: 'Data Import',       icon: Upload,          path: '/data-import',                color: 'text-cyan-300', permission: 'data.import' },
     ],
   },
   {

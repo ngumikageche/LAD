@@ -1,9 +1,10 @@
 import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Plus, X, Settings, Trash2 } from 'lucide-react';
+import { Eye, Plus, X, Settings, Trash2 } from 'lucide-react';
 import { apiRequest } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useTableControls } from '../hooks/useTableControls';
 import { TableFooter, SortableTh } from '../components/ui/TableControls';
+import AcademicStructurePreviewModal from '../components/admin/AcademicStructurePreviewModal';
 
 type Institution = {
   id: string;
@@ -168,6 +169,7 @@ const InstitutionsPage = () => {
   const [isTypesModalOpen, setIsTypesModalOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formState, setFormState] = useState<InstitutionForm>(emptyForm);
+  const [previewInstitutionId, setPreviewInstitutionId] = useState('');
 
   const loadData = async () => {
     setIsLoading(true);
@@ -246,6 +248,10 @@ const InstitutionsPage = () => {
   const canCreate = user?.permissions?.['institutions.create'] || user?.permissions?.['*'];
   const canUpdate = user?.permissions?.['institutions.update'] || user?.permissions?.['*'];
   const canDelete = user?.permissions?.['institutions.delete'] || user?.permissions?.['*'];
+  const canPreviewCourses = Boolean(
+    user?.permissions?.['*']
+    || (user?.permissions?.['departments.read'] && user?.permissions?.['courses.read']),
+  );
 
   if (!user?.permissions?.['institutions.read'] && !user?.permissions?.['*']) {
     return (
@@ -324,6 +330,15 @@ const InstitutionsPage = () => {
                     <td className="px-6 py-4 text-slate-400">{item.location}</td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-3">
+                        {canPreviewCourses ? (
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 text-sm font-medium text-cyan-400 hover:text-cyan-300"
+                            onClick={() => setPreviewInstitutionId(item.id)}
+                          >
+                            <Eye size={15} /> Preview courses
+                          </button>
+                        ) : null}
                         {canUpdate && (
                           <button
                             className="text-indigo-400 hover:text-indigo-300 text-sm font-medium"
@@ -347,7 +362,7 @@ const InstitutionsPage = () => {
                 ))}
                 {tc.paged.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-6 py-8 text-center text-slate-500">
+                    <td colSpan={5} className="px-6 py-8 text-center text-slate-500">
                       No institutions found.
                     </td>
                   </tr>
@@ -364,6 +379,13 @@ const InstitutionsPage = () => {
           onPage={tc.setPage}
         />
       </div>
+
+      <AcademicStructurePreviewModal
+        open={Boolean(previewInstitutionId)}
+        onClose={() => setPreviewInstitutionId('')}
+        level="course"
+        initialInstitutionId={previewInstitutionId}
+      />
 
       {/* Add / Edit Institution Modal */}
       {isModalOpen && (
