@@ -23,7 +23,12 @@ from ..models.trainer_subject import TrainerSubject
 from ..models.trainer import Trainer
 from .permissions import log_view, require_permission
 from .permissions import get_current_user
-from ..services.bulk_people_import import build_template, first_value, read_people_upload
+from ..services.bulk_people_import import (
+    build_template,
+    first_value,
+    normalize_lookup,
+    read_people_upload,
+)
 
 bp = Blueprint("students", __name__, url_prefix="/students")
 
@@ -185,7 +190,7 @@ STUDENT_IMPORT_HEADERS = [
     "Name",
     "Email",
     "Mobile",
-    "Course ID",
+    "Course Code",
     "Admission Date",
 ]
 
@@ -228,24 +233,20 @@ def student_import_template():
             "Amina Example",
             "amina@example.edu",
             "0712345678",
-            "00000000-0000-0000-0000-000000000000",
+            "CRS001",
             "15/01/2026",
         ],
         reference_sheets={
-            "Course IDs": (
+            "Course Codes": (
                 [
-                    "Course ID",
-                    "Course Name",
                     "Course Code",
-                    "Institution ID",
+                    "Course Name",
                     "Institution Name",
                 ],
                 [
                     [
-                        str(course.id),
-                        course.name,
                         course.code,
-                        str(course.department.institution.id),
+                        course.name,
                         course.department.institution.name,
                     ]
                     for course in courses
@@ -286,7 +287,11 @@ def bulk_upload_students():
     if actor.institution_id:
         course_query = course_query.filter(Department.institution_id == actor.institution_id)
     courses = course_query.filter(Course.deleted_at.is_(None)).all()
-    course_map = {str(course.id).lower(): course for course in courses}
+    course_map = {
+        normalize_lookup(course.code): course
+        for course in courses
+        if course.code
+    }
     results = []
     created = 0
     duplicates = 0
@@ -296,16 +301,16 @@ def bulk_upload_students():
         name = first_value(row, "Name", "Student Name")
         email = first_value(row, "Email").lower()
         phone = first_value(row, "Mobile", "Phone") or None
-        course_id = first_value(row, "Course ID")
-        course = course_map.get(course_id.lower())
-        if not registration_number or not name or not email or not course_id:
+        course_code = first_value(row, "Course Code")
+        course = course_map.get(normalize_lookup(course_code))
+        if not registration_number or not name or not email or not course_code:
             failed += 1
             results.append({
                 "row": row_number,
                 "status": "failed",
                 "registration_number": registration_number,
                 "email": email,
-                "message": "Reg No, Name, Email, and Course ID are required",
+                "message": "Reg No, Name, Email, and Course Code are required",
             })
             continue
         if "@" not in email:
@@ -319,7 +324,7 @@ def bulk_upload_students():
                 "status": "failed",
                 "registration_number": registration_number,
                 "email": email,
-                "message": f"Course ID not found or unavailable: {course_id}",
+                "message": f"Course Code not found or unavailable: {course_code}",
             })
             continue
         existing = (

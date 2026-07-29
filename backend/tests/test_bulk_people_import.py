@@ -30,14 +30,14 @@ def workbook_upload(headers, row, sheet_name="Students Template"):
 
 def test_import_recognizes_useful_columns_from_external_student_workbook():
     upload = workbook_upload(
-        ["Reg No", "Name", "Email", "Mobile", "Course ID", "Date Of Admission(dd/MM/yyyy)"],
-        ["TVET-1", "Amina", "amina@example.edu", "0712345678", "17a11930-ff04-4743-8964-5b94f396751c", "15/01/2026"],
+        ["Reg No", "Name", "Email", "Mobile", "Course Code", "Date Of Admission(dd/MM/yyyy)"],
+        ["TVET-1", "Amina", "amina@example.edu", "0712345678", "CRS001", "15/01/2026"],
     )
 
     rows = read_people_upload(upload, preferred_sheet="Students Template")
 
     assert first_value(rows[0], "Registration Number", "Reg No") == "TVET-1"
-    assert first_value(rows[0], "Course ID") == "17a11930-ff04-4743-8964-5b94f396751c"
+    assert first_value(rows[0], "Course Code") == "CRS001"
 
 
 def test_csv_import_ignores_blank_rows_and_normalizes_headers():
@@ -61,12 +61,12 @@ def test_import_rejects_unsupported_file_type():
 
 def test_generated_template_contains_only_our_selected_columns():
     output = build_template(
-        ["Registration Number", "Name", "Email", "Course ID"],
+        ["Registration Number", "Name", "Email", "Course Code"],
         "Learners",
         reference_sheets={
-            "Course IDs": (
-                ["Course ID", "Course Name", "Institution Name"],
-                [["17a11930-ff04-4743-8964-5b94f396751c", "Electrical Level 6", "LAD College"]],
+            "Course Codes": (
+                ["Course Code", "Course Name", "Institution Name"],
+                [["CRS001", "Electrical Level 6", "LAD College"]],
             ),
         },
     )
@@ -74,9 +74,9 @@ def test_generated_template_contains_only_our_selected_columns():
     workbook = load_workbook(output, read_only=True)
     headers = [cell.value for cell in next(workbook["Learners"].iter_rows())]
 
-    assert headers == ["Registration Number", "Name", "Email", "Course ID"]
-    assert [cell.value for cell in next(workbook["Course IDs"].iter_rows())] == [
-        "Course ID",
+    assert headers == ["Registration Number", "Name", "Email", "Course Code"]
+    assert [cell.value for cell in next(workbook["Course Codes"].iter_rows())] == [
+        "Course Code",
         "Course Name",
         "Institution Name",
     ]
