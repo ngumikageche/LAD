@@ -15,6 +15,7 @@ export function StudentCheckIn({ onSuccess, onError }: StudentCheckInProps) {
   const [step, setStep] = useState<"scanner" | "location" | "processing" | "result">("scanner");
   const [scannedToken, setScannedToken] = useState<string | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [allowedRadiusMeters, setAllowedRadiusMeters] = useState(100);
   const [manualCode, setManualCode] = useState("");
   const [useManualEntry, setUseManualEntry] = useState(false);
 
@@ -38,6 +39,7 @@ export function StudentCheckIn({ onSuccess, onError }: StudentCheckInProps) {
       const sessionInfo = await AttendanceAPI.getSessionByToken(data);
       setScannedToken(data);
       setSessionId(sessionInfo.id);
+      setAllowedRadiusMeters(sessionInfo.allowed_radius_meters);
       setStep("location");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Invalid QR code");
@@ -50,6 +52,7 @@ export function StudentCheckIn({ onSuccess, onError }: StudentCheckInProps) {
       const sessionInfo = await AttendanceAPI.getSessionByCode(manualCode);
       setSessionId(sessionInfo.id);
       setScannedToken(sessionInfo.current_token);
+      setAllowedRadiusMeters(sessionInfo.allowed_radius_meters);
       setStep("location");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Invalid session code");
@@ -58,6 +61,13 @@ export function StudentCheckIn({ onSuccess, onError }: StudentCheckInProps) {
 
   const handleCheckIn = async () => {
     if (!sessionId || !location || !scannedToken) { setError("Missing required information"); return; }
+    if (location.accuracy && location.accuracy > allowedRadiusMeters) {
+      setError(
+        `Location accuracy is ±${location.accuracy.toFixed(0)}m. ` +
+        `A reading within ${allowedRadiusMeters}m is required. Refresh your location and try again.`
+      );
+      return;
+    }
     setLoading(true);
     setStep("processing");
     setError(null);
@@ -85,6 +95,7 @@ export function StudentCheckIn({ onSuccess, onError }: StudentCheckInProps) {
     setStep("scanner");
     setScannedToken(null);
     setSessionId(null);
+    setAllowedRadiusMeters(100);
     setManualCode("");
     setUseManualEntry(false);
     setResult(null);
@@ -185,15 +196,25 @@ export function StudentCheckIn({ onSuccess, onError }: StudentCheckInProps) {
             </div>
           )}
 
+          {error && (
+            <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl flex items-start gap-2">
+              <AlertCircle size={16} className="text-red-400 shrink-0 mt-0.5" />
+              <p className="text-red-300 text-sm">{error}</p>
+            </div>
+          )}
+
           <button
-            onClick={requestLocation}
-            disabled={locationLoading || !!location}
+            onClick={() => {
+              setError(null);
+              requestLocation();
+            }}
+            disabled={locationLoading}
             className="w-full px-4 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 disabled:opacity-50 transition flex items-center justify-center gap-2 font-medium text-sm"
           >
             {locationLoading ? (
               <><Loader size={18} className="animate-spin" /> Getting Location...</>
             ) : location ? (
-              <><CheckCircle size={18} /> Location Captured</>
+              <><MapPin size={18} /> Refresh Location</>
             ) : (
               <><MapPin size={18} /> Share My Location</>
             )}
