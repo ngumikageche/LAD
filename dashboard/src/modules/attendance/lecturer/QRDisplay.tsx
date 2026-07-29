@@ -1,8 +1,18 @@
 import React, { useEffect, useState, useRef } from "react";
-import QRCode from "react-qr-code";
+import * as QRCodeModule from "react-qr-code";
 import { Clock, Copy, LogOut, RefreshCw } from "lucide-react";
 import type { AttendanceSession } from "../types";
 import { AttendanceAPI } from "../services/attendanceAPI";
+
+// react-qr-code is CommonJS and exposes both `QRCode` and `default` at runtime,
+// while its type declaration only describes `default`. Select the concrete
+// component explicitly so bundler interop cannot leave us rendering the module
+// namespace object.
+const QRCode = (
+  QRCodeModule as unknown as {
+    QRCode?: typeof QRCodeModule.default;
+  }
+).QRCode ?? QRCodeModule.default;
 
 interface QRDisplayProps {
   session: AttendanceSession;
