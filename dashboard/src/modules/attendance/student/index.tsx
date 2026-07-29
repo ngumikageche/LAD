@@ -61,13 +61,6 @@ export function StudentCheckIn({ onSuccess, onError }: StudentCheckInProps) {
 
   const handleCheckIn = async () => {
     if (!sessionId || !location || !scannedToken) { setError("Missing required information"); return; }
-    if (location.accuracy && location.accuracy > allowedRadiusMeters) {
-      setError(
-        `Location accuracy is ±${location.accuracy.toFixed(0)}m. ` +
-        `A reading within ${allowedRadiusMeters}m is required. Refresh your location and try again.`
-      );
-      return;
-    }
     setLoading(true);
     setStep("processing");
     setError(null);
@@ -101,6 +94,9 @@ export function StudentCheckIn({ onSuccess, onError }: StudentCheckInProps) {
     setResult(null);
     setError(null);
   };
+
+  const hasLowLocationAccuracy =
+    !!location?.accuracy && location.accuracy > allowedRadiusMeters;
 
   // ── STEP 1: Scanner ──────────────────────────────────────────────────────────
   if (step === "scanner") {
@@ -193,6 +189,18 @@ export function StudentCheckIn({ onSuccess, onError }: StudentCheckInProps) {
             <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl flex items-start gap-2">
               <AlertCircle size={16} className="text-red-400 shrink-0 mt-0.5" />
               <p className="text-red-300 text-sm">{locationError}</p>
+            </div>
+          )}
+
+          {hasLowLocationAccuracy && (
+            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex items-start gap-2">
+              <AlertCircle size={16} className="text-amber-400 shrink-0 mt-0.5" />
+              <p className="text-amber-300 text-sm">
+                Location accuracy is only ±{location.accuracy?.toFixed(0)}m.
+                Refreshing location on a GPS-enabled phone is recommended. You
+                may still submit; the server will check your measured distance
+                against the {allowedRadiusMeters}m session radius.
+              </p>
             </div>
           )}
 
