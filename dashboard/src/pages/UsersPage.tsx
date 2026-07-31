@@ -48,6 +48,7 @@ type UserItem = {
   role_id: string;
   role_name: string | null;
   institution_id: string | null;
+  institution_name: string | null;
   created_at: string | null;
   disabled_at: string | null;
 };
@@ -100,6 +101,10 @@ const UsersPage = () => {
 
   const canReadStudents = Boolean(user?.permissions?.['students.read'] || user?.permissions?.['*']);
   const canReadTrainers = Boolean(user?.permissions?.['trainers.read'] || user?.permissions?.['*']);
+  const canReadRoles = Boolean(user?.permissions?.['roles.read'] || user?.permissions?.['*']);
+  const canReadInstitutions = Boolean(user?.permissions?.['institutions.read'] || user?.permissions?.['*']);
+  const canReadCourses = Boolean(user?.permissions?.['courses.read'] || user?.permissions?.['*']);
+  const canReadDepartments = Boolean(user?.permissions?.['departments.read'] || user?.permissions?.['*']);
   const canWriteStudents = Boolean(
     user?.permissions?.['students.create'] || user?.permissions?.['students.update'] || user?.permissions?.['*']
   );
@@ -116,10 +121,10 @@ const UsersPage = () => {
       const [usersData, rolesData, institutionsData, coursesData, departmentsData, studentsData, trainersData] =
         await Promise.all([
           apiRequest<UserItem[]>('/users', { token }),
-          apiRequest<Role[]>('/roles', { token }),
-          apiRequest<Institution[]>('/institutions', { token }),
-          apiRequest<Course[]>('/courses', { token }),
-          apiRequest<Department[]>('/departments', { token }),
+          canReadRoles ? apiRequest<Role[]>('/roles', { token }) : Promise.resolve([]),
+          canReadInstitutions ? apiRequest<Institution[]>('/institutions', { token }) : Promise.resolve([]),
+          canReadCourses ? apiRequest<Course[]>('/courses', { token }) : Promise.resolve([]),
+          canReadDepartments ? apiRequest<Department[]>('/departments', { token }) : Promise.resolve([]),
           canReadStudents ? apiRequest<StudentRecord[]>('/students', { token }) : Promise.resolve([]),
           canReadTrainers ? apiRequest<TrainerRecord[]>('/trainers', { token }) : Promise.resolve([]),
         ]);
@@ -142,7 +147,15 @@ const UsersPage = () => {
     if (token) {
       loadData();
     }
-  }, [token, canReadStudents, canReadTrainers]);
+  }, [
+    token,
+    canReadStudents,
+    canReadTrainers,
+    canReadRoles,
+    canReadInstitutions,
+    canReadCourses,
+    canReadDepartments,
+  ]);
 
   const studentsByUserId = useMemo(() => {
     return studentRecords.reduce<Record<string, StudentRecord>>((acc, record) => {
@@ -172,7 +185,7 @@ const UsersPage = () => {
   const tc = useTableControls(
     filteredUsers,
     15,
-    (item, key) => key === 'institution' ? institutions.find(i => i.id === item.institution_id)?.name ?? '' : (item as any)[key],
+    (item, key) => key === 'institution' ? item.institution_name ?? '' : (item as any)[key],
   );
 
   const openCreateModal = () => {
@@ -447,7 +460,7 @@ const UsersPage = () => {
                     <td className="px-6 py-4 text-slate-400">{item.email}</td>
                     <td className="px-6 py-4 text-slate-400">{item.role_name ?? item.role_id}</td>
                     <td className="px-6 py-4 text-slate-400">
-                      {institutions.find((inst) => inst.id === item.institution_id)?.name ?? '—'}
+                      {item.institution_name ?? '—'}
                     </td>
                     <td className="px-6 py-4 text-slate-400">
                       {item.disabled_at ? 'Disabled' : 'Active'}

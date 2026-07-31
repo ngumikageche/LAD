@@ -10,7 +10,7 @@ from ..extensions import db
 from ..models.institution import Institution
 from ..models.role_permission import RolePermission
 from ..models.user import User
-from .permissions import log_view, require_permission
+from .permissions import _is_admin, log_view, require_permission
 
 
 bp = Blueprint("users", __name__, url_prefix="/users")
@@ -43,6 +43,7 @@ def _user_payload(user: User) -> dict:
         "role_id": str(user.role_id),
         "role_name": user.role.role_name if user.role else None,
         "institution_id": str(user.institution_id) if user.institution_id else None,
+        "institution_name": user.institution.name if user.institution else None,
         "created_at": user.created_at.isoformat() if user.created_at else None,
         "disabled_at": user.deleted_at.isoformat() if user.deleted_at else None,
     }
@@ -104,22 +105,34 @@ def create_user():
 
 @bp.get("")
 def list_users():
-    user, error, status = require_permission("users.read")
+    actor, error, status = require_permission("users.read")
     if error:
         return error, status
 
     include_deleted = request.args.get("include_deleted") == "1"
     query = db.session.query(User)
+    if not _is_admin(actor):
+        if actor.institution_id is None:
+            log_view(actor, "users", metadata={"scope": "list", "institution_id": None})
+            return [], 200
+        query = query.filter(User.institution_id == actor.institution_id)
     if not include_deleted:
         query = query.filter(User.deleted_at.is_(None))
     users = query.order_by(User.created_at.desc()).all()
-    log_view(user, "users", metadata={"scope": "list"})
+    log_view(
+        actor,
+        "users",
+        metadata={
+            "scope": "list",
+            "institution_id": None if _is_admin(actor) else str(actor.institution_id),
+        },
+    )
     return [_user_payload(user) for user in users], 200
 
 
 @bp.get("/<user_id>")
 def get_user(user_id: str):
-    user, error, status = require_permission("users.read")
+    actor, error, status = require_permission("users.read")
     if error:
         return error, status
 
@@ -128,12 +141,16 @@ def get_user(user_id: str):
     except ValueError as exc:
         return {"error": str(exc)}, 400
 
-    user = db.session.get(User, user_uuid)
-    if not user:
+    target_user = db.session.get(User, user_uuid)
+    if not target_user:
+        return {"error": "User not found"}, 404
+    if not _is_admin(actor) and (
+        actor.institution_id is None or target_user.institution_id != actor.institution_id
+    ):
         return {"error": "User not found"}, 404
 
-    log_view(user, "users", entity_id=user_id, metadata={"scope": "detail"})
-    return _user_payload(user), 200
+    log_view(actor, "users", entity_id=user_id, metadata={"scope": "detail"})
+    return _user_payload(target_user), 200
 
 
 @bp.put("/<user_id>")
