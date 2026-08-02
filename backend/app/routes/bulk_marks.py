@@ -259,6 +259,75 @@ def list_assessments():
     return {"assessments": items, "total": len(items)}, 200
 
 
+@bp.post("/assessments")
+def create_assessment():
+    """Create an internal formative assessment for an accessible subject."""
+    user, error, status = require_permission("scores.create")
+    if error:
+        return error, status
+
+    payload = request.get_json(silent=True) or {}
+    name = str(payload.get("name") or "").strip()
+    subject_ref = str(payload.get("subject_code") or payload.get("subject_id") or "").strip()
+    assessment_type = str(payload.get("assessment_type") or "test").strip().lower()
+
+    if not name:
+        return {"error": "Assessment name is required"}, 400
+    if not subject_ref:
+        return {"error": "Select a subject"}, 400
+
+    subject = _resolve_subject(subject_ref)
+    if not subject or subject.deleted_at:
+        return {"error": "Subject not found"}, 404
+
+    trainer = _uploader_trainer(user)
+    if trainer and subject.id not in _trainer_subject_ids(trainer):
+        return {"error": "You are not assigned to this subject"}, 403
+
+    module = subject.module
+    course = module.course if module else None
+    if not module or not course:
+        return {"error": "The selected subject is not linked to a course"}, 400
+
+    try:
+        total_marks = int(payload.get("total_marks"))
+        pass_marks = int(payload.get("pass_marks"))
+    except (TypeError, ValueError):
+        return {"error": "Total marks and pass marks must be whole numbers"}, 400
+    if total_marks <= 0:
+        return {"error": "Total marks must be greater than zero"}, 400
+    if pass_marks < 0 or pass_marks > total_marks:
+        return {"error": "Pass marks must be between zero and total marks"}, 400
+
+    assessment = Assessment(
+        name=name,
+        assessment_type=assessment_type or "test",
+        assessment_scope="formative",
+        total_marks=total_marks,
+        pass_marks=pass_marks,
+        course_id=course.id,
+        module_id=module.id,
+    )
+    db.session.add(assessment)
+    db.session.commit()
+
+    return {
+        "id": str(assessment.id),
+        "code": assessment.code,
+        "name": assessment.name,
+        "assessment_type": assessment.assessment_type,
+        "assessment_scope": assessment.assessment_scope,
+        "total_marks": assessment.total_marks,
+        "pass_marks": assessment.pass_marks,
+        "course_id": str(course.id),
+        "course_name": course.name,
+        "module_id": str(module.id),
+        "module_name": module.name,
+        "subject_id": str(subject.id),
+        "subject_code": subject.code,
+    }, 201
+
+
 # ── Preview / validate ────────────────────────────────────────────────────────
 
 @bp.post("/preview")
@@ -277,7 +346,7 @@ def preview_bulk():
         feedback
 
     A `subject_code` form field selects one subject for the whole batch; rows
-    without their own subject_id inherit it.
+    without their own subject code inherit it.
     """
     user, error, status = require_permission("scores.create")
     if error:

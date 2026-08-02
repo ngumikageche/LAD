@@ -184,6 +184,48 @@ def test_trainer_only_lists_subjects_they_are_assigned(client, app):
     assert [subject["code"] for subject in body["subjects"]] == [ids["assigned_subject_code"]]
 
 
+def test_trainer_can_create_formative_assessment_for_assigned_subject(client, app):
+    ids = _seed(app)
+    headers = _login(client, "trainer@example.com")
+
+    response = client.post(
+        "/scores/bulk-marks/assessments",
+        headers=headers,
+        json={
+            "name": "CAT 2",
+            "assessment_type": "test",
+            "subject_code": ids["assigned_subject_code"],
+            "total_marks": 50,
+            "pass_marks": 25,
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.get_json()
+    assert body["code"].startswith("ASM")
+    assert body["assessment_scope"] == "formative"
+    assert body["subject_code"] == ids["assigned_subject_code"]
+    assert body["total_marks"] == 50
+
+
+def test_trainer_cannot_create_assessment_for_unassigned_subject(client, app):
+    ids = _seed(app)
+    headers = _login(client, "trainer@example.com")
+
+    response = client.post(
+        "/scores/bulk-marks/assessments",
+        headers=headers,
+        json={
+            "name": "Unauthorized CAT",
+            "subject_code": ids["unassigned_subject_code"],
+            "total_marks": 100,
+            "pass_marks": 50,
+        },
+    )
+
+    assert response.status_code == 403
+
+
 def test_selected_subject_code_fills_rows_that_omit_one(client, app):
     ids = _seed(app)
     headers = _login(client, "admin@example.com")

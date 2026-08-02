@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Upload, Download, CheckCircle2, XCircle, AlertCircle,
-  FileText, Send, RefreshCw, ChevronDown, ChevronUp, Book,
+  FileText, Send, RefreshCw, ChevronDown, ChevronUp, Book, Plus,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { apiRequest } from '../api/client';
@@ -23,7 +23,9 @@ interface SubjectOption {
   id: string;
   code: string | null;
   name: string;
+  module_id: string | null;
   module_name: string | null;
+  course_id: string | null;
   course_name: string | null;
 }
 
@@ -79,8 +81,16 @@ export default function BulkMarksUploadPage() {
   const fileRef = useRef<HTMLInputElement>(null);
 
   const [assessments, setAssessments] = useState<Assessment[]>([]);
+  const [assessmentLoadError, setAssessmentLoadError] = useState<string | null>(null);
   const [selectedAssessment, setSelectedAssessment] = useState<Assessment | null>(null);
   const [assessmentSearch, setAssessmentSearch] = useState('');
+  const [showCreateAssessment, setShowCreateAssessment] = useState(false);
+  const [newAssessmentName, setNewAssessmentName] = useState('');
+  const [newAssessmentType, setNewAssessmentType] = useState('test');
+  const [newAssessmentSubjectId, setNewAssessmentSubjectId] = useState('');
+  const [newAssessmentTotal, setNewAssessmentTotal] = useState('100');
+  const [newAssessmentPass, setNewAssessmentPass] = useState('50');
+  const [creatingAssessment, setCreatingAssessment] = useState(false);
 
   const [subjects, setSubjects] = useState<SubjectOption[]>([]);
   const [subjectScope, setSubjectScope] = useState<'all' | 'trainer'>('all');
@@ -101,8 +111,11 @@ export default function BulkMarksUploadPage() {
 
   useEffect(() => {
     apiRequest<{ assessments: Assessment[] }>('/scores/bulk-marks/assessments', { token })
-      .then((d) => setAssessments(d.assessments))
-      .catch(() => {});
+      .then((d) => {
+        setAssessments(d.assessments);
+        setAssessmentLoadError(null);
+      })
+      .catch((err) => setAssessmentLoadError(err instanceof Error ? err.message : 'Could not load assessments'));
   }, [token]);
 
   useEffect(() => {
@@ -125,6 +138,39 @@ export default function BulkMarksUploadPage() {
       `${s.code ?? ''} ${s.name} ${s.module_name ?? ''} ${s.course_name ?? ''}`.toLowerCase().includes(needle)
     );
   }, [subjects, subjectSearch]);
+
+  const handleCreateAssessment = async () => {
+    const subject = subjects.find((item) => item.id === newAssessmentSubjectId);
+    if (!subject || !newAssessmentName.trim()) {
+      setError('Enter an assessment name and select a subject.');
+      return;
+    }
+    setCreatingAssessment(true);
+    setError(null);
+    try {
+      const created = await apiRequest<Assessment>('/scores/bulk-marks/assessments', {
+        method: 'POST',
+        token,
+        body: {
+          name: newAssessmentName.trim(),
+          assessment_type: newAssessmentType,
+          subject_code: subject.code ?? subject.id,
+          total_marks: Number(newAssessmentTotal),
+          pass_marks: Number(newAssessmentPass),
+        },
+      });
+      setAssessments((current) => [...current, created]);
+      setSelectedAssessment(created);
+      setSelectedSubject(subject);
+      setShowCreateAssessment(false);
+      setNewAssessmentName('');
+      setTemplateNote(`Assessment ${created.code ?? created.id} created. Download the class list next.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not create the assessment');
+    } finally {
+      setCreatingAssessment(false);
+    }
+  };
 
   const handlePreview = async () => {
     if (!file) return;
@@ -294,10 +340,102 @@ export default function BulkMarksUploadPage() {
 
       {/* Step 1 — Assessment picker */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-        <h2 className="text-base font-semibold text-slate-200 mb-1">Step 1 — Select Assessment</h2>
-        <p className="text-xs text-slate-500 mb-4">
-          Choose the assessment this upload applies to. The assessment ID will be pre-filled in the template.
-        </p>
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-slate-200 mb-1">Step 1 — Select Assessment</h2>
+            <p className="text-xs text-slate-500">
+              Choose an assessment or create one. Its code will be pre-filled in the template.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setShowCreateAssessment((current) => !current);
+              if (!newAssessmentSubjectId && selectedSubject) setNewAssessmentSubjectId(selectedSubject.id);
+            }}
+            className="flex shrink-0 items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-2 text-xs font-semibold text-white hover:bg-indigo-700"
+          >
+            <Plus size={14} /> Create Assessment
+          </button>
+        </div>
+
+        {showCreateAssessment && (
+          <div className="mb-4 rounded-xl border border-indigo-500/30 bg-indigo-500/10 p-4">
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <label className="text-xs text-slate-400">
+                Assessment name
+                <input
+                  value={newAssessmentName}
+                  onChange={(event) => setNewAssessmentName(event.target.value)}
+                  placeholder="e.g. CAT 1"
+                  className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200"
+                />
+              </label>
+              <label className="text-xs text-slate-400">
+                Subject
+                <select
+                  value={newAssessmentSubjectId}
+                  onChange={(event) => setNewAssessmentSubjectId(event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200"
+                >
+                  <option value="">Select subject</option>
+                  {subjects.map((subject) => (
+                    <option key={subject.id} value={subject.id}>
+                      {subject.code ?? '—'} — {subject.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-xs text-slate-400">
+                Type
+                <select
+                  value={newAssessmentType}
+                  onChange={(event) => setNewAssessmentType(event.target.value)}
+                  className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200"
+                >
+                  <option value="test">Test</option>
+                  <option value="quiz">Quiz</option>
+                  <option value="assignment">Assignment</option>
+                  <option value="project">Project</option>
+                  <option value="practical">Practical</option>
+                </select>
+              </label>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="text-xs text-slate-400">
+                  Total marks
+                  <input
+                    type="number"
+                    min="1"
+                    value={newAssessmentTotal}
+                    onChange={(event) => setNewAssessmentTotal(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200"
+                  />
+                </label>
+                <label className="text-xs text-slate-400">
+                  Pass marks
+                  <input
+                    type="number"
+                    min="0"
+                    value={newAssessmentPass}
+                    onChange={(event) => setNewAssessmentPass(event.target.value)}
+                    className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200"
+                  />
+                </label>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={handleCreateAssessment}
+              disabled={creatingAssessment || subjects.length === 0}
+              className="mt-3 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-50"
+            >
+              {creatingAssessment ? 'Creating…' : 'Create and Select'}
+            </button>
+            {subjects.length === 0 && (
+              <p className="mt-2 text-xs text-amber-300">No assigned subjects are available for this assessment.</p>
+            )}
+          </div>
+        )}
 
         <div className="flex gap-3 mb-3">
           <input
@@ -310,8 +448,10 @@ export default function BulkMarksUploadPage() {
         </div>
 
         <div className="max-h-48 overflow-y-auto rounded-lg border border-slate-700 divide-y divide-slate-800">
-          {filteredAssessments.length === 0 ? (
-            <p className="px-4 py-3 text-sm text-slate-500">No assessments found.</p>
+          {assessmentLoadError ? (
+            <p className="px-4 py-3 text-sm text-red-300">{assessmentLoadError}</p>
+          ) : filteredAssessments.length === 0 ? (
+            <p className="px-4 py-3 text-sm text-slate-500">No assessments found. Use Create Assessment above.</p>
           ) : filteredAssessments.map((a) => (
             <button
               key={a.id}
