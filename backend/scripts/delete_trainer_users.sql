@@ -247,25 +247,46 @@ COMMIT;
 
 BEGIN;
 
-WITH target_users AS (
-    SELECT u.id
-    FROM users u
-    JOIN roles_permissions r ON r.id = u.role_id
-    WHERE ((:'match_mode' <> 'trainer-row' AND lower(r.role_name) = 'trainer')
-        OR (:'match_mode' <> 'role'        AND EXISTS (SELECT 1 FROM trainers t WHERE t.user_id = u.id)))
-      AND (:'successor_email' = '' OR lower(u.email) <> lower(:'successor_email'))
-),
-marked_trainers AS (
+CREATE TEMP TABLE _target_users ON COMMIT DROP AS
+SELECT u.id
+FROM users u
+JOIN roles_permissions r ON r.id = u.role_id
+WHERE ((:'match_mode' <> 'trainer-row' AND lower(r.role_name) = 'trainer')
+    OR (:'match_mode' <> 'role'        AND EXISTS (SELECT 1 FROM trainers t WHERE t.user_id = u.id)))
+  AND (:'successor_email' = '' OR lower(u.email) <> lower(:'successor_email'));
+
+-- State BEFORE the update, so "0 marked" is never ambiguous: it distinguishes
+-- "nothing matched" from "everything already carried a deleted_at".
+SELECT
+    count(*)                                            AS targeted,
+    count(*) FILTER (WHERE deleted_at IS NOT NULL)      AS already_soft_deleted,
+    count(*) FILTER (WHERE deleted_at IS NULL)          AS to_mark_now
+FROM users WHERE id IN (SELECT id FROM _target_users);
+
+WITH marked_trainers AS (
     UPDATE trainers
        SET deleted_at = now()
-     WHERE user_id IN (SELECT id FROM target_users)
+     WHERE user_id IN (SELECT id FROM _target_users)
        AND deleted_at IS NULL
-    RETURNING id
+    RETURNING 1
+),
+marked_users AS (
+    UPDATE users
+       SET deleted_at = now()
+     WHERE id IN (SELECT id FROM _target_users)
+       AND deleted_at IS NULL
+    RETURNING 1
 )
-UPDATE users
-   SET deleted_at = now()
- WHERE id IN (SELECT id FROM target_users)
-   AND deleted_at IS NULL;
+SELECT (SELECT count(*) FROM marked_trainers) AS trainer_rows_newly_marked,
+       (SELECT count(*) FROM marked_users)    AS user_rows_newly_marked;
+
+-- Who is in scope and what state they are in now.
+SELECT u.email, r.role_name, u.deleted_at AS user_deleted_at, t.deleted_at AS trainer_deleted_at
+FROM users u
+JOIN roles_permissions r ON r.id = u.role_id
+LEFT JOIN trainers t ON t.user_id = u.id
+WHERE u.id IN (SELECT id FROM _target_users)
+ORDER BY u.email;
 
 COMMIT;
 

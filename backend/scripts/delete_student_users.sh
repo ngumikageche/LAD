@@ -16,8 +16,10 @@
 #                              role_name='trainer'; `trainer-row` is anyone with a
 #                              row in `trainers` (what permissions.py:49 grants on).
 #                              Default: role
-#   --successor EMAIL          trainers only, with `reassign`: hand student-facing
-#                              rows to this trainer so `hard` has nothing to guard
+#   --successor EMAIL          trainers only: the survivor. Inherits student-facing
+#                              rows on `reassign`, and is exempt from `soft`/`hard`.
+#                              Defaults to $DEFAULT_TRAINER_SUCCESSOR below;
+#                              override per-run, or via LAD_SUCCESSOR_EMAIL.
 #   --yes                      skip the confirmation prompt (soft/hard/reassign)
 #   --no-backup                skip the pg_dump before `hard` (not advised)
 #   --database NAME            override the database name
@@ -37,8 +39,13 @@ DO_BACKUP=1
 DB_OVERRIDE=""
 ACTION=""
 ROLE="students"
-SUCCESSOR=""
 MATCH_MODE="role"
+
+# Who inherits a departing trainer's student-facing rows, and survives the run.
+# Overridden by --successor, or by exporting LAD_SUCCESSOR_EMAIL.
+DEFAULT_TRAINER_SUCCESSOR="omangaken94@gmail.com"
+SUCCESSOR="${LAD_SUCCESSOR_EMAIL:-}"
+SUCCESSOR_IS_DEFAULT=0
 
 die() { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 info() { printf '\033[36m==>\033[0m %s\n' "$*"; }
@@ -77,15 +84,17 @@ if [ "$ROLE" = "students" ] && [ "$MATCH_MODE" != "role" ]; then
     die "--match applies to --role trainers only"
 fi
 
-if [ "$ACTION" = "reassign" ]; then
-    [ "$ROLE" = "trainers" ] || die "reassign applies to --role trainers only"
-    [ -n "$SUCCESSOR" ] || die "reassign needs --successor EMAIL (an existing trainer to inherit the rows)"
-fi
 if [ -n "$SUCCESSOR" ] && [ "$ROLE" != "trainers" ]; then
     die "--successor applies to --role trainers only"
 fi
-if [ "$ROLE" = "trainers" ] && [ -z "$SUCCESSOR" ] && [ "$ACTION" != "preflight" ]; then
-    warn "no --successor: nobody is exempt from the target set"
+# Apply the default before anything asserts a successor is present.
+if [ "$ROLE" = "trainers" ] && [ -z "$SUCCESSOR" ]; then
+    SUCCESSOR="$DEFAULT_TRAINER_SUCCESSOR"
+    SUCCESSOR_IS_DEFAULT=1
+fi
+if [ "$ACTION" = "reassign" ]; then
+    [ "$ROLE" = "trainers" ] || die "reassign applies to --role trainers only"
+    [ -n "$SUCCESSOR" ] || die "reassign needs --successor EMAIL (an existing trainer to inherit the rows)"
 fi
 
 # ---------------------------------------------------------------------------
@@ -166,6 +175,40 @@ psql -qtAc 'SELECT 1' >/dev/null 2>&1 || die \
     "cannot connect to $DB_USER@$DB_HOST:$DB_PORT/$DB_NAME — is the cluster running? (sudo pg_ctlcluster 17 main start)"
 
 info "connected: $DB_USER@$DB_HOST:$DB_PORT/$DB_NAME"
+
+# ---------------------------------------------------------------------------
+# Verify the successor actually exists. Without this a typo would silently exempt
+# nobody, and `hard` would delete the very account meant to inherit the history.
+# ---------------------------------------------------------------------------
+if [ "$ROLE" = "trainers" ] && [ -n "$SUCCESSOR" ] && [ "$ACTION" != "preflight" ]; then
+    # Query goes on stdin: psql performs :variable interpolation there, but NOT
+    # inside -c. Passing the address as a variable also keeps it out of the SQL text.
+    resolved="$(printf '%s\n' "
+        SELECT count(*)::text || ' ' ||
+               count(*) FILTER (WHERE t.id IS NOT NULL)::text
+        FROM users u
+        LEFT JOIN trainers t ON t.user_id = u.id
+        WHERE lower(u.email) = lower(:'e');" \
+        | psql -qtA -v ON_ERROR_STOP=1 -v e="$SUCCESSOR" | tr -d '\r')"
+    n_users="${resolved%% *}"
+    n_trainer_rows="${resolved##* }"
+    case "$n_users" in
+        0) die "successor '$SUCCESSOR' is not a user in $DB_NAME — fix --successor (or LAD_SUCCESSOR_EMAIL)" ;;
+        1) ;;
+        *) die "successor '$SUCCESSOR' matches $n_users users in $DB_NAME — ambiguous, refusing to continue" ;;
+    esac
+    if [ "$SUCCESSOR_IS_DEFAULT" -eq 1 ]; then
+        info "successor: $SUCCESSOR (built-in default — override with --successor)"
+    else
+        info "successor: $SUCCESSOR"
+    fi
+    if [ "$n_trainer_rows" -eq 0 ]; then
+        if [ "$ACTION" = "reassign" ]; then
+            die "successor '$SUCCESSOR' exists but has no row in \`trainers\` — reassign needs one to hand trainer_id columns to"
+        fi
+        warn "successor '$SUCCESSOR' has no \`trainers\` row; they are exempt from deletion but cannot inherit trainer_id columns"
+    fi
+fi
 
 # ---------------------------------------------------------------------------
 # Slice the SQL file by its `-- @@SECTION <name>` markers.
