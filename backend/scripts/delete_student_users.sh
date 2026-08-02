@@ -11,6 +11,11 @@
 #
 # Options:
 #   --role students|trainers   which role to remove (default: students)
+#   --match role|trainer-row|both
+#                              trainers only: who counts as a trainer. `role` is
+#                              role_name='trainer'; `trainer-row` is anyone with a
+#                              row in `trainers` (what permissions.py:49 grants on).
+#                              Default: role
 #   --successor EMAIL          trainers only, with `reassign`: hand student-facing
 #                              rows to this trainer so `hard` has nothing to guard
 #   --yes                      skip the confirmation prompt (soft/hard/reassign)
@@ -33,6 +38,7 @@ DB_OVERRIDE=""
 ACTION=""
 ROLE="students"
 SUCCESSOR=""
+MATCH_MODE="role"
 
 die() { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 info() { printf '\033[36m==>\033[0m %s\n' "$*"; }
@@ -43,6 +49,7 @@ while [ $# -gt 0 ]; do
         preflight|preview|dry-run|soft|hard|reassign) ACTION="$1" ;;
         --role)       ROLE="${2:-}"; shift ;;
         --successor)  SUCCESSOR="${2:-}"; shift ;;
+        --match)      MATCH_MODE="${2:-}"; shift ;;
         --yes|-y)     ASSUME_YES=1 ;;
         --no-backup)  DO_BACKUP=0 ;;
         --database)   DB_OVERRIDE="${2:-}"; shift ;;
@@ -62,12 +69,23 @@ esac
 [ -f "$SQL_FILE" ] || die "missing $SQL_FILE"
 command -v psql >/dev/null || die "psql not found on PATH"
 
+case "$MATCH_MODE" in
+    role|trainer-row|both) ;;
+    *) die "--match must be role, trainer-row or both (got '$MATCH_MODE')" ;;
+esac
+if [ "$ROLE" = "students" ] && [ "$MATCH_MODE" != "role" ]; then
+    die "--match applies to --role trainers only"
+fi
+
 if [ "$ACTION" = "reassign" ]; then
     [ "$ROLE" = "trainers" ] || die "reassign applies to --role trainers only"
     [ -n "$SUCCESSOR" ] || die "reassign needs --successor EMAIL (an existing trainer to inherit the rows)"
 fi
-if [ -n "$SUCCESSOR" ] && [ "$ACTION" != "reassign" ]; then
-    warn "--successor is only used by 'reassign'; ignoring it for '$ACTION'"
+if [ -n "$SUCCESSOR" ] && [ "$ROLE" != "trainers" ]; then
+    die "--successor applies to --role trainers only"
+fi
+if [ "$ROLE" = "trainers" ] && [ -z "$SUCCESSOR" ] && [ "$ACTION" != "preflight" ]; then
+    warn "no --successor: nobody is exempt from the target set"
 fi
 
 # ---------------------------------------------------------------------------
@@ -169,10 +187,17 @@ require_section() {
 confirm() {
     [ "$ASSUME_YES" -eq 1 ] && return 0
     local count
+    local pred="lower(r.role_name) = '$ROLE_NAME'"
+    if [ "$ROLE" = "trainers" ]; then
+        case "$MATCH_MODE" in
+            trainer-row) pred="EXISTS (SELECT 1 FROM trainers t WHERE t.user_id = u.id)" ;;
+            both)        pred="$pred OR EXISTS (SELECT 1 FROM trainers t WHERE t.user_id = u.id)" ;;
+        esac
+    fi
     count="$(psql -qtAc "
         SELECT count(*) FROM users u
         JOIN roles_permissions r ON r.id = u.role_id
-        WHERE lower(r.role_name) = '$ROLE_NAME';" | tr -d '[:space:]')"
+        WHERE $pred;" | tr -d '[:space:]')"
     printf '\n\033[33m%s will affect %s %s account(s) in %s.\033[0m\n' \
         "$ACTION" "$count" "$ROLE_NAME" "$DB_NAME"
     [ "$ACTION" = "hard" ] && printf '\033[31mThis is permanent.\033[0m\n'
@@ -194,7 +219,9 @@ backup() {
 # ON_ERROR_STOP matters most for `hard`: without it psql would sail past a
 # failed DELETE and still reach the COMMIT. The per-table NOTICE trail shows how
 # far a failed run got, so the statement echo would only add noise.
-run_sql() { psql -v ON_ERROR_STOP=1; }
+# match_mode must always be defined: psql aborts on an unset :variable, and the
+# trainer sections reference it. Harmless for the student file, which never does.
+run_sql() { psql -v ON_ERROR_STOP=1 -v match_mode="$MATCH_MODE" -v successor_email="$SUCCESSOR"; }
 
 case "$ACTION" in
     preflight)
@@ -216,8 +243,9 @@ case "$ACTION" in
         ;;
     reassign)
         confirm
-        require_section reassign | psql -v ON_ERROR_STOP=1 -v successor_email="$SUCCESSOR"
-        info "reassigned to $SUCCESSOR — re-run preview; the '!!' rows should now be 0"
+        require_section reassign | run_sql
+        info "reassigned to $SUCCESSOR — they are excluded from the target set"
+        info "pass the SAME --successor to dry-run/hard, or that run will delete them"
         ;;
     soft)
         confirm

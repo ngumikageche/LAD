@@ -23,6 +23,14 @@
 --   3. Decide deliberately to destroy those learner records, and write that
 --      statement yourself. This file will not do it for you.
 --
+-- WHO COUNTS AS A TRAINER (:match_mode, --match on the wrapper)
+--   role         users whose role_name is 'trainer'          (default)
+--   trainer-row  users who have a row in `trainers`, whatever their role --
+--                this is what permissions.py:49 actually grants access on
+--   both         either of the above
+-- These can differ a lot. Section 1 prints a role breakdown of every `trainers`
+-- row so you can see which mode matches what you mean before deleting anything.
+--
 -- Sections:
 --   0 preflight  read-only coverage audit against pg_constraint
 --   1 preview    read-only row counts
@@ -122,24 +130,44 @@ ORDER BY (p.tbl IS NULL) DESC, (p.disposition = 'null' AND a.notnull) DESC, 1, 2
 
 BEGIN;
 
+-- :match_mode decides who counts as a trainer -- see the header.
+--   role        role_name = 'trainer'
+--   trainer-row has a row in `trainers`, whatever the role  (permissions.py:49)
+--   both        either
 CREATE TEMP TABLE _target_users ON COMMIT DROP AS
 SELECT u.id
 FROM users u
 JOIN roles_permissions r ON r.id = u.role_id
-WHERE lower(r.role_name) = 'trainer';
+WHERE ((:'match_mode' <> 'trainer-row' AND lower(r.role_name) = 'trainer')
+    OR (:'match_mode' <> 'role'        AND EXISTS (SELECT 1 FROM trainers t WHERE t.user_id = u.id)))
+  -- A nominated successor is always a survivor, never a target. Without this,
+  -- --match trainer-row would sweep up every possible successor and reassign
+  -- could never be satisfied.
+  AND (:'successor_email' = '' OR lower(u.email) <> lower(:'successor_email'));
 
 CREATE TEMP TABLE _target_trainers ON COMMIT DROP AS
 SELECT t.id FROM trainers t WHERE t.user_id IN (SELECT id FROM _target_users);
 
-SELECT count(*) AS trainer_role_users FROM _target_users;
-SELECT count(*) AS trainer_records    FROM _target_trainers;
+SELECT count(*) AS target_users FROM _target_users;   -- per :match_mode
+SELECT count(*) AS target_trainer_rows FROM _target_trainers;
 
--- Trainer rows NOT in scope, because their user has some other role (or none).
--- permissions.py:49 treats anyone with a trainers row as a trainer, so these
--- accounts still act as trainers and will survive this script.
+-- Trainer rows NOT in scope. permissions.py:49 treats anyone with a trainers row
+-- as a trainer, so these accounts keep trainer access and survive this script.
 SELECT count(*) AS trainer_rows_outside_scope
 FROM trainers t
 WHERE t.id NOT IN (SELECT id FROM _target_trainers);
+
+-- If the count above is not 0, this is why: what role the trainers actually hold.
+-- With --match role a `trainers` row whose user is, say, 'Instructor' is invisible.
+SELECT
+    coalesce(r.role_name, '(no user / no role)') AS role_of_trainer_rows,
+    count(*)                                    AS trainer_rows,
+    count(*) FILTER (WHERE t.id IN (SELECT id FROM _target_trainers)) AS in_scope_now
+FROM trainers t
+LEFT JOIN users u ON u.id = t.user_id
+LEFT JOIN roles_permissions r ON r.id = u.role_id
+GROUP BY 1
+ORDER BY 2 DESC;
 
 WITH plan(ord, label, tbl, cond) AS (VALUES
     ( 1, 'trainer_courses',            'trainer_courses',              'trainer_id IN (SELECT id FROM _target_trainers)'),
@@ -180,11 +208,23 @@ ORDER BY ord;
 
 -- Student attendance riding on those sessions. Deleting the sessions would take
 -- these with them, which is why attendance_sessions is a guard and not a delete.
-SELECT count(*) AS student_attendance_on_those_sessions
-FROM attendance_records ar
-WHERE ar.session_id IN (
-    SELECT id FROM attendance_sessions WHERE trainer_id IN (SELECT id FROM _target_trainers)
-);
+-- The linking column is read from the catalog rather than hardcoded (it is
+-- attendance_session_id, not session_id), so a rename cannot break this query.
+SELECT (xpath('/row/c/text()', query_to_xml(format(
+        'SELECT count(*) AS c FROM attendance_records WHERE %I IN '
+        '(SELECT id FROM attendance_sessions WHERE trainer_id IN (SELECT id FROM _target_trainers))',
+        fk.col), false, true, '')))[1]::text::bigint
+    AS student_attendance_on_those_sessions
+FROM (
+    SELECT att.attname AS col
+    FROM pg_constraint con
+    JOIN LATERAL unnest(con.conkey) AS k(attnum) ON TRUE
+    JOIN pg_attribute att ON att.attrelid = con.conrelid AND att.attnum = k.attnum
+    WHERE con.contype = 'f'
+      AND con.conrelid  = to_regclass('public.attendance_records')
+      AND con.confrelid = to_regclass('public.attendance_sessions')
+    LIMIT 1
+) fk;
 
 SELECT u.id, u.email, u.name, t.id AS trainer_id, u.deleted_at
 FROM users u
@@ -211,7 +251,9 @@ WITH target_users AS (
     SELECT u.id
     FROM users u
     JOIN roles_permissions r ON r.id = u.role_id
-    WHERE lower(r.role_name) = 'trainer'
+    WHERE ((:'match_mode' <> 'trainer-row' AND lower(r.role_name) = 'trainer')
+        OR (:'match_mode' <> 'role'        AND EXISTS (SELECT 1 FROM trainers t WHERE t.user_id = u.id)))
+      AND (:'successor_email' = '' OR lower(u.email) <> lower(:'successor_email'))
 ),
 marked_trainers AS (
     UPDATE trainers
@@ -241,16 +283,27 @@ COMMIT;
 -- successor, so section 4 has nothing left to guard against. Learner records are
 -- preserved and stay attributed to a real person.
 --
--- Requires :successor_email -- an existing user with a trainers row who is NOT
--- themselves in the target set. The wrapper passes it via --successor.
+-- Requires :successor_email -- an existing user with a trainers row. They are
+-- automatically excluded from the target set, so "delete every trainer except
+-- this one, and give them the work" is a single coherent operation. Pass the
+-- SAME --successor to `hard` afterwards, or that run will delete them.
 
 BEGIN;
 
+-- :match_mode decides who counts as a trainer -- see the header.
+--   role        role_name = 'trainer'
+--   trainer-row has a row in `trainers`, whatever the role  (permissions.py:49)
+--   both        either
 CREATE TEMP TABLE _target_users ON COMMIT DROP AS
 SELECT u.id
 FROM users u
 JOIN roles_permissions r ON r.id = u.role_id
-WHERE lower(r.role_name) = 'trainer';
+WHERE ((:'match_mode' <> 'trainer-row' AND lower(r.role_name) = 'trainer')
+    OR (:'match_mode' <> 'role'        AND EXISTS (SELECT 1 FROM trainers t WHERE t.user_id = u.id)))
+  -- A nominated successor is always a survivor, never a target. Without this,
+  -- --match trainer-row would sweep up every possible successor and reassign
+  -- could never be satisfied.
+  AND (:'successor_email' = '' OR lower(u.email) <> lower(:'successor_email'));
 
 CREATE TEMP TABLE _target_trainers ON COMMIT DROP AS
 SELECT t.id FROM trainers t WHERE t.user_id IN (SELECT id FROM _target_users);
@@ -273,15 +326,12 @@ BEGIN
         RAISE EXCEPTION 'Successor % did not resolve to exactly one user with a trainers row (got %).',
             coalesce(current_setting('lad.successor_email', true), '?'), n;
     END IF;
+    -- Belt and braces: the target-set predicate already excludes the successor.
     IF EXISTS (SELECT 1 FROM _successor WHERE user_id IN (SELECT id FROM _target_users)) THEN
-        RAISE EXCEPTION 'The successor is themselves a trainer-role user, so section 4 would delete them and everything just reassigned to them.'
-            USING HINT =
-                'Removing EVERY trainer leaves nobody with the trainer role to inherit. Either '
-                '(a) point --successor at a non-trainer-role account that has a trainers row, '
-                'typically an admin who also teaches, or (b) change the successor''s role off '
-                '''trainer'' first so they fall outside the target set, or (c) soft delete '
-                '(section 2) instead, which keeps every attribution intact.';
+        RAISE EXCEPTION 'The successor is still inside the target set -- refusing to reassign rows to an account this run would then delete.';
     END IF;
+    RAISE NOTICE 'successor % is excluded from the target set and will survive', 
+        coalesce(current_setting('lad.successor_email', true), '?');
 END $$;
 
 DO $$
@@ -334,7 +384,9 @@ CREATE TEMP TABLE _target_users ON COMMIT DROP AS
 SELECT u.id
 FROM users u
 JOIN roles_permissions r ON r.id = u.role_id
-WHERE lower(r.role_name) = 'trainer'
+WHERE ((:'match_mode' <> 'trainer-row' AND lower(r.role_name) = 'trainer')
+    OR (:'match_mode' <> 'role'        AND EXISTS (SELECT 1 FROM trainers t WHERE t.user_id = u.id)))
+  AND (:'successor_email' = '' OR lower(u.email) <> lower(:'successor_email'))
 FOR UPDATE OF u;
 
 CREATE TEMP TABLE _target_trainers ON COMMIT DROP AS
