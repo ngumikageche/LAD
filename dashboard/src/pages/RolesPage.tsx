@@ -35,6 +35,7 @@ export const PREDEFINED_ROLES: Array<{
       'analytics.read': true,
       'reports.student.term.view': true,
       'reports.student.attendance.view': true,
+      'feedback.trainer.submit': true,
     },
   },
   {
@@ -45,6 +46,7 @@ export const PREDEFINED_ROLES: Array<{
       'trainers.update': true,
       'students.read': true,
       'subjects.read': true,
+      'courses.read': true,
       'scores.read': true,
       'scores.create': true,
       'scores.update': true,
@@ -95,6 +97,8 @@ export const PREDEFINED_ROLES: Array<{
       'reports.admin.enrolment.view': true,
       'reports.class.performance.view': true,
       'reports.class.at_risk.view': true,
+      'reports.student.write': true,
+      'feedback.trainer.view': true,
     },
   },
 ];
@@ -153,9 +157,12 @@ const PERMISSION_TABS: Array<{ label: string; permissions: PermDef[] }> = [
   {
     label: 'Academics',
     permissions: [
-      { key: 'scores.create',              label: 'Create Scores' },
+      { key: 'scores.create',              label: 'Create Scores (incl. Bulk Marks Upload)' },
       { key: 'scores.read',                label: 'Read Scores' },
       { key: 'scores.update',              label: 'Update Scores' },
+      { key: 'admin.scores.read',          label: 'Open Score Management' },
+      { key: 'admin.scores.update',        label: 'Edit Any Score' },
+      { key: 'admin.scores.delete',        label: 'Delete Any Score' },
       { key: 'student_subjects.create',    label: 'Assign Student Subjects' },
       { key: 'student_subjects.read',      label: 'Read Student Subjects' },
       { key: 'student_subjects.delete',    label: 'Remove Student Subjects' },
@@ -228,6 +235,14 @@ const PERMISSION_TABS: Array<{ label: string; permissions: PermDef[] }> = [
       { key: 'reports.admin.compliance.view',      label: 'View Compliance Reports' },
       { key: 'reports.admin.compliance.print',     label: 'Print Compliance Reports' },
       { key: 'reports.admin.compliance.export',    label: 'Export Compliance Reports' },
+    ],
+  },
+  {
+    label: 'Feedback',
+    permissions: [
+      { key: 'feedback.trainer.submit',   label: 'Submit Feedback About Trainers' },
+      { key: 'feedback.trainer.view',     label: 'View All Trainer Feedback' },
+      { key: 'feedback.trainer.moderate', label: 'Reveal Identity On Anonymous Feedback' },
     ],
   },
 ];

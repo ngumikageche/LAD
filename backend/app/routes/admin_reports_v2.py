@@ -18,19 +18,31 @@ from ..models.student import Student
 from ..models.subject import Subject
 from ..models.term import Term
 from ..models.user import User
-from .permissions import get_current_user, log_view, _is_admin
+from .permissions import get_current_user, log_view, _has_permission, _is_admin, _is_student
 
 bp = Blueprint("admin_reports_v2", __name__, url_prefix="/reports/admin")
 
 PASS_MARK = 50.0
 
 
-def _admin_only():
+def _require_report_access(permission_key: str):
+    """
+    Admins always pass. Everyone else needs the matching report permission
+    (e.g. `reports.admin.pass_rate.view`) so trainers and managers can be granted
+    school-wide reports without being made admins. Students are always blocked.
+    """
     user, error, status = get_current_user()
     if error:
         return None, error, status
-    if not _is_admin(user):
-        return None, {"error": "Admin access required"}, 403
+    if _is_admin(user):
+        return user, None, None
+    if _is_student(user):
+        return None, {"error": "Permission denied"}, 403
+    if not (
+        _has_permission(user, permission_key)
+        or _has_permission(user, f"{permission_key}.view")
+    ):
+        return None, {"error": "Permission denied"}, 403
     return user, None, None
 
 
@@ -69,7 +81,7 @@ def _prev_term(term: Term) -> Term | None:
 
 @bp.get("/exam-results")
 def exam_results():
-    user, error, status = _admin_only()
+    user, error, status = _require_report_access("reports.admin.pass_rate")
     if error:
         return error, status
 
@@ -336,7 +348,7 @@ def exam_results():
 
 @bp.get("/fees")
 def fee_collection():
-    user, error, status = _admin_only()
+    user, error, status = _require_report_access("reports.admin.fees")
     if error:
         return error, status
 
@@ -380,7 +392,7 @@ def fee_collection():
 
 @bp.get("/enrolment")
 def enrolment_overview():
-    user, error, status = _admin_only()
+    user, error, status = _require_report_access("reports.admin.enrolment")
     if error:
         return error, status
 

@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Upload, Download, CheckCircle2, XCircle, AlertCircle,
-  FileText, Send, RefreshCw, ChevronDown, ChevronUp,
+  FileText, Send, RefreshCw, ChevronDown, ChevronUp, Book,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { apiRequest } from '../api/client';
@@ -16,6 +16,14 @@ interface Assessment {
   total_marks: number;
   pass_marks: number | null;
   course_id: string | null;
+  course_name: string | null;
+}
+
+interface SubjectOption {
+  id: string;
+  code: string | null;
+  name: string;
+  module_name: string | null;
   course_name: string | null;
 }
 
@@ -55,6 +63,7 @@ interface CommitResult {
   errors: string[];
   batch_id?: string;
   evidence_files?: number;
+  subject?: { id: string; code: string | null; name: string } | null;
 }
 
 const GRADE_COLORS: Record<string, string> = {
@@ -73,10 +82,17 @@ export default function BulkMarksUploadPage() {
   const [selectedAssessment, setSelectedAssessment] = useState<Assessment | null>(null);
   const [assessmentSearch, setAssessmentSearch] = useState('');
 
+  const [subjects, setSubjects] = useState<SubjectOption[]>([]);
+  const [subjectScope, setSubjectScope] = useState<'all' | 'trainer'>('all');
+  const [selectedSubject, setSelectedSubject] = useState<SubjectOption | null>(null);
+  const [subjectSearch, setSubjectSearch] = useState('');
+
   const [file, setFile] = useState<File | null>(null);
   const [examCopies, setExamCopies] = useState<File[]>([]);
   const [previewing, setPreviewing] = useState(false);
   const [committing, setCommitting] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const [templateNote, setTemplateNote] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [commitResult, setCommitResult] = useState<CommitResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -89,9 +105,26 @@ export default function BulkMarksUploadPage() {
       .catch(() => {});
   }, [token]);
 
+  useEffect(() => {
+    apiRequest<{ subjects: SubjectOption[]; scope: 'all' | 'trainer' }>('/scores/bulk-marks/subjects', { token })
+      .then((d) => {
+        setSubjects(d.subjects ?? []);
+        setSubjectScope(d.scope ?? 'all');
+      })
+      .catch(() => setSubjects([]));
+  }, [token]);
+
   const filteredAssessments = assessments.filter((a) =>
     `${a.name} ${a.course_name ?? ''} ${a.assessment_type}`.toLowerCase().includes(assessmentSearch.toLowerCase())
   );
+
+  const filteredSubjects = useMemo(() => {
+    const needle = subjectSearch.trim().toLowerCase();
+    if (!needle) return subjects;
+    return subjects.filter((s) =>
+      `${s.code ?? ''} ${s.name} ${s.module_name ?? ''} ${s.course_name ?? ''}`.toLowerCase().includes(needle)
+    );
+  }, [subjects, subjectSearch]);
 
   const handlePreview = async () => {
     if (!file) return;
@@ -102,6 +135,8 @@ export default function BulkMarksUploadPage() {
 
     const fd = new FormData();
     fd.append('file', file);
+    if (selectedSubject?.code) fd.append('subject_code', selectedSubject.code);
+    else if (selectedSubject) fd.append('subject_id', selectedSubject.id);
 
     try {
       const r = await fetch(`${API}/scores/bulk-marks/preview`, {
@@ -130,6 +165,8 @@ export default function BulkMarksUploadPage() {
 
     const fd = new FormData();
     fd.append('rows', JSON.stringify(preview.rows));
+    if (selectedSubject?.code) fd.append('subject_code', selectedSubject.code);
+    else if (selectedSubject) fd.append('subject_id', selectedSubject.id);
     examCopies.forEach((copy) => fd.append('exam_copies', copy));
 
     try {
@@ -152,16 +189,69 @@ export default function BulkMarksUploadPage() {
     }
   };
 
-  const downloadTemplate = () => window.open(`${API}/scores/bulk-marks/template`, '_blank');
+  const downloadTemplate = async () => {
+    setDownloading(true);
+    setError(null);
+    setTemplateNote(null);
+
+    const params = new URLSearchParams();
+    if (selectedAssessment) params.set('assessment_id', selectedAssessment.code ?? selectedAssessment.id);
+    if (selectedSubject?.code) params.set('subject_code', selectedSubject.code);
+    else if (selectedSubject) params.set('subject_id', selectedSubject.id);
+
+    try {
+      const r = await fetch(`${API}/scores/bulk-marks/template?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!r.ok) {
+        const d = await r.json().catch(() => ({}));
+        setError(d.error ?? 'Could not download the template');
+        return;
+      }
+
+      const rows = Number(r.headers.get('X-Template-Rows') ?? 0);
+      const prefilled = r.headers.get('X-Template-Prefilled') === '1';
+      const filename = /filename=([^;]+)/.exec(r.headers.get('Content-Disposition') ?? '')?.[1]?.trim()
+        ?? 'marks_upload_template.csv';
+
+      const blob = await r.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+
+      if (!prefilled) {
+        setTemplateNote('Blank template downloaded. Select an assessment first to prefill your class list.');
+      } else if (rows === 0) {
+        setTemplateNote(
+          'No learners matched this assessment — check that they are enrolled in its course'
+          + (selectedSubject ? ' and take the selected subject.' : '.'),
+        );
+      } else {
+        setTemplateNote(
+          `Template prefilled with ${rows} learner${rows === 1 ? '' : 's'}. Fill in the marks_obtained column and upload it below.`,
+        );
+      }
+    } catch {
+      setError('Network error while downloading the template');
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   const reset = () => {
     setFile(null);
     setPreview(null);
     setCommitResult(null);
     setError(null);
+    setTemplateNote(null);
     setExamCopies([]);
     setSelectedAssessment(null);
     setAssessmentSearch('');
+    setSelectedSubject(null);
+    setSubjectSearch('');
     if (fileRef.current) fileRef.current.value = '';
   };
 
@@ -175,15 +265,32 @@ export default function BulkMarksUploadPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-slate-200">Bulk Marks Upload</h1>
-          <p className="text-sm text-slate-500">Upload a CSV using student codes — preview, validate, then commit.</p>
+          <p className="text-sm text-slate-500">
+            Pick the assessment and subject by code, upload a CSV of student codes, then preview, validate, and commit.
+          </p>
         </div>
-        <button
-          onClick={downloadTemplate}
-          className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-300 bg-slate-800 border border-slate-700 rounded-lg hover:bg-slate-700 transition"
-        >
-          <Download size={15} /> Download Template
-        </button>
+        <div className="text-right">
+          <button
+            onClick={downloadTemplate}
+            disabled={downloading}
+            className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-slate-300 bg-slate-800 border border-slate-700 rounded-lg hover:bg-slate-700 disabled:opacity-50 transition"
+          >
+            {downloading ? <RefreshCw size={15} className="animate-spin" /> : <Download size={15} />}
+            {selectedAssessment ? 'Download Class List' : 'Download Template'}
+          </button>
+          <p className="mt-1.5 text-xs text-slate-500">
+            {selectedAssessment
+              ? 'Prefilled with your learners — just add marks'
+              : 'Select an assessment to prefill learners'}
+          </p>
+        </div>
       </div>
+
+      {templateNote && (
+        <div className="flex items-center gap-2 text-sm text-slate-300 bg-slate-800/70 border border-slate-700 rounded-lg px-4 py-3">
+          <FileText size={16} className="text-indigo-400 shrink-0" /> {templateNote}
+        </div>
+      )}
 
       {/* Step 1 — Assessment picker */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
@@ -255,9 +362,86 @@ export default function BulkMarksUploadPage() {
         )}
       </div>
 
-      {/* Step 2 — Upload CSV */}
+      {/* Step 2 — Subject picker (by code) */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-        <h2 className="text-base font-semibold text-slate-200 mb-4">Step 2 — Upload CSV File</h2>
+        <h2 className="text-base font-semibold text-slate-200 mb-1">Step 2 — Select Subject (optional)</h2>
+        <p className="text-xs text-slate-500 mb-4">
+          Pick the subject by its code. Every CSV row without its own <span className="font-mono">subject_id</span>{' '}
+          is filed under this subject.
+          {subjectScope === 'trainer' && ' Only subjects assigned to you are listed.'}
+        </p>
+
+        <div className="flex gap-3 mb-3">
+          <input
+            type="text"
+            placeholder="Search by subject code (SUB001) or name..."
+            value={subjectSearch}
+            onChange={(e) => setSubjectSearch(e.target.value)}
+            className="flex-1 px-3 py-2 text-sm bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          />
+          {selectedSubject && (
+            <button
+              onClick={() => setSelectedSubject(null)}
+              className="px-4 py-2 text-sm text-slate-400 bg-slate-800 border border-slate-700 rounded-lg hover:bg-slate-700 transition"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+
+        <div className="max-h-48 overflow-y-auto rounded-lg border border-slate-700 divide-y divide-slate-800">
+          {filteredSubjects.length === 0 ? (
+            <p className="px-4 py-3 text-sm text-slate-500">
+              {subjects.length === 0
+                ? 'No subjects are available to you.'
+                : 'No subjects match that search.'}
+            </p>
+          ) : filteredSubjects.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => setSelectedSubject(s)}
+              className={`w-full text-left px-4 py-3 text-sm transition hover:bg-slate-800 ${
+                selectedSubject?.id === s.id ? 'bg-teal-500/10 border-l-2 border-teal-500' : ''
+              }`}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <span className="font-mono text-xs bg-slate-700 text-teal-300 px-2 py-0.5 rounded mr-2">
+                    {s.code ?? '—'}
+                  </span>
+                  <span className="font-medium text-slate-200">{s.name}</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs text-slate-500 shrink-0">
+                  {s.course_name && <span className="truncate max-w-[160px]">{s.course_name}</span>}
+                  {selectedSubject?.id === s.id && <CheckCircle2 size={14} className="text-teal-400" />}
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+
+        {selectedSubject && (
+          <div className="mt-3 flex items-center gap-3 p-3 bg-teal-500/10 border border-teal-500/30 rounded-lg text-sm">
+            <Book size={16} className="text-teal-400 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <span className="font-mono text-teal-300 font-bold mr-2">{selectedSubject.code}</span>
+              <span className="text-slate-200 font-medium">{selectedSubject.name}</span>
+              <span className="text-slate-400 ml-2">— applied to every row without its own subject</span>
+            </div>
+            <button
+              onClick={() => navigator.clipboard.writeText(selectedSubject.code ?? selectedSubject.id)}
+              className="text-xs text-teal-400 hover:text-teal-300 font-mono shrink-0"
+              title="Copy subject code"
+            >
+              Copy Code
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Step 3 — Upload CSV */}
+      <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+        <h2 className="text-base font-semibold text-slate-200 mb-4">Step 3 — Upload CSV File</h2>
 
         <div
           className="border-2 border-dashed border-slate-700 rounded-xl p-8 text-center cursor-pointer hover:border-indigo-500 transition"
@@ -275,7 +459,9 @@ export default function BulkMarksUploadPage() {
             <div className="text-slate-500">
               <Upload size={28} className="mx-auto mb-2 text-slate-600" />
               <p className="text-sm">Click to select a CSV file</p>
-              <p className="text-xs mt-1">Required columns: student_id, marks_obtained, assessment_id</p>
+              <p className="text-xs mt-1">
+                Upload the prefilled class list from Step 1, or any CSV with student_id, marks_obtained, assessment_id
+              </p>
             </div>
           )}
           <input
@@ -323,9 +509,10 @@ export default function BulkMarksUploadPage() {
           <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
             {[
               { col: 'student_id', req: true, desc: 'Student code (STU001) or reg number' },
-              { col: 'marks_obtained', req: true, desc: 'Numeric score' },
+              { col: 'student_name', req: false, desc: 'Prefilled for reference — ignored on upload' },
+              { col: 'marks_obtained', req: true, desc: 'Numeric score — the column you fill in' },
               { col: 'assessment_id', req: true, desc: 'Assessment code (ASM001) from Step 1' },
-              { col: 'subject_id', req: false, desc: 'Subject code (SUB001) or UUID' },
+              { col: 'subject_id', req: false, desc: 'Subject code (SUB001) — overrides Step 2' },
               { col: 'term', req: false, desc: 'e.g. Term 1 2026' },
               { col: 'feedback', req: false, desc: 'Text feedback' },
             ].map(({ col, req, desc }) => (
@@ -340,10 +527,20 @@ export default function BulkMarksUploadPage() {
               </div>
             ))}
           </div>
-          {selectedAssessment && (
-            <div className="mt-3 pt-3 border-t border-slate-700 text-xs text-slate-400">
-              Selected assessment code for your CSV:{' '}
-              <span className="font-mono text-indigo-300 font-bold">{selectedAssessment.code}</span>
+          {(selectedAssessment || selectedSubject) && (
+            <div className="mt-3 pt-3 border-t border-slate-700 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-400">
+              {selectedAssessment && (
+                <span>
+                  Assessment code for your CSV:{' '}
+                  <span className="font-mono text-indigo-300 font-bold">{selectedAssessment.code}</span>
+                </span>
+              )}
+              {selectedSubject && (
+                <span>
+                  Subject applied to this batch:{' '}
+                  <span className="font-mono text-teal-300 font-bold">{selectedSubject.code}</span>
+                </span>
+              )}
             </div>
           )}
         </div>
@@ -398,6 +595,13 @@ export default function BulkMarksUploadPage() {
           </div>
           <p className="mt-4 text-sm text-slate-400">
             Exam evidence files uploaded: <span className="font-semibold text-slate-200">{commitResult.evidence_files ?? 0}</span>
+            {commitResult.subject ? (
+              <>
+                {' • '}Subject:{' '}
+                <span className="font-mono font-semibold text-teal-300">{commitResult.subject.code}</span>{' '}
+                <span className="text-slate-300">{commitResult.subject.name}</span>
+              </>
+            ) : null}
           </p>
           {commitResult.errors.length > 0 && (
             <div className="mt-4 p-3 bg-red-500/10 border border-red-500/30 rounded-lg">
@@ -416,7 +620,7 @@ export default function BulkMarksUploadPage() {
           {/* Summary bar */}
           <div className="p-5 border-b border-slate-800 flex flex-wrap items-center justify-between gap-4">
             <div className="flex items-center gap-4">
-              <h2 className="text-base font-semibold text-slate-200">Step 3 — Review & Commit</h2>
+              <h2 className="text-base font-semibold text-slate-200">Step 4 — Review & Commit</h2>
               <div className="flex items-center gap-3 text-sm">
                 <span className="flex items-center gap-1 text-green-300">
                   <CheckCircle2 size={14} /> {preview.valid} valid

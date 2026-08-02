@@ -66,6 +66,12 @@ def _trainer_can_use_subject(trainer_id: uuid.UUID, student_id: uuid.UUID, subje
 
 
 def _require_report_writer():
+    """
+    Anyone holding `reports.student.write` may author learner reports — not just
+    admins and trainers. Returns (user, trainer, error, status); `trainer` is set
+    only when the author has a trainer profile, and it scopes them to the
+    learners in their own subjects.
+    """
     user, error, status = get_current_user()
     if error:
         return None, None, error, status
@@ -73,15 +79,16 @@ def _require_report_writer():
     if _is_admin(user):
         return user, None, None, None
 
-    if not _is_trainer(user):
-        return None, None, {"error": "Trainer or admin access required"}, 403
+    # Students never author reports about learners, even if a role grants the key.
+    if _is_student(user) and not _is_trainer(user):
+        return None, None, {"error": "Permission denied"}, 403
 
     has_trainer_role = (user.role.role_name if user.role else "").lower() == "trainer"
     if not _has_permission(user, "reports.student.write") and not has_trainer_role:
         return None, None, {"error": "Permission denied"}, 403
 
     trainer = db.session.query(Trainer).filter(Trainer.user_id == user.id).first()
-    if not trainer:
+    if _is_trainer(user) and not trainer:
         return None, None, {"error": "Trainer profile not found"}, 404
 
     return user, trainer, None, None

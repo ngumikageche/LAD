@@ -29,17 +29,53 @@ export const UserTypeRoute = ({ allowedTypes }: { allowedTypes: string[] }) => {
   return <Outlet />;
 };
 
+type PermissionSubject = {
+  user_type?: string;
+  role_name?: string | null;
+  permissions?: Record<string, boolean>;
+} | null | undefined;
+
 /**
- * Blocks access based on permission key AND user_type exclusion.
- * Students are always denied even if a permission key somehow matches.
+ * Mirrors the backend's `_is_admin`: the wildcard grant or an Admin role name.
+ *
+ * Deliberately does NOT trust `user_type`, which the API sets to "admin" for
+ * every account without a student or trainer profile — a Manager included.
+ * Treating that as a wildcard would hand non-admin staff the whole dashboard.
+ */
+export const isAdminUser = (user: PermissionSubject): boolean => {
+  if (!user) return false;
+  if (user.permissions?.['*'] === true) return true;
+  const roleName = (user.role_name ?? '').toLowerCase();
+  return roleName === 'admin' || roleName === 'super admin';
+};
+
+/** True when the user holds `key`, or its `.view` / `.read` variant. */
+export const hasPermission = (user: PermissionSubject, key: string): boolean => {
+  if (isAdminUser(user)) return true;
+  const permissions = user?.permissions;
+  if (!permissions) return false;
+  return (
+    permissions[key] === true
+    || permissions[`${key}.view`] === true
+    || permissions[`${key}.read`] === true
+  );
+};
+
+/**
+ * Blocks access based on permission key(s) AND user_type exclusion.
+ * Pass an array to allow any one of several keys.
  * Admins always pass (wildcard). Trainers pass if they have the permission.
+ * `allowedTypes` lets a user type in regardless of keys — use it where the API
+ * already scopes the response to the caller (e.g. a trainer's own feedback).
  */
 export const PermissionRoute = ({
   permissionKey,
   deniedTypes = [],
+  allowedTypes = [],
 }: {
-  permissionKey: string;
+  permissionKey: string | string[];
   deniedTypes?: string[];
+  allowedTypes?: string[];
 }) => {
   const { user } = useAuth();
 
@@ -50,17 +86,14 @@ export const PermissionRoute = ({
     return <Navigate to="/" replace />;
   }
 
-  // Admins have wildcard access
-  if (user.user_type === 'admin' || user.permissions['*'] === true) {
+  if (allowedTypes.includes(user.user_type)) {
     return <Outlet />;
   }
 
-  const hasPermission =
-    user.permissions[permissionKey] === true
-    || user.permissions[`${permissionKey}.view`] === true
-    || user.permissions[`${permissionKey}.read`] === true;
+  const keys = Array.isArray(permissionKey) ? permissionKey : [permissionKey];
+  const allowed = keys.some((key) => hasPermission(user, key));
 
-  if (!hasPermission) {
+  if (!allowed) {
     return <Navigate to="/" replace />;
   }
 

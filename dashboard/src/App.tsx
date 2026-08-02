@@ -49,6 +49,8 @@ import TrainerEnrollmentPage from './pages/TrainerEnrollmentPage';
 import AdminCompliancePage from './pages/AdminCompliancePage';
 import StudentFeedbackPage from './pages/StudentFeedbackPage';
 import StudentDisciplinaryRecordsPage from './pages/StudentDisciplinaryRecordsPage';
+import StudentTrainerFeedbackPage from './pages/StudentTrainerFeedbackPage';
+import TrainerFeedbackInboxPage from './pages/TrainerFeedbackInboxPage';
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import ProtectedRoute, { UserTypeRoute, PermissionRoute } from './auth/ProtectedRoute';
 
@@ -89,6 +91,7 @@ function App() {
                 <Route path="/student/documents" element={<DocumentsPage />} />
                 <Route path="/student/online-exams" element={<StudentOnlineExamsPage />} />
                 <Route path="/student/feedback" element={<StudentFeedbackPage />} />
+                <Route path="/student/rate-trainers" element={<StudentTrainerFeedbackPage />} />
                 <Route path="/student/disciplinary-records" element={<StudentDisciplinaryRecordsPage />} />
               </Route>
               <Route element={<UserTypeRoute allowedTypes={['trainer']} />}>
@@ -118,31 +121,68 @@ function App() {
               <Route element={<PermissionRoute permissionKey="data.import" deniedTypes={['student']} />}>
                 <Route path="/data-import" element={<DataImportPage />} />
               </Route>
+
+              {/* Shared staff pages — open to any role granted the permission, not admins only */}
+              <Route element={<PermissionRoute permissionKey="scores.create" deniedTypes={['student']} />}>
+                <Route path="/admin/scores/bulk-upload" element={<BulkMarksUploadPage />} />
+                <Route path="/scores/bulk-upload" element={<BulkMarksUploadPage />} />
+              </Route>
+              <Route element={<PermissionRoute permissionKey="reports.student.write" deniedTypes={['student']} />}>
+                <Route path="/admin/student-reports" element={<ProvideFeedbackPage />} />
+                <Route path="/student-reports" element={<ProvideFeedbackPage />} />
+              </Route>
+              {/* Trainers always reach their own inbox; the API scopes it to them. */}
+              <Route element={<PermissionRoute permissionKey="feedback.trainer.view" allowedTypes={['trainer']} deniedTypes={['student']} />}>
+                <Route path="/trainer/feedback-received" element={<TrainerFeedbackInboxPage />} />
+              </Route>
+              <Route element={<PermissionRoute permissionKey="admin.scores.read" deniedTypes={['student']} />}>
+                <Route path="/admin/scores" element={<AdminScoreManagementPage />} />
+              </Route>
+              <Route element={<PermissionRoute permissionKey="students.read" deniedTypes={['student']} />}>
+                <Route path="/students" element={<StudentsPage />} />
+              </Route>
+              <Route element={<PermissionRoute permissionKey="trainers.read" deniedTypes={['student']} />}>
+                <Route path="/trainers" element={<TrainersPage />} />
+              </Route>
+              <Route element={<PermissionRoute permissionKey="subjects.read" deniedTypes={['student']} />}>
+                <Route path="/subjects" element={<SubjectsPage />} />
+              </Route>
+              <Route element={<PermissionRoute permissionKey="modules.read" deniedTypes={['student']} />}>
+                <Route path="/modules" element={<ModulesPage />} />
+              </Route>
+              <Route element={<PermissionRoute permissionKey="courses.read" deniedTypes={['student']} />}>
+                <Route path="/courses" element={<CoursesPage />} />
+              </Route>
+              <Route element={<PermissionRoute permissionKey={['scores.read', 'analytics.read']} deniedTypes={['student']} />}>
+                <Route path="/progress" element={<ProgressPage />} />
+              </Route>
+              <Route element={<PermissionRoute permissionKey="reports.admin.pass_rate" deniedTypes={['student']} />}>
+                <Route path="/admin/reports/exam-results" element={<AdminExamResultsPage />} />
+              </Route>
+              <Route element={<PermissionRoute permissionKey="reports.admin.enrolment" deniedTypes={['student']} />}>
+                <Route path="/admin/reports/enrolment" element={<AdminEnrolmentPage />} />
+              </Route>
+              <Route element={<PermissionRoute permissionKey="documents.read" deniedTypes={['student']} />}>
+                <Route path="/admin/documents" element={<DocumentsPage />} />
+              </Route>
+              <Route element={<PermissionRoute permissionKey="attendance.create" deniedTypes={['student']} />}>
+                <Route path="/admin/attendance/manual" element={<TrainerManualAttendancePage />} />
+              </Route>
+              <Route element={<UserTypeRoute allowedTypes={['trainer', 'admin']} />}>
+                <Route path="/admin/practical-assessments" element={<TrainerPracticalAssessmentPage />} />
+                <Route path="/admin/online-exams" element={<OnlineExamDesignerPage />} />
+              </Route>
+
+              {/* Institution governance and school-wide oversight stay admin-only */}
               <Route element={<UserTypeRoute allowedTypes={['admin']} />}>
                 <Route path="/admin/dashboard" element={<AdminDashboard />} />
                 <Route path="/admin/analytics" element={<AdminSystemAnalyticsPage />} />
-                <Route path="/admin/scores" element={<AdminScoreManagementPage />} />
-                <Route path="/admin/scores/bulk-upload" element={<BulkMarksUploadPage />} />
-                <Route path="/admin/scores/bulk-upload" element={<BulkMarksUploadPage />} />
-                <Route path="/admin/documents" element={<DocumentsPage />} />
                 <Route path="/admin/notifications" element={<AdminNotificationsPage />} />
-                <Route path="/admin/student-reports" element={<ProvideFeedbackPage />} />
-                <Route path="/admin/practical-assessments" element={<TrainerPracticalAssessmentPage />} />
-                <Route path="/admin/online-exams" element={<OnlineExamDesignerPage />} />
-                <Route path="/admin/reports/exam-results" element={<AdminExamResultsPage />} />
-                <Route path="/admin/reports/enrolment" element={<AdminEnrolmentPage />} />
                 <Route path="/admin/attendance" element={<AdminAttendancePage />} />
-                <Route path="/admin/attendance/manual" element={<TrainerManualAttendancePage />} />
                 <Route path="/admin/compliance" element={<AdminCompliancePage />} />
                 <Route path="/roles" element={<RolesPage />} />
                 <Route path="/institutions" element={<InstitutionsPage />} />
                 <Route path="/departments" element={<DepartmentsPage />} />
-                <Route path="/courses" element={<CoursesPage />} />
-                <Route path="/students" element={<StudentsPage />} />
-                <Route path="/trainers" element={<TrainersPage />} />
-                <Route path="/modules" element={<ModulesPage />} />
-                <Route path="/subjects" element={<SubjectsPage />} />
-                <Route path="/progress" element={<ProgressPage />} />
               </Route>
             </Route>
           </Route>

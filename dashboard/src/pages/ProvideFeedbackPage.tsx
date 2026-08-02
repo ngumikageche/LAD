@@ -31,7 +31,11 @@ type TrainerSubjectRow = {
 export default function ProvideFeedbackPage() {
   const { token, user } = useAuth();
   const [searchParams] = useSearchParams();
-  const isAdmin = user?.user_type === 'admin';
+  // Trainers are scoped to the learners in their own subjects; every other
+  // role that holds `reports.student.write` (admin, manager, registrar) sees
+  // the full learner list.
+  const isTrainer = Boolean(user?.trainer_id);
+  const seesAllStudents = !isTrainer;
   const [students, setStudents] = useState<Student[]>([]);
   const [subjects, setSubjects] = useState<SubjectOption[]>([]);
   const [loading, setLoading] = useState(true);
@@ -56,7 +60,7 @@ export default function ProvideFeedbackPage() {
       try {
         setLoading(true);
         setError(null);
-        const data = isAdmin
+        const data = seesAllStudents
           ? await trainerStudentsAPI.getAllStudentsForReports()
           : await trainerStudentsAPI.getStudentsInSubjects();
         setStudents(Array.isArray(data) ? data : []);
@@ -68,12 +72,12 @@ export default function ProvideFeedbackPage() {
     };
 
     loadStudents();
-  }, [isAdmin]);
+  }, [seesAllStudents]);
 
   useEffect(() => {
     const loadSubjects = async () => {
       try {
-        const items: Array<AdminSubjectRow | TrainerSubjectRow> = isAdmin
+        const items: Array<AdminSubjectRow | TrainerSubjectRow> = seesAllStudents
           ? await apiRequest<AdminSubjectRow[]>('/subjects', { token })
           : await trainerSubjectsAPI.getAssignedSubjects();
         setSubjects((Array.isArray(items) ? items : []).map((item) => ({
@@ -88,7 +92,7 @@ export default function ProvideFeedbackPage() {
     if (token) {
       loadSubjects();
     }
-  }, [isAdmin, token]);
+  }, [seesAllStudents, token]);
 
   const historySummary = useMemo(() => {
     return reportHistory.reduce<Record<string, number>>((acc, item) => {
@@ -184,7 +188,7 @@ export default function ProvideFeedbackPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-cyan-50 to-blue-50 p-6">
+    <div className="min-h-screen bg-slate-950">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="mb-8">
@@ -215,8 +219,8 @@ export default function ProvideFeedbackPage() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Student List */}
           <div className="bg-slate-900 border border-slate-800 rounded-lg shadow overflow-hidden">
-            <div className="p-6 border-b bg-slate-800">
-              <h2 className="text-lg font-bold text-slate-100">{isAdmin ? 'Students' : 'My Students'}</h2>
+            <div className="p-6 border-b border-slate-700 bg-slate-800">
+              <h2 className="text-lg font-bold text-slate-100">{seesAllStudents ? 'Students' : 'My Students'}</h2>
               <p className="text-sm text-slate-400 mt-1">
                 {students.length} student{students.length !== 1 ? 's' : ''}
               </p>
@@ -265,7 +269,7 @@ export default function ProvideFeedbackPage() {
                     {selectedStudent.name}
                   </h2>
 
-                  <div className="grid grid-cols-2 gap-4 mb-4 pb-4 border-b">
+                  <div className="grid grid-cols-2 gap-4 mb-4 pb-4 border-b border-slate-800">
                     <div>
                       <p className="text-sm text-slate-400">Email</p>
                       <p className="font-medium text-slate-100 flex items-center gap-2 mt-1">
@@ -396,8 +400,8 @@ export default function ProvideFeedbackPage() {
                   </div>
 
                   {/* Report Templates */}
-                  <div className="mb-4 p-4 bg-blue-500/10 rounded-lg">
-                    <p className="text-sm font-medium text-blue-900 mb-2">💡 Suggested Focus Areas:</p>
+                  <div className="mb-4 p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                    <p className="text-sm font-medium text-blue-200 mb-2">💡 Suggested Focus Areas:</p>
                     <div className="space-y-2">
                       <button
                         onClick={() =>
@@ -492,25 +496,20 @@ export default function ProvideFeedbackPage() {
         </div>
 
         {/* Best Practices */}
-        <div className="mt-8 bg-cyan-50 rounded-lg p-6 border border-cyan-200">
-          <h3 className="font-semibold text-cyan-900 mb-3">💬 Effective Feedback Tips</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="text-sm text-cyan-800">
-              <p className="font-medium mb-1">✓ Be Specific</p>
-              <p>Reference specific assignments or concepts</p>
-            </div>
-            <div className="text-sm text-cyan-800">
-              <p className="font-medium mb-1">✓ Be Constructive</p>
-              <p>Focus on improvement rather than criticism</p>
-            </div>
-            <div className="text-sm text-cyan-800">
-              <p className="font-medium mb-1">✓ Be Timely</p>
-              <p>Provide feedback as soon as possible after assessment</p>
-            </div>
-            <div className="text-sm text-cyan-800">
-              <p className="font-medium mb-1">✓ Be Encouraging</p>
-              <p>Balance criticism with praise for effort</p>
-            </div>
+        <div className="mt-8 rounded-lg border border-cyan-500/30 bg-cyan-500/10 p-6">
+          <h3 className="mb-3 font-semibold text-cyan-200">💬 Effective Feedback Tips</h3>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            {[
+              ['Be Specific', 'Reference specific assignments or concepts'],
+              ['Be Constructive', 'Focus on improvement rather than criticism'],
+              ['Be Timely', 'Provide feedback as soon as possible after assessment'],
+              ['Be Encouraging', 'Balance criticism with praise for effort'],
+            ].map(([title, detail]) => (
+              <div key={title} className="text-sm text-slate-300">
+                <p className="mb-1 font-medium text-cyan-200">✓ {title}</p>
+                <p className="text-slate-400">{detail}</p>
+              </div>
+            ))}
           </div>
         </div>
       </div>

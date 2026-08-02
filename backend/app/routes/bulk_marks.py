@@ -13,6 +13,7 @@ from ..models.course import Course
 from ..models.score import Score
 from ..models.score_evidence import ScoreEvidence
 from ..models.student import Student
+from ..models.student_subject import StudentSubject
 from ..models.subject import Subject
 from ..models.enrollment import Enrollment
 from ..models.trainer import Trainer
@@ -74,6 +75,87 @@ def _resolve_assessment(value: str) -> Assessment | None:
         return None
 
 
+def _uploader_trainer(user) -> Trainer | None:
+    """Trainer profile of the uploader, or None for admins uploading school-wide."""
+    if _is_admin(user):
+        return None
+    return db.session.query(Trainer).filter(Trainer.user_id == user.id).first()
+
+
+def _trainer_subject_ids(trainer: Trainer) -> set[uuid.UUID]:
+    rows = db.session.query(TrainerSubject.subject_id).filter(
+        TrainerSubject.trainer_id == trainer.id
+    ).all()
+    return {row[0] for row in rows if row[0]}
+
+
+def _selected_subject(user) -> tuple[Subject | None, dict | None, int | None]:
+    """
+    Resolve the subject the uploader picked for the whole batch.
+
+    Accepts `subject_code` (SUB001) or `subject_id` (UUID or code) from the form
+    body or query string. Returns (subject, error, status).
+    """
+    raw = (
+        request.form.get("subject_code")
+        or request.form.get("subject_id")
+        or request.args.get("subject_code")
+        or request.args.get("subject_id")
+        or ""
+    ).strip()
+    if not raw:
+        return None, None, None
+
+    subject = _resolve_subject(raw)
+    if not subject or subject.deleted_at:
+        return None, {"error": f"Subject '{raw}' not found"}, 404
+
+    trainer = _uploader_trainer(user)
+    if trainer and subject.id not in _trainer_subject_ids(trainer):
+        return None, {"error": "You are not assigned to this subject"}, 403
+    return subject, None, None
+
+
+@bp.get("/subjects")
+def list_subjects():
+    """Subjects the uploader may attach marks to, keyed by subject code."""
+    user, error, status = require_permission("scores.create")
+    if error:
+        return error, status
+
+    q = db.session.query(Subject).filter(Subject.deleted_at.is_(None))
+
+    trainer = _uploader_trainer(user)
+    if trainer:
+        subject_ids = _trainer_subject_ids(trainer)
+        if not subject_ids:
+            return {"subjects": [], "total": 0, "scope": "trainer"}, 200
+        q = q.filter(Subject.id.in_(subject_ids))
+
+    search = (request.args.get("search") or "").strip().lower()
+    items = []
+    for subject in q.order_by(Subject.code.asc(), Subject.name.asc()).all():
+        module = getattr(subject, "module", None)
+        course = getattr(module, "course", None)
+        if search and search not in f"{subject.code or ''} {subject.name}".lower():
+            continue
+        items.append({
+            "id": str(subject.id),
+            "code": subject.code,
+            "name": subject.name,
+            "module_id": str(subject.module_id) if subject.module_id else None,
+            "module_name": module.name if module else None,
+            "course_id": str(course.id) if course else None,
+            "course_name": course.name if course else None,
+        })
+
+    return {
+        "subjects": items,
+        "total": len(items),
+        "scope": "trainer" if trainer else "all",
+    }, 200
+
+
 @bp.get("/assessments")
 def list_assessments():
     user, error, status = require_permission("scores.create")
@@ -81,6 +163,7 @@ def list_assessments():
         return error, status
 
     course_id = request.args.get("course_id")
+    subject_ref = request.args.get("subject_code") or request.args.get("subject_id")
     q = db.session.query(Assessment)
     q = q.filter(Assessment.assessment_scope == "formative")
     if course_id:
@@ -88,6 +171,11 @@ def list_assessments():
             q = q.filter(Assessment.course_id == uuid.UUID(course_id))
         except (ValueError, TypeError):
             pass
+    if subject_ref:
+        subject = _resolve_subject(subject_ref.strip())
+        module = getattr(subject, "module", None) if subject else None
+        if module and module.course_id:
+            q = q.filter(Assessment.course_id == module.course_id)
     items = [
         {
             "id": str(a.id),
@@ -119,10 +207,17 @@ def preview_bulk():
         subject_id  (SUB001 code OR subject UUID)
         term
         feedback
+
+    A `subject_code` form field selects one subject for the whole batch; rows
+    without their own subject_id inherit it.
     """
     user, error, status = require_permission("scores.create")
     if error:
         return error, status
+
+    batch_subject, subject_error, subject_status = _selected_subject(user)
+    if subject_error:
+        return subject_error, subject_status
 
     file = request.files.get("file")
     if not file:
@@ -202,7 +297,7 @@ def preview_bulk():
         else:
             errors.append("student_id is required")
 
-        # Resolve subject (optional)
+        # Resolve subject — a row's own subject_id wins, otherwise the batch subject
         subject = None
         if subject_str:
             if subject_str not in subject_cache:
@@ -210,6 +305,8 @@ def preview_bulk():
             subject = subject_cache[subject_str]
             if not subject:
                 errors.append(f"Subject '{subject_str}' not found")
+        elif batch_subject:
+            subject = batch_subject
 
         # Compute grade
         grade = None
@@ -246,6 +343,11 @@ def preview_bulk():
         "valid": valid_count,
         "invalid": len(rows) - valid_count,
         "rows": rows,
+        "subject": {
+            "id": str(batch_subject.id),
+            "code": batch_subject.code,
+            "name": batch_subject.name,
+        } if batch_subject else None,
     }, 200
 
 
@@ -256,6 +358,10 @@ def commit_bulk():
     user, error, status = require_permission("scores.create")
     if error:
         return error, status
+
+    batch_subject, subject_error, subject_status = _selected_subject(user)
+    if subject_error:
+        return subject_error, subject_status
 
     evidence_files = usable_score_evidence_files(request.files.getlist("exam_copies"))
     if not evidence_files:
@@ -326,14 +432,22 @@ def commit_bulk():
         term = row.get("term") or (assessment.term.name if assessment.term else None)
         feedback = row.get("feedback") or None
 
-        # Resolve subject_id (may be a UUID string from preview output)
+        # Resolve subject_id (may be a UUID string or a code from preview output).
+        # Re-resolve rather than trusting the client, and fall back to the
+        # subject the uploader selected for the whole batch.
         subject_id = None
-        if row.get("subject_id"):
-            try:
-                subject_id = uuid.UUID(row["subject_id"])
-                subject_ids.add(subject_id)
-            except (ValueError, TypeError):
-                pass
+        raw_subject = str(row.get("subject_id") or "").strip()
+        if raw_subject:
+            row_subject = _resolve_subject(raw_subject)
+            if not row_subject:
+                errors.append(f"Row {row.get('row')}: subject '{raw_subject}' not found")
+                skipped += 1
+                continue
+            subject_id = row_subject.id
+        elif batch_subject:
+            subject_id = batch_subject.id
+        if subject_id:
+            subject_ids.add(subject_id)
 
         enrollment = db.session.query(Enrollment).filter(
             Enrollment.student_id == student.id,
@@ -411,20 +525,129 @@ def commit_bulk():
         "errors": errors,
         "batch_id": batch_id,
         "evidence_files": len(evidence_files),
+        "subject": {
+            "id": str(batch_subject.id),
+            "code": batch_subject.code,
+            "name": batch_subject.name,
+        } if batch_subject else None,
     }, 200
 
 
 # ── Template download ─────────────────────────────────────────────────────────
 
+TEMPLATE_HEADER = [
+    "student_id",
+    "student_name",
+    "marks_obtained",
+    "assessment_id",
+    "subject_id",
+    "term",
+    "feedback",
+]
+
+
+def _template_roster(user, assessment: Assessment, subject: Subject | None) -> list[Student]:
+    """
+    Learners who may legitimately receive marks for this assessment.
+
+    Mirrors the rules `commit_bulk` enforces — enrolled in the assessment's
+    course, and within the uploader's own subjects when they are a trainer — so
+    a prefilled row never turns into a rejected one.
+    """
+    query = (
+        db.session.query(Student)
+        .join(Enrollment, Enrollment.student_id == Student.id)
+        .filter(
+            Enrollment.deleted_at.is_(None),
+            Student.deleted_at.is_(None),
+        )
+    )
+
+    if assessment.course_id:
+        query = query.filter(Enrollment.course_id == assessment.course_id)
+
+    subject_ids: set[uuid.UUID] | None = None
+    if subject:
+        subject_ids = {subject.id}
+    else:
+        trainer = _uploader_trainer(user)
+        if trainer:
+            subject_ids = _trainer_subject_ids(trainer)
+            if not subject_ids:
+                return []
+
+    if subject_ids is not None:
+        query = query.join(
+            StudentSubject, StudentSubject.student_id == Student.id
+        ).filter(StudentSubject.subject_id.in_(subject_ids))
+
+    if not assessment.course_id and subject_ids is None:
+        # Nothing to scope by — refuse to dump every learner in the institution.
+        return []
+
+    return query.distinct().order_by(Student.code.asc()).all()
+
+
 @bp.get("/template")
 def download_template():
+    """
+    CSV template for a marks upload.
+
+    With `assessment_id` (and optionally `subject_code`) it comes back prefilled
+    with the class list — one row per learner, marks left blank. Without one it
+    falls back to a single worked example.
+    """
     from flask import Response
-    header = "student_id,marks_obtained,assessment_id,subject_id,term,feedback\n"
-    example = "STU001,75.5,ASM001,SUB001,Term 1 2026,Good work\n"
+
+    user, error, status = require_permission("scores.create")
+    if error:
+        return error, status
+
+    batch_subject, subject_error, subject_status = _selected_subject(user)
+    if subject_error:
+        return subject_error, subject_status
+
+    assessment_ref = (
+        request.args.get("assessment_id")
+        or request.args.get("assessment_code")
+        or ""
+    ).strip()
+    assessment = _resolve_assessment(assessment_ref) if assessment_ref else None
+    if assessment_ref and not assessment:
+        return {"error": f"Assessment '{assessment_ref}' not found"}, 404
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(TEMPLATE_HEADER)
+
+    learner_rows = 0
+    if assessment:
+        term = assessment.term.name if assessment.term else ""
+        subject_code = batch_subject.code if batch_subject else ""
+        for student in _template_roster(user, assessment, batch_subject):
+            writer.writerow([
+                student.code or student.registration_number,
+                student.user.name if student.user else "",
+                "",  # marks_obtained — the one column to fill in
+                assessment.code or str(assessment.id),
+                subject_code,
+                term,
+                "",
+            ])
+            learner_rows += 1
+        filename = f"marks_template_{assessment.code or 'assessment'}.csv"
+    else:
+        writer.writerow(["STU001", "Example Learner", "75.5", "ASM001", "SUB001", "Term 1 2026", "Good work"])
+        filename = "marks_upload_template.csv"
+
     return Response(
-        header + example,
+        buffer.getvalue(),
         mimetype="text/csv",
-        headers={"Content-Disposition": "attachment; filename=marks_upload_template.csv"},
+        headers={
+            "Content-Disposition": f"attachment; filename={filename}",
+            "X-Template-Rows": str(learner_rows),
+            "X-Template-Prefilled": "1" if assessment else "0",
+        },
     )
 
 
