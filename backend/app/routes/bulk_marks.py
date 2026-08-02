@@ -5,7 +5,9 @@ import io
 import json
 import uuid
 
-from flask import Blueprint, request, send_from_directory
+from flask import Blueprint, request, send_file, send_from_directory
+from openpyxl import Workbook, load_workbook
+from openpyxl.utils import get_column_letter
 
 from ..extensions import db
 from ..models.assessment import Assessment
@@ -16,6 +18,7 @@ from ..models.student import Student
 from ..models.student_subject import StudentSubject
 from ..models.subject import Subject
 from ..models.enrollment import Enrollment
+from ..models.module import Module
 from ..models.trainer import Trainer
 from ..models.trainer_subject import TrainerSubject
 from .permissions import _is_admin
@@ -29,6 +32,69 @@ from ..services.score_evidence import (
 from .permissions import get_current_user, require_permission
 
 bp = Blueprint("bulk_marks", __name__, url_prefix="/scores/bulk-marks")
+
+
+def _cell_text(value) -> str:
+    """Return a stable text value for CSV and XLSX cells."""
+    if value is None:
+        return ""
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value).strip()
+
+
+def _read_marks_upload(upload) -> tuple[list[str], list[tuple[int, dict[str, str]]]]:
+    """Read marks rows from either CSV or the first worksheet of an XLSX file."""
+    filename = str(upload.filename or "")
+    extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+
+    if extension == "csv":
+        try:
+            content = upload.read().decode("utf-8-sig")
+        except UnicodeDecodeError as exc:
+            raise ValueError("CSV files must use UTF-8 encoding") from exc
+        reader = csv.DictReader(io.StringIO(content))
+        if not reader.fieldnames:
+            raise ValueError("CSV is empty or has no headers")
+        fieldnames = [_cell_text(field).lower() for field in reader.fieldnames]
+        rows = []
+        for row_number, raw in enumerate(reader, start=2):
+            row = {
+                _cell_text(key).lower(): _cell_text(value)
+                for key, value in raw.items()
+                if key is not None
+            }
+            if any(row.values()):
+                rows.append((row_number, row))
+        return fieldnames, rows
+
+    if extension == "xlsx":
+        try:
+            workbook = load_workbook(upload, read_only=True, data_only=True)
+        except Exception as exc:
+            raise ValueError("The XLSX workbook could not be read") from exc
+        worksheet = (
+            workbook["Marks Upload"]
+            if "Marks Upload" in workbook.sheetnames
+            else workbook[workbook.sheetnames[0]]
+        )
+        values = worksheet.iter_rows(values_only=True)
+        headers = next(values, None)
+        if not headers:
+            raise ValueError("The workbook has no header row")
+        fieldnames = [_cell_text(header).lower() for header in headers]
+        rows = []
+        for row_number, values_row in enumerate(values, start=2):
+            row = {
+                header: _cell_text(value)
+                for header, value in zip(fieldnames, values_row)
+                if header
+            }
+            if any(row.values()):
+                rows.append((row_number, row))
+        return fieldnames, rows
+
+    raise ValueError("Upload a CSV or XLSX file")
 
 
 def _grade(marks: float, total: float) -> str:
@@ -198,13 +264,15 @@ def list_assessments():
 @bp.post("/preview")
 def preview_bulk():
     """
-    Parse uploaded CSV and return a preview with validation results.
-    Required CSV columns:
+    Parse an uploaded CSV or XLSX file and return a preview with validation results.
+    Required columns:
         student_id  (STU001 code OR registration_number)
         marks_obtained
-        assessment_id  (UUID of the assessment)
+        assessment_code  (ASM001 code)
     Optional:
-        subject_id  (SUB001 code OR subject UUID)
+        assessment_id  (legacy; UUID or ASM-code)
+        subject_code  (SUB001 code)
+        subject_id  (legacy; SUB001 code OR subject UUID)
         term
         feedback
 
@@ -224,21 +292,19 @@ def preview_bulk():
         return {"error": "No file provided"}, 400
 
     try:
-        content = file.read().decode("utf-8-sig")
-    except UnicodeDecodeError:
-        return {"error": "File must be UTF-8 encoded"}, 400
+        fieldnames, uploaded_rows = _read_marks_upload(file)
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
 
-    reader = csv.DictReader(io.StringIO(content))
-    if not reader.fieldnames:
-        return {"error": "CSV is empty or has no headers"}, 400
-
-    fields = {f.strip().lower() for f in reader.fieldnames}
+    fields = set(fieldnames)
     # Accept either student_id (new) or registration_number (legacy)
     has_student = "student_id" in fields or "registration_number" in fields
-    required = {"marks_obtained", "assessment_id"}
+    required = {"marks_obtained"}
     missing = required - fields
     if not has_student:
         missing.add("student_id")
+    if "assessment_code" not in fields and "assessment_id" not in fields:
+        missing.add("assessment_code")
     if missing:
         return {"error": f"Missing required columns: {', '.join(sorted(missing))}"}, 400
 
@@ -248,14 +314,15 @@ def preview_bulk():
     subject_cache: dict[str, Subject | None] = {}
 
     rows = []
-    for i, raw in enumerate(reader, start=2):
-        row: dict = {k.strip().lower(): (v or "").strip() for k, v in raw.items()}
+    for i, row in uploaded_rows:
 
         # Accept student_id (new) or registration_number (legacy)
         student_key = row.get("student_id") or row.get("registration_number", "")
         marks_str = row.get("marks_obtained", "")
-        assessment_id_str = row.get("assessment_id", "")
-        subject_str = row.get("subject_id", "")
+        assessment_id_str = row.get("assessment_code") or row.get("assessment_id", "")
+        # New exports use the accurately named subject_code column. Keep
+        # accepting subject_id so previously downloaded files still work.
+        subject_str = row.get("subject_code") or row.get("subject_id", "")
         term = row.get("term", "") or None
         feedback = row.get("feedback", "") or None
 
@@ -279,7 +346,7 @@ def preview_bulk():
             elif assessment.assessment_scope != "formative":
                 errors.append("Only internal formative assessments can be uploaded")
         else:
-            errors.append("assessment_id is required")
+            errors.append("assessment_code is required")
 
         # Validate marks range
         if marks is not None and assessment:
@@ -539,8 +606,8 @@ TEMPLATE_HEADER = [
     "student_id",
     "student_name",
     "marks_obtained",
-    "assessment_id",
-    "subject_id",
+    "assessment_code",
+    "subject_code",
     "term",
     "feedback",
 ]
@@ -588,17 +655,56 @@ def _template_roster(user, assessment: Assessment, subject: Subject | None) -> l
     return query.distinct().order_by(Student.code.asc()).all()
 
 
+def _template_subject_reference(user, assessment: Assessment | None) -> list[list[str]]:
+    """Subject reference rows visible to the uploader, optionally scoped by course."""
+    query = (
+        db.session.query(Subject)
+        .join(Module, Module.id == Subject.module_id)
+        .join(Course, Course.id == Module.course_id)
+        .filter(Subject.deleted_at.is_(None))
+    )
+    if assessment and assessment.course_id:
+        query = query.filter(Module.course_id == assessment.course_id)
+
+    trainer = _uploader_trainer(user)
+    if trainer:
+        subject_ids = _trainer_subject_ids(trainer)
+        if not subject_ids:
+            return []
+        query = query.filter(Subject.id.in_(subject_ids))
+
+    rows = []
+    for subject in query.order_by(Course.name, Module.name, Subject.name).all():
+        module = subject.module
+        course = module.course if module else None
+        rows.append([
+            module.code or str(module.id) if module else "",
+            module.name if module else "",
+            course.code or str(course.id) if course else "",
+            course.name if course else "",
+            subject.code or str(subject.id),
+            subject.name,
+        ])
+    return rows
+
+
+def _format_template_sheet(worksheet) -> None:
+    worksheet.freeze_panes = "A2"
+    worksheet.auto_filter.ref = worksheet.dimensions
+    for column_number, cells in enumerate(worksheet.columns, start=1):
+        width = min(max(len(str(cell.value or "")) for cell in cells) + 2, 42)
+        worksheet.column_dimensions[get_column_letter(column_number)].width = width
+
+
 @bp.get("/template")
 def download_template():
     """
-    CSV template for a marks upload.
+    XLSX template for a marks upload.
 
     With `assessment_id` (and optionally `subject_code`) it comes back prefilled
-    with the class list — one row per learner, marks left blank. Without one it
-    falls back to a single worked example.
+    with the class list — one row per learner, marks left blank. The second sheet
+    lists module, course, and subject codes available to the uploader.
     """
-    from flask import Response
-
     user, error, status = require_permission("scores.create")
     if error:
         return error, status
@@ -616,39 +722,61 @@ def download_template():
     if assessment_ref and not assessment:
         return {"error": f"Assessment '{assessment_ref}' not found"}, 404
 
-    buffer = io.StringIO()
-    writer = csv.writer(buffer)
-    writer.writerow(TEMPLATE_HEADER)
+    workbook = Workbook()
+    marks_sheet = workbook.active
+    marks_sheet.title = "Marks Upload"
+    marks_sheet.append(TEMPLATE_HEADER)
 
     learner_rows = 0
     if assessment:
         term = assessment.term.name if assessment.term else ""
         subject_code = batch_subject.code if batch_subject else ""
         for student in _template_roster(user, assessment, batch_subject):
-            writer.writerow([
+            marks_sheet.append([
                 student.code or student.registration_number,
                 student.user.name if student.user else "",
                 "",  # marks_obtained — the one column to fill in
+                # Use the human-readable assessment code in exported files.
+                # Legacy records without a code fall back to their UUID.
                 assessment.code or str(assessment.id),
                 subject_code,
                 term,
                 "",
             ])
             learner_rows += 1
-        filename = f"marks_template_{assessment.code or 'assessment'}.csv"
+        filename = f"marks_template_{assessment.code or 'assessment'}.xlsx"
     else:
-        writer.writerow(["STU001", "Example Learner", "75.5", "ASM001", "SUB001", "Term 1 2026", "Good work"])
-        filename = "marks_upload_template.csv"
+        # A generic template must not contain made-up identifiers that look
+        # uploadable. Select an assessment to receive a populated class list.
+        marks_sheet.append(["", "", "", "", "", "", ""])
+        filename = "marks_upload_template.xlsx"
+    _format_template_sheet(marks_sheet)
 
-    return Response(
-        buffer.getvalue(),
-        mimetype="text/csv",
-        headers={
-            "Content-Disposition": f"attachment; filename={filename}",
-            "X-Template-Rows": str(learner_rows),
-            "X-Template-Prefilled": "1" if assessment else "0",
-        },
+    reference_sheet = workbook.create_sheet("Module Course Subjects")
+    reference_sheet.append([
+        "module_code",
+        "module_name",
+        "course_code",
+        "course_name",
+        "subject_code",
+        "subject_name",
+    ])
+    for reference_row in _template_subject_reference(user, assessment):
+        reference_sheet.append(reference_row)
+    _format_template_sheet(reference_sheet)
+
+    output = io.BytesIO()
+    workbook.save(output)
+    output.seek(0)
+    response = send_file(
+        output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=filename,
     )
+    response.headers["X-Template-Rows"] = str(learner_rows)
+    response.headers["X-Template-Prefilled"] = "1" if assessment else "0"
+    return response
 
 
 @bp.get("/evidence/files/<path:filename>")

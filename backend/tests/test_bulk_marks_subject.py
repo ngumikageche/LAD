@@ -1,6 +1,7 @@
 import io
 import json
 
+from openpyxl import load_workbook
 from werkzeug.security import generate_password_hash
 
 
@@ -141,6 +142,10 @@ def _seed(app):
 
         return {
             "assessment_code": assessment.code,
+            "course_code": course.code,
+            "course_name": course.name,
+            "module_code": module.code,
+            "module_name": module.name,
             "student_code": student.code,
             "assigned_subject_code": assigned_subject.code,
             "assigned_subject_id": str(assigned_subject.id),
@@ -255,10 +260,17 @@ def test_trainer_cannot_select_a_subject_they_do_not_teach(client, app):
     assert response.status_code == 403
 
 
-def _parse_csv(response):
-    import csv as csv_module
+def _load_template(response):
+    return load_workbook(io.BytesIO(response.get_data()), data_only=True)
 
-    return list(csv_module.DictReader(io.StringIO(response.get_data(as_text=True))))
+
+def _sheet_rows(workbook, sheet_name: str):
+    values = workbook[sheet_name].iter_rows(values_only=True)
+    headers = next(values)
+    return [
+        {header: "" if value is None else str(value) for header, value in zip(headers, row)}
+        for row in values
+    ]
 
 
 def test_template_prefills_the_class_list_for_an_assessment(client, app):
@@ -275,7 +287,9 @@ def test_template_prefills_the_class_list_for_an_assessment(client, app):
     assert response.headers["X-Template-Rows"] == "2"
     assert ids["assessment_code"] in response.headers["Content-Disposition"]
 
-    rows = _parse_csv(response)
+    workbook = _load_template(response)
+    assert workbook.sheetnames == ["Marks Upload", "Module Course Subjects"]
+    rows = _sheet_rows(workbook, "Marks Upload")
     assert {row["student_id"] for row in rows} == {
         ids["student_code"],
         ids["other_student_code"],
@@ -283,8 +297,18 @@ def test_template_prefills_the_class_list_for_an_assessment(client, app):
     assert {row["student_name"] for row in rows} == {"Learner One", "Learner Two"}
     # Marks are the only thing left to fill in.
     assert all(row["marks_obtained"] == "" for row in rows)
-    assert all(row["assessment_id"] == ids["assessment_code"] for row in rows)
+    assert all(row["assessment_code"] == ids["assessment_code"] for row in rows)
     assert all(row["term"] == ids["term_name"] for row in rows)
+
+    reference_rows = _sheet_rows(workbook, "Module Course Subjects")
+    assert {
+        "module_code": ids["module_code"],
+        "module_name": ids["module_name"],
+        "course_code": ids["course_code"],
+        "course_name": ids["course_name"],
+        "subject_code": ids["assigned_subject_code"],
+        "subject_name": "Circuit Analysis",
+    } in reference_rows
 
 
 def test_template_narrows_the_class_list_to_the_selected_subject(client, app):
@@ -297,9 +321,9 @@ def test_template_narrows_the_class_list_to_the_selected_subject(client, app):
         headers=headers,
     )
 
-    rows = _parse_csv(response)
+    rows = _sheet_rows(_load_template(response), "Marks Upload")
     assert [row["student_id"] for row in rows] == [ids["student_code"]]
-    assert rows[0]["subject_id"] == ids["assigned_subject_code"]
+    assert rows[0]["subject_code"] == ids["assigned_subject_code"]
 
 
 def test_trainer_template_only_lists_learners_in_their_own_subjects(client, app):
@@ -312,11 +336,11 @@ def test_trainer_template_only_lists_learners_in_their_own_subjects(client, app)
     )
 
     # Learner Two takes only the subject this trainer does not teach.
-    rows = _parse_csv(response)
+    rows = _sheet_rows(_load_template(response), "Marks Upload")
     assert [row["student_id"] for row in rows] == [ids["student_code"]]
 
 
-def test_template_without_an_assessment_returns_the_worked_example(client, app):
+def test_template_without_an_assessment_does_not_export_a_fake_id(client, app):
     _seed(app)
     headers = _login(client, "admin@example.com")
 
@@ -324,8 +348,10 @@ def test_template_without_an_assessment_returns_the_worked_example(client, app):
 
     assert response.status_code == 200
     assert response.headers["X-Template-Prefilled"] == "0"
-    rows = _parse_csv(response)
-    assert [row["student_id"] for row in rows] == ["STU001"]
+    rows = _sheet_rows(_load_template(response), "Marks Upload")
+    assert len(rows) == 1
+    assert rows[0]["student_id"] == ""
+    assert rows[0]["assessment_code"] == ""
 
 
 def test_template_requires_authentication(client, app):
@@ -343,15 +369,22 @@ def test_prefilled_template_round_trips_through_preview(client, app):
         f"/scores/bulk-marks/template?assessment_id={ids['assessment_code']}"
         f"&subject_code={ids['assigned_subject_code']}",
         headers=headers,
-    ).get_data(as_text=True)
+    )
 
     # Fill in the one blank column, exactly as a trainer would.
-    filled = downloaded.replace(f"{ids['student_code']},Learner One,,", f"{ids['student_code']},Learner One,64,")
+    workbook = _load_template(downloaded)
+    worksheet = workbook["Marks Upload"]
+    headers_row = [cell.value for cell in worksheet[1]]
+    marks_column = headers_row.index("marks_obtained") + 1
+    worksheet.cell(row=2, column=marks_column, value=64)
+    filled = io.BytesIO()
+    workbook.save(filled)
+    filled.seek(0)
 
     body = client.post(
         "/scores/bulk-marks/preview",
         headers=headers,
-        data={"file": (io.BytesIO(filled.encode("utf-8")), "marks.csv")},
+        data={"file": (filled, "marks.xlsx")},
         content_type="multipart/form-data",
     ).get_json()
 

@@ -212,7 +212,7 @@ export default function BulkMarksUploadPage() {
       const rows = Number(r.headers.get('X-Template-Rows') ?? 0);
       const prefilled = r.headers.get('X-Template-Prefilled') === '1';
       const filename = /filename=([^;]+)/.exec(r.headers.get('Content-Disposition') ?? '')?.[1]?.trim()
-        ?? 'marks_upload_template.csv';
+        ?? 'marks_upload_template.xlsx';
 
       const blob = await r.blob();
       const url = URL.createObjectURL(blob);
@@ -266,7 +266,7 @@ export default function BulkMarksUploadPage() {
         <div>
           <h1 className="text-3xl font-bold text-slate-200">Bulk Marks Upload</h1>
           <p className="text-sm text-slate-500">
-            Pick the assessment and subject by code, upload a CSV of student codes, then preview, validate, and commit.
+            Pick the assessment and subject by code, upload an Excel or CSV file, then preview, validate, and commit.
           </p>
         </div>
         <div className="text-right">
@@ -366,7 +366,7 @@ export default function BulkMarksUploadPage() {
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
         <h2 className="text-base font-semibold text-slate-200 mb-1">Step 2 — Select Subject (optional)</h2>
         <p className="text-xs text-slate-500 mb-4">
-          Pick the subject by its code. Every CSV row without its own <span className="font-mono">subject_id</span>{' '}
+          Pick the subject by its code. Every upload row without its own <span className="font-mono">subject_code</span>{' '}
           is filed under this subject.
           {subjectScope === 'trainer' && ' Only subjects assigned to you are listed.'}
         </p>
@@ -439,9 +439,9 @@ export default function BulkMarksUploadPage() {
         )}
       </div>
 
-      {/* Step 3 — Upload CSV */}
+      {/* Step 3 — Upload Excel or CSV */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6">
-        <h2 className="text-base font-semibold text-slate-200 mb-4">Step 3 — Upload CSV File</h2>
+        <h2 className="text-base font-semibold text-slate-200 mb-4">Step 3 — Upload Marks File</h2>
 
         <div
           className="border-2 border-dashed border-slate-700 rounded-xl p-8 text-center cursor-pointer hover:border-indigo-500 transition"
@@ -458,16 +458,16 @@ export default function BulkMarksUploadPage() {
           ) : (
             <div className="text-slate-500">
               <Upload size={28} className="mx-auto mb-2 text-slate-600" />
-              <p className="text-sm">Click to select a CSV file</p>
+              <p className="text-sm">Click to select an Excel or CSV file</p>
               <p className="text-xs mt-1">
-                Upload the prefilled class list from Step 1, or any CSV with student_id, marks_obtained, assessment_id
+                Upload the Excel class list from Step 1, or a CSV with student_id, marks_obtained, assessment_code
               </p>
             </div>
           )}
           <input
             ref={fileRef}
             type="file"
-            accept=".csv,text/csv"
+            accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv"
             className="hidden"
             onChange={(e) => {
               setFile(e.target.files?.[0] ?? null);
@@ -503,16 +503,16 @@ export default function BulkMarksUploadPage() {
           )}
         </div>
 
-        {/* CSV column guide */}
+        {/* Upload column guide */}
         <div className="mt-4 p-4 bg-slate-800 rounded-lg border border-slate-700">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">CSV Column Reference</p>
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Upload Column Reference</p>
           <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
             {[
               { col: 'student_id', req: true, desc: 'Student code (STU001) or reg number' },
               { col: 'student_name', req: false, desc: 'Prefilled for reference — ignored on upload' },
               { col: 'marks_obtained', req: true, desc: 'Numeric score — the column you fill in' },
-              { col: 'assessment_id', req: true, desc: 'Assessment code (ASM001) from Step 1' },
-              { col: 'subject_id', req: false, desc: 'Subject code (SUB001) — overrides Step 2' },
+              { col: 'assessment_code', req: true, desc: 'Assessment code (ASM001) — auto-filled in Class List' },
+              { col: 'subject_code', req: false, desc: 'Subject code (SUB001) — auto-filled in Class List' },
               { col: 'term', req: false, desc: 'e.g. Term 1 2026' },
               { col: 'feedback', req: false, desc: 'Text feedback' },
             ].map(({ col, req, desc }) => (
@@ -531,8 +531,8 @@ export default function BulkMarksUploadPage() {
             <div className="mt-3 pt-3 border-t border-slate-700 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-400">
               {selectedAssessment && (
                 <span>
-                  Assessment code for your CSV:{' '}
-                  <span className="font-mono text-indigo-300 font-bold">{selectedAssessment.code}</span>
+                  Assessment code exported in your Class List:{' '}
+                  <span className="font-mono text-indigo-300 font-bold">{selectedAssessment.code ?? selectedAssessment.id}</span>
                 </span>
               )}
               {selectedSubject && (
