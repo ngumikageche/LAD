@@ -46,20 +46,34 @@ done
 command -v psql >/dev/null || die "psql not found on PATH"
 
 # ---------------------------------------------------------------------------
-# Connection. DATABASE_URL wins when present — it is what the app itself uses
-# (app/config.py), and in this project it has disagreed with DB_NAME.
+# Connection. Precedence: real environment > .env > built-in fallback, so you can
+# aim this at another database for a rehearsal without editing .env:
+#   DATABASE_URL=postgresql://…/scratch ./scripts/delete_student_users.sh preview
+# Within that, DATABASE_URL wins over the DB_* vars — it is what the app itself
+# reads (app/config.py), and in this project the two have disagreed.
 # ---------------------------------------------------------------------------
 if [ -f "$BACKEND_DIR/.env" ]; then
-    set -a
-    # shellcheck disable=SC1091
-    . "$BACKEND_DIR/.env"
-    set +a
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in ''|'#'*) continue ;; *=*) ;; *) continue ;; esac
+        key="${line%%=*}"
+        val="${line#*=}"
+        key="${key#"${key%%[![:space:]]*}"}"     # ltrim
+        key="${key%"${key##*[![:space:]]}"}"     # rtrim
+        case "$key" in ''|*[!A-Za-z0-9_]*) continue ;; esac
+        val="${val%$'\r'}"                       # tolerate CRLF
+        case "$val" in
+            \"*\") val="${val#\"}"; val="${val%\"}" ;;
+            \'*\') val="${val#\'}"; val="${val%\'}" ;;
+        esac
+        # Only set what the caller has not already provided.
+        if [ -z "${!key:-}" ]; then export "$key=$val"; fi
+    done < "$BACKEND_DIR/.env"
 else
-    warn "no $BACKEND_DIR/.env — using built-in defaults"
+    warn "no $BACKEND_DIR/.env — using the environment and built-in defaults"
 fi
 
-# Fallbacks only — .env above is authoritative. No password default on purpose:
-# an empty PGPASSWORD is not exported, so psql falls back to ~/.pgpass or prompts.
+# Fallbacks only. No password default on purpose: an empty PGPASSWORD is not
+# exported, so psql falls back to ~/.pgpass or prompts.
 DB_HOST="${DB_HOST:-localhost}"
 DB_PORT="${DB_PORT:-5432}"
 DB_USER="${DB_USER:-lad}"
@@ -151,8 +165,9 @@ backup() {
 }
 
 # ON_ERROR_STOP matters most for `hard`: without it psql would sail past a
-# failed DELETE and still reach the COMMIT.
-run_sql() { psql -v ON_ERROR_STOP=1 --echo-errors; }
+# failed DELETE and still reach the COMMIT. The per-table NOTICE trail shows how
+# far a failed run got, so the statement echo would only add noise.
+run_sql() { psql -v ON_ERROR_STOP=1; }
 
 case "$ACTION" in
     preflight)
