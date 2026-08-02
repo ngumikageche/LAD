@@ -1,29 +1,38 @@
 #!/usr/bin/env bash
 #
-# Wrapper for delete_student_users.sql — runs ONE section at a time against the
-# database in backend/.env.
+# Removes all users of one role, one section at a time, against the database in
+# backend/.env. Never runs a whole .sql file — each is a menu, not a program.
 #
-#   ./scripts/delete_student_users.sh preflight   read-only: FK audit
-#   ./scripts/delete_student_users.sh preview     read-only: row counts + account list
+#   ./scripts/delete_student_users.sh preflight   read-only: FK coverage audit
+#   ./scripts/delete_student_users.sh preview     read-only: row counts + accounts
 #   ./scripts/delete_student_users.sh dry-run     hard delete, rolled back
 #   ./scripts/delete_student_users.sh soft        set deleted_at (reversible)
 #   ./scripts/delete_student_users.sh hard        permanent delete (backs up first)
 #
 # Options:
-#   --yes           skip the confirmation prompt (for soft/hard)
-#   --no-backup     skip the pg_dump before `hard` (not advised)
-#   --database NAME override the database name
+#   --role students|trainers   which role to remove (default: students)
+#   --successor EMAIL          trainers only, with `reassign`: hand student-facing
+#                              rows to this trainer so `hard` has nothing to guard
+#   --yes                      skip the confirmation prompt (soft/hard/reassign)
+#   --no-backup                skip the pg_dump before `hard` (not advised)
+#   --database NAME            override the database name
+#
+# Trainers additionally support `reassign`, and their guards are stricter:
+# student records point AT trainers through NOT NULL foreign keys, so a trainer
+# hard delete aborts unless those rows are reassigned first. See the header of
+# delete_trainer_users.sql.
 #
 set -euo pipefail
 
 BACKEND_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SQL_FILE="$BACKEND_DIR/scripts/delete_student_users.sql"
 BACKUP_DIR="${BACKUP_DIR:-$BACKEND_DIR/backups}"
 
 ASSUME_YES=0
 DO_BACKUP=1
 DB_OVERRIDE=""
 ACTION=""
+ROLE="students"
+SUCCESSOR=""
 
 die() { printf '\033[31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 info() { printf '\033[36m==>\033[0m %s\n' "$*"; }
@@ -31,7 +40,9 @@ warn() { printf '\033[33mwarn:\033[0m %s\n' "$*" >&2; }
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        preflight|preview|dry-run|soft|hard) ACTION="$1" ;;
+        preflight|preview|dry-run|soft|hard|reassign) ACTION="$1" ;;
+        --role)       ROLE="${2:-}"; shift ;;
+        --successor)  SUCCESSOR="${2:-}"; shift ;;
         --yes|-y)     ASSUME_YES=1 ;;
         --no-backup)  DO_BACKUP=0 ;;
         --database)   DB_OVERRIDE="${2:-}"; shift ;;
@@ -41,9 +52,23 @@ while [ $# -gt 0 ]; do
     shift
 done
 
-[ -n "$ACTION" ] || die "pick one: preflight | preview | dry-run | soft | hard"
+case "$ROLE" in
+    student|students) ROLE="students"; ROLE_NAME="student"; SQL_FILE="$BACKEND_DIR/scripts/delete_student_users.sql" ;;
+    trainer|trainers) ROLE="trainers"; ROLE_NAME="trainer"; SQL_FILE="$BACKEND_DIR/scripts/delete_trainer_users.sql" ;;
+    *) die "--role must be students or trainers (got '$ROLE')" ;;
+esac
+
+[ -n "$ACTION" ] || die "pick one: preflight | preview | dry-run | soft | hard | reassign"
 [ -f "$SQL_FILE" ] || die "missing $SQL_FILE"
 command -v psql >/dev/null || die "psql not found on PATH"
+
+if [ "$ACTION" = "reassign" ]; then
+    [ "$ROLE" = "trainers" ] || die "reassign applies to --role trainers only"
+    [ -n "$SUCCESSOR" ] || die "reassign needs --successor EMAIL (an existing trainer to inherit the rows)"
+fi
+if [ -n "$SUCCESSOR" ] && [ "$ACTION" != "reassign" ]; then
+    warn "--successor is only used by 'reassign'; ignoring it for '$ACTION'"
+fi
 
 # ---------------------------------------------------------------------------
 # Connection. Precedence: real environment > .env > built-in fallback, so you can
@@ -147,9 +172,11 @@ confirm() {
     count="$(psql -qtAc "
         SELECT count(*) FROM users u
         JOIN roles_permissions r ON r.id = u.role_id
-        WHERE lower(r.role_name) = 'student';" | tr -d '[:space:]')"
-    printf '\n\033[33m%s will affect %s student account(s) in %s.\033[0m\n' "$ACTION" "$count" "$DB_NAME"
+        WHERE lower(r.role_name) = '$ROLE_NAME';" | tr -d '[:space:]')"
+    printf '\n\033[33m%s will affect %s %s account(s) in %s.\033[0m\n' \
+        "$ACTION" "$count" "$ROLE_NAME" "$DB_NAME"
     [ "$ACTION" = "hard" ] && printf '\033[31mThis is permanent.\033[0m\n'
+    [ "$ACTION" = "reassign" ] && printf 'Their student-facing rows will be handed to %s.\n' "$SUCCESSOR"
     printf "Type the database name ('%s') to proceed: " "$DB_NAME"
     local reply; read -r reply
     [ "$reply" = "$DB_NAME" ] || die "aborted"
@@ -171,7 +198,7 @@ run_sql() { psql -v ON_ERROR_STOP=1; }
 
 case "$ACTION" in
     preflight)
-        info "read-only: foreign keys referencing students/users"
+        info "read-only: foreign keys referencing $ROLE/users"
         require_section preflight | run_sql
         ;;
     preview)
@@ -179,6 +206,7 @@ case "$ACTION" in
         require_section preview | run_sql
         echo
         info "any '!!' count above must be 0 before a hard delete"
+        [ "$ROLE" = "trainers" ] && info "to clear them: $0 --role trainers reassign --successor EMAIL"
         ;;
     dry-run)
         info "hard delete with COMMIT swapped for ROLLBACK — nothing is written"
@@ -186,12 +214,21 @@ case "$ACTION" in
         echo
         info "rolled back; no changes were made"
         ;;
+    reassign)
+        confirm
+        require_section reassign | psql -v ON_ERROR_STOP=1 -v successor_email="$SUCCESSOR"
+        info "reassigned to $SUCCESSOR — re-run preview; the '!!' rows should now be 0"
+        ;;
     soft)
         confirm
         require_section soft | run_sql
-        info "student accounts marked deleted_at. Undo:"
-        echo "  psql -c \"UPDATE students SET deleted_at = NULL WHERE deleted_at IS NOT NULL\""
-        warn "GET /students does not filter deleted_at (app/routes/students.py:485) — soft-deleted learners still appear there"
+        info "$ROLE_NAME accounts marked deleted_at. Undo:"
+        echo "  psql -c \"UPDATE $ROLE SET deleted_at = NULL WHERE deleted_at IS NOT NULL\""
+        if [ "$ROLE" = "students" ]; then
+            warn "GET /students does not filter deleted_at (app/routes/students.py:485) — soft-deleted learners still appear there"
+        else
+            warn "permissions.py:49 grants trainer access to anyone with a trainers row — check the 'outside scope' count from preview"
+        fi
         ;;
     hard)
         [ "$DO_BACKUP" -eq 1 ] && backup
