@@ -24,10 +24,13 @@ from ..models.trainer import Trainer
 from .permissions import log_view, require_permission
 from .permissions import get_current_user
 from ..services.bulk_people_import import (
+    apply_if_present,
     build_template,
+    conflict_response,
     first_value,
     normalize_lookup,
     read_people_upload,
+    resolve_conflict_mode,
 )
 
 bp = Blueprint("students", __name__, url_prefix="/students")
@@ -340,10 +343,11 @@ def bulk_upload_students():
         for module in modules
         if module.code
     }
-    results = []
-    created = 0
-    duplicates = 0
-    failed = 0
+    # ── Pass 1: plan every row without writing ────────────────────────────────
+    # Nothing is committed until we know whether the file touches learners that
+    # already exist, and if so how the uploader wants them treated.
+    mode = resolve_conflict_mode(request.form.get("on_conflict") or request.args.get("on_conflict"))
+    plan: list[dict] = []
     for row_number, row in enumerate(rows, start=2):
         registration_number = first_value(row, "Reg No", "Registration Number")
         name = first_value(row, "Name", "Student Name")
@@ -351,71 +355,245 @@ def bulk_upload_students():
         phone = first_value(row, "Mobile", "Phone") or None
         course_code = first_value(row, "Course Code")
         module_code = first_value(row, "Module Code")
-        course = course_map.get(normalize_lookup(course_code))
-        module = module_map.get((course.id, normalize_lookup(module_code))) if course else None
-        if not registration_number or not name or not email or not course_code or not module_code:
-            failed += 1
-            results.append({
-                "row": row_number,
-                "status": "failed",
-                "registration_number": registration_number,
-                "email": email,
-                "message": "Reg No, Name, Email, Course Code, and Module Code are required",
-            })
+
+        entry = {
+            "row": row_number,
+            "registration_number": registration_number,
+            "email": email,
+            "name": name,
+            "phone": phone,
+            "raw": row,
+        }
+
+        # Identity first: a row is an update when its reg no or email already
+        # belongs to a learner, which is knowable before the fuller validation
+        # that only new learners have to satisfy.
+        if not registration_number and not email:
+            entry.update(action="failed", message="Reg No or Email is required to identify the learner")
+            plan.append(entry)
             continue
-        if "@" not in email:
-            failed += 1
-            results.append({"row": row_number, "status": "failed", "email": email, "message": "Invalid email address"})
+        if email and "@" not in email:
+            entry.update(action="failed", message="Invalid email address")
+            plan.append(entry)
             continue
-        if not course:
-            failed += 1
-            results.append({
-                "row": row_number,
-                "status": "failed",
-                "registration_number": registration_number,
-                "email": email,
-                "message": f"Course Code not found or unavailable: {course_code}",
-            })
-            continue
-        if not module:
-            failed += 1
-            results.append({
-                "row": row_number,
-                "status": "failed",
-                "registration_number": registration_number,
-                "email": email,
-                "message": f"Module Code not found in course {course_code}: {module_code}",
-            })
-            continue
+
+        identity_filters = []
+        if registration_number:
+            identity_filters.append(func.lower(Student.registration_number) == registration_number.lower())
+        if email:
+            identity_filters.append(func.lower(User.email) == email)
         existing = (
             db.session.query(Student)
             .join(User, Student.user_id == User.id)
-            .filter(
-                or_(
-                    func.lower(Student.registration_number) == registration_number.lower(),
-                    func.lower(User.email) == email,
-                )
-            )
+            .filter(or_(*identity_filters))
             .first()
         )
+
+        course = course_map.get(normalize_lookup(course_code)) if course_code else None
+        module = (
+            module_map.get((course.id, normalize_lookup(module_code)))
+            if course and module_code
+            else None
+        )
+        if course_code and not course:
+            entry.update(
+                action="failed",
+                message=f"Course Code not found or unavailable: {course_code}",
+            )
+            plan.append(entry)
+            continue
+        if module_code and course and not module:
+            entry.update(
+                action="failed",
+                message=f"Module Code not found in course {course_code}: {module_code}",
+            )
+            plan.append(entry)
+            continue
+
+        entry.update(course=course, module=module)
+
         if existing:
+            # Updates take whatever the sheet carries; blank columns are left
+            # alone, so a partial file cannot wipe stored values.
+            entry.update(
+                action="update",
+                existing=existing,
+                message="Learner already exists",
+            )
+            plan.append(entry)
+            continue
+
+        if not registration_number or not name or not email or not course_code or not module_code:
+            entry.update(
+                action="failed",
+                message="Reg No, Name, Email, Course Code, and Module Code are required for new learners",
+            )
+            plan.append(entry)
+            continue
+
+        entry.update(action="create")
+        plan.append(entry)
+
+    # ── Conflict gate ─────────────────────────────────────────────────────────
+    conflicts = [entry for entry in plan if entry["action"] == "update"]
+    if conflicts and mode is None:
+        return conflict_response(
+            [
+                {
+                    "row": entry["row"],
+                    "registration_number": entry["registration_number"],
+                    "email": entry["email"],
+                    "name": entry["name"],
+                    "current_name": entry["existing"].user.name if entry["existing"].user else None,
+                    "message": entry["message"],
+                }
+                for entry in conflicts
+            ],
+            len(rows),
+            "learners",
+        )
+
+    # ── Pass 2: write ─────────────────────────────────────────────────────────
+    results = []
+    created = 0
+    updated = 0
+    duplicates = 0
+    failed = 0
+    for entry in plan:
+        row_number = entry["row"]
+        registration_number = entry["registration_number"]
+        email = entry["email"]
+
+        if entry["action"] == "failed":
+            failed += 1
+            results.append({
+                "row": row_number,
+                "status": "failed",
+                "registration_number": registration_number,
+                "email": email,
+                "message": entry["message"],
+            })
+            continue
+
+        if entry["action"] == "update" and mode == "skip":
             duplicates += 1
             results.append({
                 "row": row_number,
                 "status": "duplicate",
                 "registration_number": registration_number,
                 "email": email,
-                "message": "Learner already exists",
+                "message": "Learner already exists — skipped",
             })
             continue
 
+        if entry["action"] == "update":
+            student = entry["existing"]
+            course = entry["course"]
+            module = entry["module"]
+            try:
+                with db.session.begin_nested():
+                    changed = False
+                    if student.user:
+                        changed |= apply_if_present(student.user, "name", entry["name"])
+                        changed |= apply_if_present(student.user, "phone", entry["phone"])
+                    if course:
+                        changed |= apply_if_present(student, "course_id", course.id)
+                    admission = first_value(
+                        entry["raw"],
+                        "Admission Date",
+                        "Date Of Admission(dd/MM/yyyy)",
+                        "Date Of Admission",
+                        "Enrollment Year",
+                    )
+                    if admission:
+                        changed |= apply_if_present(
+                            student, "enrollment_year", _import_enrollment_year(entry["raw"])
+                        )
+
+                    # Re-link enrolment and subjects only when the sheet named a
+                    # module. Existing links are added to, never removed.
+                    if module and course:
+                        enrollment = (
+                            db.session.query(Enrollment)
+                            .filter(
+                                Enrollment.student_id == student.id,
+                                Enrollment.module_id == module.id,
+                                Enrollment.deleted_at.is_(None),
+                            )
+                            .first()
+                        )
+                        if not enrollment:
+                            db.session.add(Enrollment(
+                                student_id=student.id,
+                                course_id=course.id,
+                                module_id=module.id,
+                                status="active",
+                            ))
+                            changed = True
+                        linked_subject_ids = {
+                            item[0]
+                            for item in db.session.query(StudentSubject.subject_id)
+                            .filter(StudentSubject.student_id == student.id)
+                            .all()
+                        }
+                        module_subject_ids = [
+                            item[0]
+                            for item in db.session.query(Subject.id)
+                            .filter(
+                                Subject.module_id == module.id,
+                                Subject.deleted_at.is_(None),
+                            )
+                            .all()
+                        ]
+                        new_links = [
+                            StudentSubject(student_id=student.id, subject_id=subject_id)
+                            for subject_id in module_subject_ids
+                            if subject_id not in linked_subject_ids
+                        ]
+                        if new_links:
+                            db.session.add_all(new_links)
+                            changed = True
+                    db.session.flush()
+                updated += 1
+                results.append({
+                    "row": row_number,
+                    "status": "updated",
+                    "registration_number": student.registration_number,
+                    "email": student.user.email if student.user else email,
+                    "message": "Learner updated" if changed else "No changes in this row",
+                    "course": course.name if course else None,
+                    "module": module.name if module else None,
+                })
+            except IntegrityError:
+                failed += 1
+                results.append({
+                    "row": row_number,
+                    "status": "failed",
+                    "registration_number": registration_number,
+                    "email": email,
+                    "message": "Email, mobile, or registration number is already in use",
+                })
+            except Exception:
+                current_app.logger.exception("Learner update failed at row %s", row_number)
+                failed += 1
+                results.append({
+                    "row": row_number,
+                    "status": "failed",
+                    "registration_number": registration_number,
+                    "email": email,
+                    "message": "This row could not be updated",
+                })
+            continue
+
+        course = entry["course"]
+        module = entry["module"]
         initial_password = secrets.token_urlsafe(9)
         try:
             with db.session.begin_nested():
                 user = User(
-                    name=name,
+                    name=entry["name"],
                     email=email,
-                    phone=phone,
+                    phone=entry["phone"],
                     password_hash=generate_password_hash(initial_password),
                     role_id=role.id,
                     institution_id=course.department.institution_id,
@@ -426,7 +604,7 @@ def bulk_upload_students():
                     user_id=user.id,
                     registration_number=registration_number,
                     course_id=course.id,
-                    enrollment_year=_import_enrollment_year(row),
+                    enrollment_year=_import_enrollment_year(entry["raw"]),
                 )
                 db.session.add(student)
                 db.session.flush()
@@ -483,8 +661,10 @@ def bulk_upload_students():
     return {
         "total_rows": len(rows),
         "created": created,
+        "updated": updated,
         "duplicates": duplicates,
         "failed": failed,
+        "on_conflict": mode,
         "results": results,
     }, 200
 

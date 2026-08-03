@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Upload, Download, CheckCircle2, XCircle, AlertCircle,
+  Upload, Download, CheckCircle2, XCircle, AlertCircle, AlertTriangle,
   FileText, Send, RefreshCw, ChevronDown, ChevronUp, Book, Plus,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { apiRequest } from '../api/client';
+import ImportConflictDialog, {
+  asConflictReport,
+  type ConflictChoice,
+  type ImportConflictReport,
+} from '../components/admin/ImportConflictDialog';
 
 const API = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:5000';
 
@@ -53,12 +58,18 @@ interface PreviewRow {
   feedback: string | null;
   errors: string[];
   valid: boolean;
+  /** True when this learner already has a mark for the assessment. */
+  has_existing_score?: boolean;
+  existing_marks?: number | null;
+  existing_grade?: string | null;
 }
 
 interface PreviewResult {
   total: number;
   valid: number;
   invalid: number;
+  /** Valid rows that would overwrite a mark unless skipped. */
+  existing?: number;
   rows: PreviewRow[];
 }
 
@@ -67,6 +78,7 @@ interface CommitResult {
   updated: number;
   skipped: number;
   errors: string[];
+  on_conflict?: ConflictChoice | null;
   batch_id?: string;
   evidence_files?: number;
   subject?: { id: string; code: string | null; name: string } | null;
@@ -109,6 +121,8 @@ export default function BulkMarksUploadPage() {
   const [templateNote, setTemplateNote] = useState<string | null>(null);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
   const [commitResult, setCommitResult] = useState<CommitResult | null>(null);
+  const [conflicts, setConflicts] = useState<ImportConflictReport | null>(null);
+  const [resolving, setResolving] = useState<ConflictChoice | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showInvalidOnly, setShowInvalidOnly] = useState(false);
   const [expandedRow, setExpandedRow] = useState<number | null>(null);
@@ -204,16 +218,20 @@ export default function BulkMarksUploadPage() {
     }
   };
 
-  const handleCommit = async () => {
+  /**
+   * Commits the previewed rows, optionally carrying a decision about learners
+   * who already hold a mark. Without one the API discards the whole batch and
+   * returns the conflicts, which opens the prompt rather than overwriting.
+   */
+  const sendCommit = async (choice: ConflictChoice | null) => {
     if (!preview) return;
-    setCommitting(true);
-    setError(null);
 
     const fd = new FormData();
     fd.append('rows', JSON.stringify(preview.rows));
     if (selectedSubject?.code) fd.append('subject_code', selectedSubject.code);
     else if (selectedSubject) fd.append('subject_id', selectedSubject.id);
     examCopies.forEach((copy) => fd.append('exam_copies', copy));
+    if (choice) fd.append('on_conflict', choice);
 
     try {
       const r = await fetch(`${API}/scores/bulk-marks/commit`, {
@@ -222,16 +240,42 @@ export default function BulkMarksUploadPage() {
         body: fd,
       });
       const d = await r.json();
-      if (!r.ok) { setError(d.error ?? 'Commit failed'); return; }
+      if (!r.ok) {
+        const report = asConflictReport(d);
+        if (report) { setConflicts(report); return; }
+        setConflicts(null);
+        setError(d.error ?? 'Commit failed');
+        return;
+      }
       setCommitResult(d);
+      setConflicts(null);
       setPreview(null);
       setFile(null);
       setExamCopies([]);
       if (fileRef.current) fileRef.current.value = '';
     } catch {
       setError('Network error during commit');
+    }
+  };
+
+  const handleCommit = async () => {
+    if (!preview) return;
+    setCommitting(true);
+    setError(null);
+    try {
+      await sendCommit(null);
     } finally {
       setCommitting(false);
+    }
+  };
+
+  const resolveConflicts = async (choice: ConflictChoice) => {
+    setResolving(choice);
+    setError(null);
+    try {
+      await sendCommit(choice);
+    } finally {
+      setResolving(null);
     }
   };
 
@@ -769,6 +813,14 @@ export default function BulkMarksUploadPage() {
                 <span className="flex items-center gap-1 text-red-300">
                   <XCircle size={14} /> {preview.invalid} invalid
                 </span>
+                {preview.existing ? (
+                  <span
+                    className="flex items-center gap-1 text-amber-300"
+                    title="These learners already have a mark for this assessment. You will be asked before anything is overwritten."
+                  >
+                    <AlertTriangle size={14} /> {preview.existing} already scored
+                  </span>
+                ) : null}
                 <span className="text-slate-500">/ {preview.total} total</span>
               </div>
             </div>
@@ -823,9 +875,18 @@ export default function BulkMarksUploadPage() {
                     >
                       <td className="px-4 py-3 text-slate-500 text-xs">{row.row}</td>
                       <td className="px-4 py-3">
-                        {row.valid
-                          ? <CheckCircle2 size={16} className="text-green-400" />
-                          : <XCircle size={16} className="text-red-400" />}
+                        <span className="flex items-center gap-1.5">
+                          {row.valid
+                            ? <CheckCircle2 size={16} className="text-green-400" />
+                            : <XCircle size={16} className="text-red-400" />}
+                          {row.valid && row.has_existing_score ? (
+                            <AlertTriangle
+                              size={14}
+                              className="text-amber-400"
+                              aria-label="Already scored"
+                            />
+                          ) : null}
+                        </span>
                       </td>
                       <td className="px-4 py-3">
                         <span className="font-mono text-xs bg-slate-700 text-indigo-300 px-2 py-0.5 rounded">
@@ -917,6 +978,19 @@ export default function BulkMarksUploadPage() {
             </table>
           </div>
         </div>
+      )}
+
+      {conflicts && (
+        <ImportConflictDialog
+          report={conflicts}
+          noun="marks"
+          busy={resolving}
+          onChoose={resolveConflicts}
+          onCancel={() => {
+            if (resolving) return;
+            setConflicts(null);
+          }}
+        />
       )}
     </div>
   );

@@ -1,12 +1,17 @@
 import { useRef, useState, type ChangeEvent } from 'react';
 import { Download, FileSpreadsheet, Save, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { apiRequest } from '../../api/client';
+import { apiRequest, ApiRequestError } from '../../api/client';
 import { useAuth } from '../../auth/AuthContext';
+import ImportConflictDialog, {
+  asConflictReport,
+  type ConflictChoice,
+  type ImportConflictReport,
+} from './ImportConflictDialog';
 
 type ImportRow = {
   row: number;
-  status: 'created' | 'duplicate' | 'failed';
+  status: 'created' | 'updated' | 'duplicate' | 'failed';
   email?: string;
   registration_number?: string;
   staff_number?: string;
@@ -17,8 +22,10 @@ type ImportRow = {
 type ImportResult = {
   total_rows: number;
   created: number;
+  updated: number;
   duplicates: number;
   failed: number;
+  on_conflict: ConflictChoice | null;
   results: ImportRow[];
 };
 
@@ -56,6 +63,8 @@ export default function BulkPeopleUploadPanel({
   const [uploading, setUploading] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   const [preview, setPreview] = useState<WorkbookPreview | null>(null);
+  const [conflicts, setConflicts] = useState<ImportConflictReport | null>(null);
+  const [resolving, setResolving] = useState<ConflictChoice | null>(null);
 
   const downloadTemplate = async () => {
     try {
@@ -114,26 +123,56 @@ export default function BulkPeopleUploadPanel({
     }
   };
 
-  const upload = async () => {
-    if (!file || !preview) return;
+  /**
+   * Sends the file, optionally with a decision about records that already
+   * exist. Without a choice the API refuses to touch them and answers 409 with
+   * the conflict list, which opens the prompt instead of failing the upload.
+   */
+  const send = async (choice: ConflictChoice | null) => {
+    if (!file) return;
     const body = new FormData();
     body.append('file', file);
+    if (choice) body.append('on_conflict', choice);
+
     try {
-      setUploading(true);
       setError('');
-      setResult(null);
       const response = await apiRequest<ImportResult>(uploadPath, {
         method: 'POST',
         token,
         body,
       });
       setResult(response);
+      setConflicts(null);
       clearFile();
       await onComplete?.();
     } catch (err) {
+      const report = err instanceof ApiRequestError ? asConflictReport(err.data) : null;
+      if (report) {
+        setConflicts(report);
+        return;
+      }
+      setConflicts(null);
       setError(err instanceof Error ? err.message : `Failed to import ${personLabel}`);
+    }
+  };
+
+  const upload = async () => {
+    if (!file || !preview) return;
+    setUploading(true);
+    setResult(null);
+    try {
+      await send(null);
     } finally {
       setUploading(false);
+    }
+  };
+
+  const resolveConflicts = async (choice: ConflictChoice) => {
+    setResolving(choice);
+    try {
+      await send(choice);
+    } finally {
+      setResolving(null);
     }
   };
 
@@ -141,6 +180,7 @@ export default function BulkPeopleUploadPanel({
     if (!result) return;
     const rows = [
       ['Row', 'Status', 'Registration/Staff No', 'Email', 'Initial Password', 'Message'],
+
       ...result.results.map((item) => [
         item.row,
         item.status,
@@ -258,8 +298,14 @@ export default function BulkPeopleUploadPanel({
       {result ? (
         <div className="mt-4 rounded-xl border border-slate-700 bg-slate-950 p-4">
           <p className="text-sm text-slate-200">
-            {result.created} created · {result.duplicates} duplicates · {result.failed} failed
+            {result.created} created · {result.updated ?? 0} updated · {result.duplicates} skipped ·{' '}
+            {result.failed} failed
           </p>
+          {result.on_conflict === 'update' ? (
+            <p className="mt-1 text-xs text-slate-400">
+              Existing records were updated from the filled cells only; blank cells kept their stored values.
+            </p>
+          ) : null}
           <p className="mt-1 text-xs text-amber-300">
             Initial passwords are shown only in this result. Download and store the file securely.
           </p>
@@ -271,6 +317,18 @@ export default function BulkPeopleUploadPanel({
             <Download size={15} /> Download results and passwords
           </button>
         </div>
+      ) : null}
+      {conflicts ? (
+        <ImportConflictDialog
+          report={conflicts}
+          noun={personLabel}
+          busy={resolving}
+          onChoose={resolveConflicts}
+          onCancel={() => {
+            if (resolving) return;
+            setConflicts(null);
+          }}
+        />
       ) : null}
     </section>
   );

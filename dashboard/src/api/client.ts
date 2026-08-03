@@ -10,6 +10,26 @@ export type ApiError = {
   error: string;
 };
 
+/**
+ * Carries the failed response's status and parsed body alongside the message.
+ *
+ * Some endpoints answer with a structured 409 the caller has to act on — an
+ * import that found existing records, for example, returns the list of
+ * conflicts so the UI can ask whether to skip or update them. Throwing a plain
+ * Error would drop that payload.
+ */
+export class ApiRequestError extends Error {
+  readonly status: number;
+  readonly data: Record<string, unknown>;
+
+  constructor(message: string, status: number, data: Record<string, unknown>) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.status = status;
+    this.data = data;
+  }
+}
+
 const getStoredToken = (): string | null => {
   return sessionStorage.getItem('lad.session.token');
 };
@@ -37,9 +57,14 @@ export const apiRequest = async <T>(path: string, options: RequestOptions = {}):
   });
 
   if (!response.ok) {
-    const data = await response.json() as ApiError & { message?: string; success?: boolean };
-    const error = data?.error ?? data?.message ?? 'Request failed';
-    throw new Error(error);
+    let data: (ApiError & { message?: string; success?: boolean }) | null = null;
+    try {
+      data = await response.json() as ApiError & { message?: string; success?: boolean };
+    } catch {
+      // Non-JSON error body (a proxy timeout page, say) — fall back to the status.
+    }
+    const error = data?.error ?? data?.message ?? `Request failed (${response.status})`;
+    throw new ApiRequestError(error, response.status, (data ?? {}) as Record<string, unknown>);
   }
 
   // Check if responseType indicates blob

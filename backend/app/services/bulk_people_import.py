@@ -10,6 +10,7 @@ from openpyxl import Workbook, load_workbook
 
 
 MAX_IMPORT_ROWS = 5000
+
 SUPPORTED_EXTENSIONS = {"csv", "xlsx"}
 
 
@@ -90,6 +91,60 @@ def first_value(row: dict[str, str], *aliases: str) -> str:
         if value:
             return value
     return ""
+
+
+# ── Conflict handling ────────────────────────────────────────────────────────
+#
+# An import never overwrites anything until the uploader has said so. Every
+# import endpoint accepts `on_conflict`:
+#
+#   absent   the caller has not decided yet. If the file touches records that
+#            already exist, the endpoint writes nothing and returns 409 with a
+#            list of what would change, so the UI can ask.
+#   "skip"   leave existing records untouched and import only the new rows.
+#   "update" write the sheet's values over the existing records.
+#
+# Updates are field-by-field: a filled cell overwrites, a blank cell keeps
+# whatever is already stored. That way a partial spreadsheet cannot silently
+# wipe columns it does not carry.
+
+CONFLICT_MODES = {"skip", "update"}
+
+
+def resolve_conflict_mode(raw: str | None) -> str | None:
+    """`skip` / `update`, or None when the uploader has not chosen yet."""
+    value = str(raw or "").strip().lower()
+    return value if value in CONFLICT_MODES else None
+
+
+def apply_if_present(target, field: str, value) -> bool:
+    """
+    Overwrite `target.field` only when the sheet supplied a value.
+
+    Returns True when something actually changed, so callers can tell a real
+    update apart from a row that resolved to no change at all.
+    """
+    if value in (None, ""):
+        return False
+    if getattr(target, field, None) == value:
+        return False
+    setattr(target, field, value)
+    return True
+
+
+def conflict_response(conflicts: list[dict], total_rows: int, noun: str) -> tuple[dict, int]:
+    """The 409 payload that asks the uploader how to treat existing records."""
+    return {
+        "error": (
+            f"{len(conflicts)} of {total_rows} rows match {noun} that already exist. "
+            "Choose whether to skip or update them."
+        ),
+        "needs_conflict_decision": True,
+        "conflict_count": len(conflicts),
+        "new_count": total_rows - len(conflicts),
+        "total_rows": total_rows,
+        "conflicts": conflicts,
+    }, 409
 
 
 def _format_worksheet(worksheet) -> None:

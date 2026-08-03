@@ -23,6 +23,7 @@ from ..models.module import Module
 from ..models.trainer import Trainer
 from ..models.trainer_subject import TrainerSubject
 from .permissions import _is_admin
+from ..services.bulk_people_import import conflict_response, resolve_conflict_mode
 from ..services.score_evidence import (
     EVIDENCE_UPLOAD_FOLDER,
     can_access_score_evidence,
@@ -504,7 +505,21 @@ def preview_bulk():
             grade = _grade(marks, assessment.total_marks)
             is_passed = marks >= (assessment.pass_marks or assessment.total_marks * 0.5)
 
+        # Flag rows that would overwrite a mark, so the uploader sees what is at
+        # stake before committing rather than after.
+        existing_score = None
+        if student and assessment:
+            existing_score = (
+                db.session.query(Score)
+                .filter_by(student_id=student.id, assessment_id=assessment.id)
+                .filter(Score.deleted_at.is_(None))
+                .first()
+            )
+
         rows.append({
+            "has_existing_score": existing_score is not None,
+            "existing_marks": existing_score.marks_obtained if existing_score else None,
+            "existing_grade": existing_score.grade if existing_score else None,
             "row": i,
             "student_id": student_key,
             "student_code": student.code if student else None,
@@ -530,10 +545,12 @@ def preview_bulk():
         })
 
     valid_count = sum(1 for r in rows if r["valid"])
+    existing_count = sum(1 for r in rows if r["valid"] and r["has_existing_score"])
     return {
         "total": len(rows),
         "valid": valid_count,
         "invalid": len(rows) - valid_count,
+        "existing": existing_count,
         "rows": rows,
         "subject": {
             "id": str(batch_subject.id),
@@ -568,11 +585,14 @@ def commit_bulk():
     if not rows:
         return {"error": "No rows provided"}, 400
 
+    mode = resolve_conflict_mode(request.form.get("on_conflict") or request.args.get("on_conflict"))
+
     batch_id = uuid.uuid4().hex
     inserted = 0
     updated = 0
     skipped = 0
     errors = []
+    conflicts: list[dict] = []
     assessment_ids = set()
     subject_ids = set()
 
@@ -696,6 +716,25 @@ def commit_bulk():
         )
 
         if existing:
+            # An existing mark is never overwritten on the uploader's behalf.
+            # Without an explicit decision the whole batch is rolled back below
+            # and the conflicts are handed back for confirmation.
+            if mode is None:
+                conflicts.append({
+                    "row": row.get("row"),
+                    "registration_number": student.registration_number,
+                    "name": student.user.name if student.user else None,
+                    "assessment_name": assessment.name,
+                    "current_marks": existing.marks_obtained,
+                    "current_grade": existing.grade,
+                    "new_marks": marks,
+                    "new_grade": grade,
+                    "message": "This learner already has a mark for this assessment",
+                })
+                continue
+            if mode == "skip":
+                skipped += 1
+                continue
             existing.marks_obtained = marks
             existing.grade = grade
             existing.is_passed = is_passed
@@ -718,6 +757,12 @@ def commit_bulk():
             ))
             inserted += 1
 
+    # Overwrites need consent, so a batch carrying any is discarded entirely and
+    # handed back for a decision — no partial write, no evidence files stored.
+    if conflicts:
+        db.session.rollback()
+        return conflict_response(conflicts, len(rows), "marks")
+
     try:
         saved_evidence = save_score_evidence_files(
             evidence_files,
@@ -737,6 +782,7 @@ def commit_bulk():
         "updated": updated,
         "skipped": skipped,
         "errors": errors,
+        "on_conflict": mode,
         "batch_id": batch_id,
         "evidence_files": len(evidence_files),
         "subject": {

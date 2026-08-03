@@ -35,10 +35,13 @@ from ..services.trainer_portal import (
 )
 from .permissions import get_current_user, log_view, require_permission, trainer_required
 from ..services.bulk_people_import import (
+    apply_if_present,
     build_template,
+    conflict_response,
     first_value,
     normalize_lookup,
     read_people_upload,
+    resolve_conflict_mode,
 )
 
 
@@ -183,10 +186,38 @@ def bulk_upload_trainers():
         if key
     }
 
-    results = []
-    created = 0
-    duplicates = 0
-    failed = 0
+    # ── Pass 1: plan every row without writing ────────────────────────────────
+    # Nothing is committed until we know whether the file touches trainers that
+    # already exist, and if so how the uploader wants them treated.
+    mode = resolve_conflict_mode(request.form.get("on_conflict") or request.args.get("on_conflict"))
+
+    def _resolve_subjects(department, subject_value: str):
+        """(subjects, missing_names) for a semicolon/comma separated cell."""
+        requested = [item.strip() for item in re.split(r"[;,|]", subject_value) if item.strip()]
+        if not requested:
+            return [], []
+        department_subjects = (
+            db.session.query(Subject)
+            .join(Module, Subject.module_id == Module.id)
+            .join(Course, Module.course_id == Course.id)
+            .filter(
+                Course.department_id == department.id,
+                Subject.deleted_at.is_(None),
+            )
+            .all()
+        )
+        subject_map = {
+            key: subject
+            for subject in department_subjects
+            for key in {normalize_lookup(subject.name), normalize_lookup(subject.code)}
+            if key
+        }
+        missing = [item for item in requested if normalize_lookup(item) not in subject_map]
+        if missing:
+            return [], missing
+        return [subject_map[normalize_lookup(item)] for item in requested], []
+
+    plan: list[dict] = []
     for row_number, row in enumerate(rows, start=2):
         staff_number = first_value(row, "Staff No", "Staff Number", "Trainer Code")
         name = first_value(row, "Name", "Trainer Name")
@@ -194,111 +225,215 @@ def bulk_upload_trainers():
         phone = first_value(row, "Mobile", "Phone") or None
         department_value = first_value(row, "Department", "Department Code")
         specialization = first_value(row, "Specialization") or None
-        department = department_map.get(normalize_lookup(department_value))
-        if not name or not email or not department_value:
-            failed += 1
-            results.append({
-                "row": row_number,
-                "status": "failed",
-                "staff_number": staff_number,
-                "email": email,
-                "message": "Name, Email, and Department are required",
-            })
+        subject_value = first_value(row, "Subjects", "Subject", "Units")
+
+        entry = {
+            "row": row_number,
+            "staff_number": staff_number,
+            "email": email,
+            "name": name,
+            "phone": phone,
+            "specialization": specialization,
+        }
+
+        # Identity first: a row is an update when its email or staff number
+        # already belongs to a trainer. Only new trainers must satisfy the
+        # fuller required-column validation.
+        if not email and not staff_number:
+            entry.update(action="failed", message="Email or Staff No is required to identify the trainer")
+            plan.append(entry)
             continue
-        if "@" not in email:
-            failed += 1
-            results.append({"row": row_number, "status": "failed", "email": email, "message": "Invalid email address"})
+        if email and "@" not in email:
+            entry.update(action="failed", message="Invalid email address")
+            plan.append(entry)
             continue
         if staff_number and len(staff_number) > 16:
-            failed += 1
-            results.append({
-                "row": row_number,
-                "status": "failed",
-                "staff_number": staff_number,
-                "email": email,
-                "message": "Staff No must be 16 characters or fewer",
-            })
+            entry.update(action="failed", message="Staff No must be 16 characters or fewer")
+            plan.append(entry)
             continue
-        if not department:
-            failed += 1
-            results.append({
-                "row": row_number,
-                "status": "failed",
-                "staff_number": staff_number,
-                "email": email,
-                "message": f"Department not found: {department_value}",
-            })
-            continue
+
+        identity_filters = []
+        if email:
+            identity_filters.append(func.lower(User.email) == email)
+        if staff_number:
+            identity_filters.append(func.lower(Trainer.code) == staff_number.lower())
         existing = (
             db.session.query(Trainer)
             .join(User, Trainer.user_id == User.id)
-            .filter(
-                or_(
-                    func.lower(User.email) == email,
-                    (
-                        func.lower(Trainer.code) == staff_number.lower()
-                        if staff_number
-                        else False
-                    ),
-                )
-            )
+            .filter(or_(*identity_filters))
             .first()
         )
+
+        department = department_map.get(normalize_lookup(department_value)) if department_value else None
+        if department_value and not department:
+            entry.update(action="failed", message=f"Department not found: {department_value}")
+            plan.append(entry)
+            continue
+
+        # Subjects are validated against the department that will own them:
+        # the one named in the sheet, or the trainer's current one on update.
+        subject_department = department or (existing.department if existing else None)
+        subject_links = []
+        if subject_value:
+            if not subject_department:
+                entry.update(action="failed", message="A Department is required to assign subjects")
+                plan.append(entry)
+                continue
+            subject_links, missing_subjects = _resolve_subjects(subject_department, subject_value)
+            if missing_subjects:
+                entry.update(
+                    action="failed",
+                    message=f"Subject(s) not found in department: {', '.join(missing_subjects)}",
+                )
+                plan.append(entry)
+                continue
+
+        entry.update(department=department, subject_links=subject_links)
+
         if existing:
+            entry.update(action="update", existing=existing, message="Trainer already exists")
+            plan.append(entry)
+            continue
+
+        if not name or not email or not department_value:
+            entry.update(
+                action="failed",
+                message="Name, Email, and Department are required for new trainers",
+            )
+            plan.append(entry)
+            continue
+
+        entry.update(action="create")
+        plan.append(entry)
+
+    # ── Conflict gate ─────────────────────────────────────────────────────────
+    conflicts = [entry for entry in plan if entry["action"] == "update"]
+    if conflicts and mode is None:
+        return conflict_response(
+            [
+                {
+                    "row": entry["row"],
+                    "staff_number": entry["staff_number"],
+                    "email": entry["email"],
+                    "name": entry["name"],
+                    "current_name": entry["existing"].user.name if entry["existing"].user else None,
+                    "message": entry["message"],
+                }
+                for entry in conflicts
+            ],
+            len(rows),
+            "trainers",
+        )
+
+    # ── Pass 2: write ─────────────────────────────────────────────────────────
+    results = []
+    created = 0
+    updated = 0
+    duplicates = 0
+    failed = 0
+    for entry in plan:
+        row_number = entry["row"]
+        staff_number = entry["staff_number"]
+        email = entry["email"]
+
+        if entry["action"] == "failed":
+            failed += 1
+            results.append({
+                "row": row_number,
+                "status": "failed",
+                "staff_number": staff_number,
+                "email": email,
+                "message": entry["message"],
+            })
+            continue
+
+        if entry["action"] == "update" and mode == "skip":
             duplicates += 1
             results.append({
                 "row": row_number,
                 "status": "duplicate",
                 "staff_number": staff_number,
                 "email": email,
-                "message": "Trainer already exists",
+                "message": "Trainer already exists — skipped",
             })
             continue
 
-        subject_links = []
-        subject_value = first_value(row, "Subjects", "Subject", "Units")
-        if subject_value:
-            requested_subjects = [
-                item.strip()
-                for item in re.split(r"[;,|]", subject_value)
-                if item.strip()
-            ]
-            department_subjects = (
-                db.session.query(Subject)
-                .join(Module, Subject.module_id == Module.id)
-                .join(Course, Module.course_id == Course.id)
-                .filter(
-                    Course.department_id == department.id,
-                    Subject.deleted_at.is_(None),
-                )
-                .all()
-            )
-            subject_map = {
-                key: subject
-                for subject in department_subjects
-                for key in {normalize_lookup(subject.name), normalize_lookup(subject.code)}
-                if key
-            }
-            missing_subjects = [item for item in requested_subjects if normalize_lookup(item) not in subject_map]
-            if missing_subjects:
+        if entry["action"] == "update":
+            trainer = entry["existing"]
+            department = entry["department"]
+            subject_links = entry["subject_links"]
+            try:
+                with db.session.begin_nested():
+                    changed = False
+                    if trainer.user:
+                        changed |= apply_if_present(trainer.user, "name", entry["name"])
+                        changed |= apply_if_present(trainer.user, "phone", entry["phone"])
+                    changed |= apply_if_present(trainer, "specialization", entry["specialization"])
+                    changed |= apply_if_present(trainer, "code", staff_number or None)
+                    if department:
+                        changed |= apply_if_present(trainer, "department_id", department.id)
+                        if trainer.user:
+                            changed |= apply_if_present(
+                                trainer.user, "institution_id", department.institution_id
+                            )
+                    # Subject links are added, never removed: a sheet that omits
+                    # the column must not strip a trainer's existing teaching load.
+                    if subject_links:
+                        linked_ids = {
+                            item[0]
+                            for item in db.session.query(TrainerSubject.subject_id)
+                            .filter(TrainerSubject.trainer_id == trainer.id)
+                            .all()
+                        }
+                        new_links = [
+                            TrainerSubject(trainer_id=trainer.id, subject_id=subject.id)
+                            for subject in subject_links
+                            if subject.id not in linked_ids
+                        ]
+                        if new_links:
+                            db.session.add_all(new_links)
+                            changed = True
+                    db.session.flush()
+                updated += 1
+                results.append({
+                    "row": row_number,
+                    "status": "updated",
+                    "staff_number": trainer.code,
+                    "email": trainer.user.email if trainer.user else email,
+                    "message": "Trainer updated" if changed else "No changes in this row",
+                    "department": trainer.department.name if trainer.department else None,
+                    "subjects_assigned": len(subject_links),
+                })
+            except IntegrityError:
                 failed += 1
                 results.append({
                     "row": row_number,
                     "status": "failed",
                     "staff_number": staff_number,
                     "email": email,
-                    "message": f"Subject(s) not found in department: {', '.join(missing_subjects)}",
+                    "message": "Email, mobile, or staff number is already in use",
                 })
-                continue
-            subject_links = [subject_map[normalize_lookup(item)] for item in requested_subjects]
+            except Exception:
+                current_app.logger.exception("Trainer update failed at row %s", row_number)
+                failed += 1
+                results.append({
+                    "row": row_number,
+                    "status": "failed",
+                    "staff_number": staff_number,
+                    "email": email,
+                    "message": "This row could not be updated",
+                })
+            continue
 
+        department = entry["department"]
+        subject_links = entry["subject_links"]
         initial_password = secrets.token_urlsafe(9)
         try:
             with db.session.begin_nested():
                 user = User(
-                    name=name,
+                    name=entry["name"],
                     email=email,
-                    phone=phone,
+                    phone=entry["phone"],
                     password_hash=generate_password_hash(initial_password),
                     role_id=role.id,
                     institution_id=department.institution_id,
@@ -309,7 +444,7 @@ def bulk_upload_trainers():
                     code=staff_number or None,
                     user_id=user.id,
                     department_id=department.id,
-                    specialization=specialization,
+                    specialization=entry["specialization"],
                 )
                 db.session.add(trainer)
                 db.session.flush()
@@ -351,8 +486,10 @@ def bulk_upload_trainers():
     return {
         "total_rows": len(rows),
         "created": created,
+        "updated": updated,
         "duplicates": duplicates,
         "failed": failed,
+        "on_conflict": mode,
         "results": results,
     }, 200
 
