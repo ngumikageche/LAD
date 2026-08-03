@@ -122,6 +122,7 @@ const ScoresTable = ({ subjects, refreshToken }: ScoresTableProps) => {
             <tr>
               <SortableTh label="Student" sortKey="student" sort={sort} onSort={handleSort} className="px-4 py-3" />
               <SortableTh label="Subject" sortKey="subject" sort={sort} onSort={handleSort} className="px-4 py-3" />
+              <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-slate-400">Assessment</th>
               <SortableTh label="Term" sortKey="term" sort={sort} onSort={handleSort} className="px-4 py-3" />
               <SortableTh label="Score" sortKey="score" sort={sort} onSort={handleSort} className="px-4 py-3" />
               <SortableTh label="Status" sortKey="is_passed" sort={sort} onSort={handleSort} className="px-4 py-3" />
@@ -131,7 +132,7 @@ const ScoresTable = ({ subjects, refreshToken }: ScoresTableProps) => {
           <tbody className="divide-y divide-slate-800 bg-slate-900">
             {isLoading ? (
               <tr>
-                <td className="px-4 py-8 text-sm text-slate-500" colSpan={6}>
+                <td className="px-4 py-8 text-sm text-slate-500" colSpan={7}>
                   Loading scores...
                 </td>
               </tr>
@@ -139,7 +140,7 @@ const ScoresTable = ({ subjects, refreshToken }: ScoresTableProps) => {
 
             {!isLoading && (scores?.items.length ?? 0) === 0 ? (
               <tr>
-                <td className="px-4 py-8 text-sm text-slate-500" colSpan={6}>
+                <td className="px-4 py-8 text-sm text-slate-500" colSpan={7}>
                   No scores match the current filters.
                 </td>
               </tr>
@@ -153,17 +154,23 @@ const ScoresTable = ({ subjects, refreshToken }: ScoresTableProps) => {
                       <div className="text-xs text-slate-500">{item.student?.registration_number ?? item.student_id}</div>
                     </td>
                     <td className="px-4 py-4 text-sm text-slate-300">{item.subject?.name ?? '-'}</td>
+                    <td className="px-4 py-4 text-sm text-slate-300">
+                      <div className="font-medium text-slate-200">{item.assessment?.name ?? 'Legacy score'}</div>
+                      {item.assessment?.code ? <div className="font-mono text-xs text-emerald-300">{item.assessment.code}</div> : null}
+                    </td>
                     <td className="px-4 py-4 text-sm text-slate-300">{item.term ?? '-'}</td>
-                    <td className="px-4 py-4 text-sm font-semibold text-slate-100">{item.score.toFixed(2)}</td>
+                    <td className="px-4 py-4 text-sm font-semibold text-slate-100">
+                      {item.score.toFixed(2)}{item.assessment ? ` / ${item.assessment.total_marks}` : ''}
+                    </td>
                     <td className="px-4 py-4 text-sm">
                       <span
                         className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                          (item.is_passed ?? item.score >= 50)
+                          (item.is_passed ?? item.score >= (item.assessment?.pass_marks ?? 50))
                             ? 'bg-emerald-100 text-emerald-700'
                             : 'bg-red-100 text-red-700'
                         }`}
                       >
-                        {(item.is_passed ?? item.score >= 50) ? 'Pass' : 'At Risk'}
+                        {(item.is_passed ?? item.score >= (item.assessment?.pass_marks ?? 50)) ? 'Pass' : 'At Risk'}
                       </span>
                     </td>
                     <td className="px-4 py-4 text-sm text-slate-400">{item.feedback || 'No feedback yet'}</td>

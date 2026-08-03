@@ -24,6 +24,7 @@ export type TrainerScore = {
   id: string;
   student_id: string | null;
   subject_id: string | null;
+  assessment_id: string | null;
   trainer_id: string | null;
   term: string | null;
   score: number;
@@ -42,6 +43,29 @@ export type TrainerScore = {
     name: string;
     module_id: string;
   } | null;
+  assessment: {
+    id: string;
+    code: string | null;
+    name: string;
+    total_marks: number;
+    pass_marks: number | null;
+  } | null;
+};
+
+export type TrainerAssessment = {
+  id: string;
+  code: string | null;
+  name: string;
+  assessment_type: string;
+  assessment_scope: string;
+  total_marks: number;
+  pass_marks: number | null;
+  course_id: string | null;
+  course_name: string | null;
+  module_id?: string | null;
+  module_name?: string | null;
+  subject_id?: string | null;
+  subject_code?: string | null;
 };
 
 export type TrainerDashboardResponse = {
@@ -154,24 +178,48 @@ export const trainerApi = {
     return response.data;
   },
 
+  async getAssessments(subjectId: string) {
+    const response = await trainerClient.get<{ assessments: TrainerAssessment[] }>(
+      '/scores/bulk-marks/assessments',
+      { params: { subject_id: subjectId } },
+    );
+    return response.data.assessments;
+  },
+
+  async createAssessment(payload: {
+    subject_id: string;
+    name: string;
+    assessment_type: string;
+    total_marks: number;
+    pass_marks: number;
+  }) {
+    const response = await trainerClient.post<TrainerAssessment>(
+      '/scores/bulk-marks/assessments',
+      payload,
+    );
+    return response.data;
+  },
+
   async createScore(payload: {
     student_id: string;
     subject_id: string;
+    assessment_id: string;
     score: number;
     term: string;
     feedback?: string;
-    exam_copies: File[];
+    exam_copies?: File[];
   }) {
     const formData = new FormData();
     formData.append('student_id', payload.student_id);
     formData.append('subject_id', payload.subject_id);
+    formData.append('assessment_id', payload.assessment_id);
     formData.append('score', String(payload.score));
     formData.append('term', payload.term);
     formData.append('assessment_scope', 'formative');
     if (payload.feedback) {
       formData.append('feedback', payload.feedback);
     }
-    payload.exam_copies.forEach((file) => formData.append('exam_copies', file));
+    (payload.exam_copies ?? []).forEach((file) => formData.append('exam_copies', file));
 
     const response = await trainerClient.post<TrainerScore>('/api/v1/trainer/scores', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },

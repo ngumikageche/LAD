@@ -4,9 +4,10 @@ import math
 import uuid
 
 from flask import abort
-from sqlalchemy import case, func, or_
+from sqlalchemy import case, func
 
 from ..extensions import db
+from ..models.assessment import Assessment
 from ..models.enrollment import Enrollment
 from ..models.notification import Notification
 from ..models.score import Score
@@ -19,6 +20,19 @@ from ..models.user import User
 from .learning_analytics import build_role_dashboard
 
 PASS_MARK = 50.0
+
+
+def assessment_grade(score: float, total_marks: int) -> str:
+    percentage = (score / total_marks * 100) if total_marks else 0
+    if percentage >= 80:
+        return "A"
+    if percentage >= 70:
+        return "B"
+    if percentage >= 60:
+        return "C"
+    if percentage >= 50:
+        return "D"
+    return "F"
 
 
 def parse_uuid(value: str | None, field: str) -> uuid.UUID:
@@ -90,10 +104,9 @@ def ensure_student_enrolled(student_id: uuid.UUID, subject_id: uuid.UUID) -> Stu
 def resolve_score_enrollment(student: Student, subject: Subject) -> Enrollment | None:
     query = db.session.query(Enrollment).filter(Enrollment.student_id == student.id)
     if subject.module_id:
-        enrollment_filters = [Enrollment.module_id == subject.module_id]
+        query = query.filter(Enrollment.module_id == subject.module_id)
         if subject.module and subject.module.course_id:
-            enrollment_filters.append(Enrollment.course_id == subject.module.course_id)
-        query = query.filter(or_(*enrollment_filters))
+            query = query.filter(Enrollment.course_id == subject.module.course_id)
 
     active_first = case((Enrollment.status == "active", 0), else_=1)
     return query.order_by(active_first.asc(), Enrollment.created_at.desc()).first()
@@ -106,6 +119,7 @@ def score_payload(score: Score) -> dict:
         "id": str(score.id),
         "student_id": str(score.student_id) if score.student_id else None,
         "subject_id": str(score.subject_id) if score.subject_id else None,
+        "assessment_id": str(score.assessment_id) if score.assessment_id else None,
         "trainer_id": str(score.trainer_id) if score.trainer_id else None,
         "term": score.term,
         "score": score.marks_obtained,
@@ -124,6 +138,13 @@ def score_payload(score: Score) -> dict:
             "name": score.subject.name,
             "module_id": str(score.subject.module_id),
         } if score.subject else None,
+        "assessment": {
+            "id": str(score.assessment.id),
+            "code": score.assessment.code,
+            "name": score.assessment.name,
+            "total_marks": score.assessment.total_marks,
+            "pass_marks": score.assessment.pass_marks,
+        } if score.assessment else None,
         "trainer": {
             "id": str(score.trainer.id),
             "name": trainer_user.name if trainer_user else None,
@@ -187,6 +208,7 @@ def student_payload(student: Student, subject_names: list[str] | None = None) ->
 def create_score(trainer: Trainer, payload: dict) -> Score:
     student_id = parse_uuid(payload.get("student_id"), "student_id")
     subject_id = parse_uuid(payload.get("subject_id"), "subject_id")
+    assessment_id = parse_uuid(payload.get("assessment_id"), "assessment_id")
     term = payload.get("term")
     raw_score = payload.get("score")
 
@@ -194,9 +216,6 @@ def create_score(trainer: Trainer, payload: dict) -> Score:
         abort(400, description="'term' is required")
     if not isinstance(raw_score, (int, float)):
         abort(400, description="'score' is required and must be numeric")
-    if raw_score < 0 or raw_score > 100:
-        abort(400, description="'score' must be between 0 and 100")
-
     trainer_id_value = payload.get("trainer_id")
     if trainer_id_value:
         trainer_id = parse_uuid(trainer_id_value, "trainer_id")
@@ -205,29 +224,43 @@ def create_score(trainer: Trainer, payload: dict) -> Score:
 
     subject = ensure_subject_access(trainer, subject_id)
     student = ensure_student_enrolled(student_id, subject_id)
+    assessment = db.session.get(Assessment, assessment_id)
+    if not assessment or assessment.deleted_at:
+        abort(404, description="Assessment not found")
+    if assessment.assessment_scope != "formative":
+        abort(400, description="Only internal formative assessments can be reused")
+    if assessment.module_id and assessment.module_id != subject.module_id:
+        abort(400, description="The assessment does not belong to the selected subject's module")
+    if raw_score < 0 or raw_score > assessment.total_marks:
+        abort(400, description=f"'score' must be between 0 and {assessment.total_marks}")
 
     duplicate = (
         db.session.query(Score.id)
         .filter(
             Score.student_id == student_id,
-            Score.subject_id == subject_id,
-            Score.term == term.strip(),
+            Score.assessment_id == assessment_id,
         )
         .first()
     )
     if duplicate:
-        abort(409, description="Score already exists for this student, subject, and term")
+        abort(409, description="This student already has a score for the selected assessment")
 
     enrollment = resolve_score_enrollment(student, subject)
     score = Score(
         enrollment_id=enrollment.id if enrollment else None,
+        assessment_id=assessment.id,
         student_id=student.id,
         subject_id=subject.id,
         trainer_id=trainer.id,
         term=term.strip(),
         marks_obtained=float(raw_score),
+        grade=assessment_grade(float(raw_score), assessment.total_marks),
         feedback=(payload.get("feedback") or None),
-        is_passed=float(raw_score) >= PASS_MARK,
+        is_passed=float(raw_score) >= (
+            assessment.pass_marks
+            if assessment.pass_marks is not None
+            else assessment.total_marks * 0.5
+        ),
     )
 
     db.session.add(score)
@@ -237,17 +270,17 @@ def create_score(trainer: Trainer, payload: dict) -> Score:
             Notification(
                 user_id=student.user_id,
                 title="New Score Available",
-                message=f"A new score was recorded for {subject.name} ({score.term}).",
+                message=f"A new score was recorded for {assessment.name} in {subject.name} ({score.term}).",
                 is_read=False,
             )
         )
 
-        if score.marks_obtained < PASS_MARK:
+        if score.is_passed is False:
             db.session.add(
                 Notification(
                     user_id=student.user_id,
                     title="At-Risk Performance Alert",
-                    message=f"Your {subject.name} score for {score.term} is below the pass mark.",
+                    message=f"Your {assessment.name} score for {score.term} is below the pass mark.",
                     is_read=False,
                 )
             )

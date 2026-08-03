@@ -141,12 +141,14 @@ def _seed(app):
         db.session.commit()
 
         return {
+            "assessment_id": str(assessment.id),
             "assessment_code": assessment.code,
             "course_code": course.code,
             "course_name": course.name,
             "module_code": module.code,
             "module_name": module.name,
             "student_code": student.code,
+            "student_id": str(student.id),
             "assigned_subject_code": assigned_subject.code,
             "assigned_subject_id": str(assigned_subject.id),
             "unassigned_subject_code": unassigned_subject.code,
@@ -155,9 +157,14 @@ def _seed(app):
         }
 
 
-def _csv(student_code: str, assessment_code: str, subject_code: str = "") -> tuple:
-    body = "student_id,marks_obtained,assessment_id,subject_id\n"
-    body += f"{student_code},75,{assessment_code},{subject_code}\n"
+def _csv(
+    student_code: str,
+    assessment_code: str,
+    subject_code: str = "",
+    module_code: str = "",
+) -> tuple:
+    body = "student_id,marks_obtained,assessment_id,module_code,subject_id\n"
+    body += f"{student_code},75,{assessment_code},{module_code},{subject_code}\n"
     return (io.BytesIO(body.encode("utf-8")), "marks.csv")
 
 
@@ -285,6 +292,30 @@ def test_unknown_subject_code_is_rejected(client, app):
     assert response.status_code == 404
 
 
+def test_unknown_row_module_code_makes_the_marks_row_invalid(client, app):
+    ids = _seed(app)
+    headers = _login(client, "admin@example.com")
+
+    response = client.post(
+        "/scores/bulk-marks/preview",
+        headers=headers,
+        data={
+            "file": _csv(
+                ids["student_code"],
+                ids["assessment_code"],
+                ids["assigned_subject_code"],
+                "MOD-NOPE",
+            ),
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    row = response.get_json()["rows"][0]
+    assert row["valid"] is False
+    assert "Module 'MOD-NOPE' not found" in row["errors"]
+
+
 def test_trainer_cannot_select_a_subject_they_do_not_teach(client, app):
     ids = _seed(app)
     headers = _login(client, "trainer@example.com")
@@ -330,7 +361,7 @@ def test_template_prefills_the_class_list_for_an_assessment(client, app):
     assert ids["assessment_code"] in response.headers["Content-Disposition"]
 
     workbook = _load_template(response)
-    assert workbook.sheetnames == ["Marks Upload", "Module Course Subjects"]
+    assert workbook.sheetnames == ["Marks Upload", "Modules", "Subject Codes"]
     rows = _sheet_rows(workbook, "Marks Upload")
     assert {row["student_id"] for row in rows} == {
         ids["student_code"],
@@ -340,9 +371,18 @@ def test_template_prefills_the_class_list_for_an_assessment(client, app):
     # Marks are the only thing left to fill in.
     assert all(row["marks_obtained"] == "" for row in rows)
     assert all(row["assessment_code"] == ids["assessment_code"] for row in rows)
+    assert all(row["module_code"] == ids["module_code"] for row in rows)
     assert all(row["term"] == ids["term_name"] for row in rows)
 
-    reference_rows = _sheet_rows(workbook, "Module Course Subjects")
+    module_rows = _sheet_rows(workbook, "Modules")
+    assert {
+        "module_code": ids["module_code"],
+        "module_name": ids["module_name"],
+        "course_code": ids["course_code"],
+        "course_name": ids["course_name"],
+    } in module_rows
+
+    reference_rows = _sheet_rows(workbook, "Subject Codes")
     assert {
         "module_code": ids["module_code"],
         "module_name": ids["module_name"],
@@ -433,11 +473,12 @@ def test_prefilled_template_round_trips_through_preview(client, app):
     assert body["valid"] == 1
     row = body["rows"][0]
     assert row["marks_obtained"] == 64
+    assert row["module_code"] == ids["module_code"]
     assert row["subject_code"] == ids["assigned_subject_code"]
     assert row["errors"] == []
 
 
-def test_commit_stores_the_selected_subject_on_the_score(client, app):
+def test_commit_stores_the_selected_subject_without_requiring_exam_copies(client, app):
     ids = _seed(app)
     headers = _login(client, "trainer@example.com")
 
@@ -457,7 +498,6 @@ def test_commit_stores_the_selected_subject_on_the_score(client, app):
         data={
             "rows": json.dumps(preview["rows"]),
             "subject_code": ids["assigned_subject_code"],
-            "exam_copies": (io.BytesIO(b"scanned script"), "script.pdf"),
         },
         content_type="multipart/form-data",
     )
@@ -465,6 +505,7 @@ def test_commit_stores_the_selected_subject_on_the_score(client, app):
     assert response.status_code == 200
     body = response.get_json()
     assert body["inserted"] == 1
+    assert body["evidence_files"] == 0
     assert body["subject"]["code"] == ids["assigned_subject_code"]
 
     from app.extensions import db
@@ -475,3 +516,43 @@ def test_commit_stores_the_selected_subject_on_the_score(client, app):
         assert str(score.subject_id) == ids["assigned_subject_id"]
         assert score.marks_obtained == 75
         assert score.grade == "B"
+
+
+def test_individual_scores_reuse_one_assessment_record(client, app):
+    ids = _seed(app)
+    headers = _login(client, "trainer@example.com")
+
+    response = client.post(
+        "/api/v1/trainer/scores",
+        headers=headers,
+        data={
+            "student_id": ids["student_id"],
+            "subject_id": ids["assigned_subject_id"],
+            "assessment_id": ids["assessment_id"],
+            "term": ids["term_name"],
+            "score": "82",
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 201
+    body = response.get_json()
+    assert body["assessment_id"] == ids["assessment_id"]
+    assert body["assessment"]["code"] == ids["assessment_code"]
+    assert body["grade"] == "A"
+
+    duplicate = client.post(
+        "/api/v1/trainer/scores",
+        headers=headers,
+        data={
+            "student_id": ids["student_id"],
+            "subject_id": ids["assigned_subject_id"],
+            "assessment_id": ids["assessment_id"],
+            "term": ids["term_name"],
+            "score": "75",
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert duplicate.status_code == 409
+    assert "already has a score" in duplicate.get_json()["error"]

@@ -30,14 +30,15 @@ def workbook_upload(headers, row, sheet_name="Students Template"):
 
 def test_import_recognizes_useful_columns_from_external_student_workbook():
     upload = workbook_upload(
-        ["Reg No", "Name", "Email", "Mobile", "Course Code", "Date Of Admission(dd/MM/yyyy)"],
-        ["TVET-1", "Amina", "amina@example.edu", "0712345678", "CRS001", "15/01/2026"],
+        ["Reg No", "Name", "Email", "Mobile", "Course Code", "Module Code", "Date Of Admission(dd/MM/yyyy)"],
+        ["TVET-1", "Amina", "amina@example.edu", "0712345678", "CRS001", "MOD001", "15/01/2026"],
     )
 
     rows = read_people_upload(upload, preferred_sheet="Students Template")
 
     assert first_value(rows[0], "Registration Number", "Reg No") == "TVET-1"
     assert first_value(rows[0], "Course Code") == "CRS001"
+    assert first_value(rows[0], "Module Code") == "MOD001"
 
 
 def test_csv_import_ignores_blank_rows_and_normalizes_headers():

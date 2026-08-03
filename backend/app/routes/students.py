@@ -191,6 +191,7 @@ STUDENT_IMPORT_HEADERS = [
     "Email",
     "Mobile",
     "Course Code",
+    "Module Code",
     "Admission Date",
 ]
 
@@ -225,6 +226,18 @@ def student_import_template():
     if actor.institution_id:
         course_query = course_query.filter(Department.institution_id == actor.institution_id)
     courses = course_query.order_by(Course.name.asc()).all()
+    module_query = (
+        db.session.query(Module)
+        .join(Course, Module.course_id == Course.id)
+        .join(Department, Course.department_id == Department.id)
+        .filter(
+            Module.deleted_at.is_(None),
+            Course.deleted_at.is_(None),
+        )
+    )
+    if actor.institution_id:
+        module_query = module_query.filter(Department.institution_id == actor.institution_id)
+    modules = module_query.order_by(Course.name.asc(), Module.name.asc()).all()
     output = build_template(
         STUDENT_IMPORT_HEADERS,
         "Students Template",
@@ -234,9 +247,27 @@ def student_import_template():
             "amina@example.edu",
             "0712345678",
             "CRS001",
+            "MOD001",
             "15/01/2026",
         ],
         reference_sheets={
+            "Modules": (
+                [
+                    "Module Code",
+                    "Module Name",
+                    "Course Code",
+                    "Course Name",
+                ],
+                [
+                    [
+                        module.code,
+                        module.name,
+                        module.course.code,
+                        module.course.name,
+                    ]
+                    for module in modules
+                ],
+            ),
             "Course Codes": (
                 [
                     "Course Code",
@@ -292,6 +323,23 @@ def bulk_upload_students():
         for course in courses
         if course.code
     }
+    module_query = (
+        db.session.query(Module)
+        .join(Course, Module.course_id == Course.id)
+        .join(Department, Course.department_id == Department.id)
+        .filter(
+            Module.deleted_at.is_(None),
+            Course.deleted_at.is_(None),
+        )
+    )
+    if actor.institution_id:
+        module_query = module_query.filter(Department.institution_id == actor.institution_id)
+    modules = module_query.all()
+    module_map = {
+        (module.course_id, normalize_lookup(module.code)): module
+        for module in modules
+        if module.code
+    }
     results = []
     created = 0
     duplicates = 0
@@ -302,15 +350,17 @@ def bulk_upload_students():
         email = first_value(row, "Email").lower()
         phone = first_value(row, "Mobile", "Phone") or None
         course_code = first_value(row, "Course Code")
+        module_code = first_value(row, "Module Code")
         course = course_map.get(normalize_lookup(course_code))
-        if not registration_number or not name or not email or not course_code:
+        module = module_map.get((course.id, normalize_lookup(module_code))) if course else None
+        if not registration_number or not name or not email or not course_code or not module_code:
             failed += 1
             results.append({
                 "row": row_number,
                 "status": "failed",
                 "registration_number": registration_number,
                 "email": email,
-                "message": "Reg No, Name, Email, and Course Code are required",
+                "message": "Reg No, Name, Email, Course Code, and Module Code are required",
             })
             continue
         if "@" not in email:
@@ -325,6 +375,16 @@ def bulk_upload_students():
                 "registration_number": registration_number,
                 "email": email,
                 "message": f"Course Code not found or unavailable: {course_code}",
+            })
+            continue
+        if not module:
+            failed += 1
+            results.append({
+                "row": row_number,
+                "status": "failed",
+                "registration_number": registration_number,
+                "email": email,
+                "message": f"Module Code not found in course {course_code}: {module_code}",
             })
             continue
         existing = (
@@ -370,12 +430,17 @@ def bulk_upload_students():
                 )
                 db.session.add(student)
                 db.session.flush()
+                db.session.add(Enrollment(
+                    student_id=student.id,
+                    course_id=course.id,
+                    module_id=module.id,
+                    status="active",
+                ))
                 subject_ids = [
                     item[0]
                     for item in db.session.query(Subject.id)
-                    .join(Module, Subject.module_id == Module.id)
                     .filter(
-                        Module.course_id == course.id,
+                        Subject.module_id == module.id,
                         Subject.deleted_at.is_(None),
                     )
                     .all()
@@ -393,6 +458,7 @@ def bulk_upload_students():
                 "email": email,
                 "initial_password": initial_password,
                 "course": course.name,
+                "module": module.name,
             })
         except IntegrityError:
             duplicates += 1

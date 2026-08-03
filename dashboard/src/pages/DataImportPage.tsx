@@ -24,7 +24,7 @@ const DataImportPage = () => {
         uploadPath="/students/bulk-upload"
         templatePath="/students/import-template"
         templateFilename="LAD-learners-template.xlsx"
-        requiredColumns="Registration Number, Name, Email, Course Code"
+        requiredColumns="Registration Number, Name, Email, Course Code, Module Code"
       />
       <BulkPeopleUploadPanel
         personLabel="trainers"

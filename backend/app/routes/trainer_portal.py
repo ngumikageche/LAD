@@ -455,18 +455,17 @@ def create_score():
     from ..services.score_evidence import allowed_score_evidence, save_score_evidence_files, usable_score_evidence_files
 
     evidence_files = usable_score_evidence_files(request.files.getlist("exam_copies"))
-    if not evidence_files:
-        return {"error": "Upload at least one physical exam copy before saving marks"}, 400
     invalid_file = next((file.filename for file in evidence_files if not allowed_score_evidence(file.filename or "")), None)
     if invalid_file:
         return {"error": f"Exam copy file type not allowed: {invalid_file}"}, 400
 
     if not (request.content_type and request.content_type.startswith("multipart/form-data")):
-        return {"error": "Use multipart/form-data and include exam_copies files"}, 400
+        return {"error": "Use multipart/form-data"}, 400
 
     payload = {
         "student_id": request.form.get("student_id"),
         "subject_id": request.form.get("subject_id"),
+        "assessment_id": request.form.get("assessment_id"),
         "term": request.form.get("term"),
         "feedback": request.form.get("feedback") or None,
     }

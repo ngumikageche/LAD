@@ -24,6 +24,7 @@ interface SubjectOption {
   code: string | null;
   name: string;
   module_id: string | null;
+  module_code: string | null;
   module_name: string | null;
   course_id: string | null;
   course_name: string | null;
@@ -38,6 +39,9 @@ interface PreviewRow {
   assessment_id: string;
   assessment_code: string | null;
   assessment_name: string | null;
+  module_id: string | null;
+  module_code: string | null;
+  module_name: string | null;
   subject_id: string | null;
   subject_code: string | null;
   subject_name: string | null;
@@ -202,10 +206,6 @@ export default function BulkMarksUploadPage() {
 
   const handleCommit = async () => {
     if (!preview) return;
-    if (examCopies.length === 0) {
-      setError('Upload at least one physical exam copy before committing marks.');
-      return;
-    }
     setCommitting(true);
     setError(null);
 
@@ -620,9 +620,9 @@ export default function BulkMarksUploadPage() {
 
         <div className="mt-5 rounded-xl border border-slate-700 bg-slate-800 p-4">
           <label className="block">
-            <span className="text-sm font-semibold text-slate-200">Physical Exam Copies *</span>
+            <span className="text-sm font-semibold text-slate-200">Physical Exam Copies (optional)</span>
             <span className="mt-1 block text-xs text-slate-500">
-              Attach scanned PDFs, photos, or a ZIP of the original exam scripts before committing marks.
+              Optionally attach scanned PDFs, photos, or a ZIP of the original exam scripts.
             </span>
             <input
               type="file"
@@ -652,6 +652,7 @@ export default function BulkMarksUploadPage() {
               { col: 'student_name', req: false, desc: 'Prefilled for reference — ignored on upload' },
               { col: 'marks_obtained', req: true, desc: 'Numeric score — the column you fill in' },
               { col: 'assessment_code', req: true, desc: 'Assessment code (ASM001) — auto-filled in Class List' },
+              { col: 'module_code', req: false, desc: 'Module code (MOD001) — auto-filled in Class List' },
               { col: 'subject_code', req: false, desc: 'Subject code (SUB001) — auto-filled in Class List' },
               { col: 'term', req: false, desc: 'e.g. Term 1 2026' },
               { col: 'feedback', req: false, desc: 'Text feedback' },
@@ -783,7 +784,7 @@ export default function BulkMarksUploadPage() {
               </label>
               <button
                 onClick={handleCommit}
-                disabled={committing || preview.valid === 0 || examCopies.length === 0}
+                disabled={committing || preview.valid === 0}
                 className="flex items-center gap-2 px-5 py-2 text-sm font-bold text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 transition"
               >
                 {committing ? <RefreshCw size={14} className="animate-spin" /> : <Send size={14} />}
@@ -802,6 +803,7 @@ export default function BulkMarksUploadPage() {
                   <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase">Student ID</th>
                   <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase">Student</th>
                   <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase">Assessment</th>
+                  <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase">Module</th>
                   <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase">Subject</th>
                   <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase">Marks</th>
                   <th className="px-4 py-3 text-xs font-bold text-slate-400 uppercase">Grade</th>
@@ -840,6 +842,11 @@ export default function BulkMarksUploadPage() {
                         {' '}{row.assessment_name ?? <span className="text-red-400">Not found</span>}
                       </td>
                       <td className="px-4 py-3 text-slate-400 text-xs">
+                        {row.module_code
+                          ? <span className="font-mono bg-slate-700 text-cyan-300 px-1.5 py-0.5 rounded">{row.module_code}</span>
+                          : row.module_name ?? '—'}
+                      </td>
+                      <td className="px-4 py-3 text-slate-400 text-xs">
                         {row.subject_code
                           ? <span className="font-mono bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded">{row.subject_code}</span>
                           : row.subject_name ?? '—'}
@@ -869,7 +876,7 @@ export default function BulkMarksUploadPage() {
 
                     {expandedRow === row.row && (
                       <tr key={`${row.row}-detail`} className="bg-slate-800/40">
-                        <td colSpan={10} className="px-6 py-3">
+                        <td colSpan={11} className="px-6 py-3">
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
                             <div>
                               <p className="text-slate-500 mb-0.5">Reg Number</p>

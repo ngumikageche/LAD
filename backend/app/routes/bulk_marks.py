@@ -12,6 +12,7 @@ from openpyxl.utils import get_column_letter
 from ..extensions import db
 from ..models.assessment import Assessment
 from ..models.course import Course
+from ..models.department import Department
 from ..models.score import Score
 from ..models.score_evidence import ScoreEvidence
 from ..models.student import Student
@@ -128,6 +129,19 @@ def _resolve_subject(value: str) -> Subject | None:
     except (ValueError, TypeError):
         return None
 
+
+def _resolve_module(value: str) -> Module | None:
+    """Look up a current module by MOD-code or UUID."""
+    if not value:
+        return None
+    module = db.session.query(Module).filter_by(code=value).first()
+    if module:
+        return module
+    try:
+        return db.session.get(Module, uuid.UUID(value))
+    except (ValueError, TypeError):
+        return None
+
 def _resolve_assessment(value: str) -> Assessment | None:
     """Look up assessment by ASM-code or UUID."""
     if not value:
@@ -210,6 +224,7 @@ def list_subjects():
             "code": subject.code,
             "name": subject.name,
             "module_id": str(subject.module_id) if subject.module_id else None,
+            "module_code": module.code if module else None,
             "module_name": module.name if module else None,
             "course_id": str(course.id) if course else None,
             "course_name": course.name if course else None,
@@ -242,6 +257,7 @@ def list_assessments():
         module = getattr(subject, "module", None) if subject else None
         if module and module.course_id:
             q = q.filter(Assessment.course_id == module.course_id)
+            q = q.filter(Assessment.module_id == module.id)
     items = [
         {
             "id": str(a.id),
@@ -340,6 +356,8 @@ def preview_bulk():
         assessment_code  (ASM001 code)
     Optional:
         assessment_id  (legacy; UUID or ASM-code)
+        module_code  (MOD001 code)
+        module_id  (legacy; MOD001 code OR module UUID)
         subject_code  (SUB001 code)
         subject_id  (legacy; SUB001 code OR subject UUID)
         term
@@ -380,6 +398,7 @@ def preview_bulk():
     # Cache lookups
     student_cache: dict[str, Student | None] = {}
     assessment_cache: dict[str, Assessment | None] = {}
+    module_cache: dict[str, Module | None] = {}
     subject_cache: dict[str, Subject | None] = {}
 
     rows = []
@@ -389,6 +408,7 @@ def preview_bulk():
         student_key = row.get("student_id") or row.get("registration_number", "")
         marks_str = row.get("marks_obtained", "")
         assessment_id_str = row.get("assessment_code") or row.get("assessment_id", "")
+        module_str = row.get("module_code") or row.get("module_id", "")
         # New exports use the accurately named subject_code column. Keep
         # accepting subject_id so previously downloaded files still work.
         subject_str = row.get("subject_code") or row.get("subject_id", "")
@@ -433,6 +453,19 @@ def preview_bulk():
         else:
             errors.append("student_id is required")
 
+        # Resolve the row module. New templates provide module_code; older files
+        # can inherit it from the selected subject or assessment.
+        module = None
+        module_input_invalid = False
+        if module_str:
+            if module_str not in module_cache:
+                module_cache[module_str] = _resolve_module(module_str)
+            module = module_cache[module_str]
+            if not module or module.deleted_at:
+                errors.append(f"Module '{module_str}' not found")
+                module = None
+                module_input_invalid = True
+
         # Resolve subject — a row's own subject_id wins, otherwise the batch subject
         subject = None
         if subject_str:
@@ -443,6 +476,26 @@ def preview_bulk():
                 errors.append(f"Subject '{subject_str}' not found")
         elif batch_subject:
             subject = batch_subject
+
+        if not module and not module_input_invalid:
+            module = subject.module if subject else (assessment.module if assessment else None)
+        if module and assessment and assessment.module_id and assessment.module_id != module.id:
+            errors.append(f"Module '{module.code or module.id}' does not match the assessment")
+        if module and assessment and assessment.course_id and module.course_id != assessment.course_id:
+            errors.append(f"Module '{module.code or module.id}' does not belong to the assessment course")
+        if module and subject and subject.module_id != module.id:
+            errors.append(f"Subject '{subject.code or subject.id}' does not belong to the module")
+
+        if student and assessment:
+            enrollment_query = db.session.query(Enrollment.id).filter(
+                Enrollment.student_id == student.id,
+                Enrollment.course_id == assessment.course_id,
+                Enrollment.deleted_at.is_(None),
+            )
+            if module:
+                enrollment_query = enrollment_query.filter(Enrollment.module_id == module.id)
+            if not enrollment_query.first():
+                errors.append("Student is not enrolled in the assessment module")
 
         # Compute grade
         grade = None
@@ -460,6 +513,9 @@ def preview_bulk():
             "assessment_id": str(assessment.id) if assessment else assessment_id_str,
             "assessment_code": assessment.code if assessment else None,
             "assessment_name": assessment.name if assessment else None,
+            "module_id": str(module.id) if module else (module_str or None),
+            "module_code": module.code if module else None,
+            "module_name": module.name if module else None,
             "subject_id": str(subject.id) if subject else (subject_str or None),
             "subject_code": subject.code if subject else None,
             "subject_name": subject.name if subject else None,
@@ -500,11 +556,8 @@ def commit_bulk():
         return subject_error, subject_status
 
     evidence_files = usable_score_evidence_files(request.files.getlist("exam_copies"))
-    if not evidence_files:
-        return {"error": "Upload at least one physical exam copy before committing marks"}, 400
-
     if not (request.content_type and request.content_type.startswith("multipart/form-data")):
-        return {"error": "Use multipart/form-data and include exam_copies files"}, 400
+        return {"error": "Use multipart/form-data"}, 400
 
     try:
         payload = {"rows": json.loads(request.form.get("rows", "[]"))}
@@ -553,6 +606,21 @@ def commit_bulk():
             continue
         assessment_ids.add(assessment_uuid)
 
+        raw_module = str(row.get("module_id") or row.get("module_code") or "").strip()
+        module = _resolve_module(raw_module) if raw_module else assessment.module
+        if raw_module and (not module or module.deleted_at):
+            errors.append(f"Row {row.get('row')}: module '{raw_module}' not found")
+            skipped += 1
+            continue
+        if module and assessment.module_id and assessment.module_id != module.id:
+            errors.append(f"Row {row.get('row')}: module does not match the assessment")
+            skipped += 1
+            continue
+        if module and assessment.course_id and module.course_id != assessment.course_id:
+            errors.append(f"Row {row.get('row')}: module does not belong to the assessment course")
+            skipped += 1
+            continue
+
         try:
             marks = float(row["marks_obtained"])
         except (TypeError, ValueError):
@@ -584,14 +652,24 @@ def commit_bulk():
             subject_id = batch_subject.id
         if subject_id:
             subject_ids.add(subject_id)
+            row_subject = db.session.get(Subject, subject_id)
+            if module and row_subject and row_subject.module_id != module.id:
+                errors.append(f"Row {row.get('row')}: subject does not belong to the module")
+                skipped += 1
+                continue
+            if not module and row_subject:
+                module = row_subject.module
 
-        enrollment = db.session.query(Enrollment).filter(
+        enrollment_query = db.session.query(Enrollment).filter(
             Enrollment.student_id == student.id,
             Enrollment.course_id == assessment.course_id,
             Enrollment.deleted_at.is_(None),
-        ).first()
+        )
+        if module:
+            enrollment_query = enrollment_query.filter(Enrollment.module_id == module.id)
+        enrollment = enrollment_query.first()
         if not enrollment:
-            errors.append(f"Row {row.get('row')}: student is not enrolled in the assessment course")
+            errors.append(f"Row {row.get('row')}: student is not enrolled in the assessment module")
             skipped += 1
             continue
         trainer = db.session.query(Trainer).filter(Trainer.user_id == user.id).first()
@@ -676,6 +754,7 @@ TEMPLATE_HEADER = [
     "student_name",
     "marks_obtained",
     "assessment_code",
+    "module_code",
     "subject_code",
     "term",
     "feedback",
@@ -701,6 +780,8 @@ def _template_roster(user, assessment: Assessment, subject: Subject | None) -> l
 
     if assessment.course_id:
         query = query.filter(Enrollment.course_id == assessment.course_id)
+    if assessment.module_id:
+        query = query.filter(Enrollment.module_id == assessment.module_id)
 
     subject_ids: set[uuid.UUID] | None = None
     if subject:
@@ -730,10 +811,17 @@ def _template_subject_reference(user, assessment: Assessment | None) -> list[lis
         db.session.query(Subject)
         .join(Module, Module.id == Subject.module_id)
         .join(Course, Course.id == Module.course_id)
-        .filter(Subject.deleted_at.is_(None))
+        .join(Department, Department.id == Course.department_id)
+        .filter(
+            Subject.deleted_at.is_(None),
+            Module.deleted_at.is_(None),
+            Course.deleted_at.is_(None),
+        )
     )
     if assessment and assessment.course_id:
         query = query.filter(Module.course_id == assessment.course_id)
+    if user.institution_id:
+        query = query.filter(Department.institution_id == user.institution_id)
 
     trainer = _uploader_trainer(user)
     if trainer:
@@ -757,6 +845,47 @@ def _template_subject_reference(user, assessment: Assessment | None) -> list[lis
     return rows
 
 
+def _template_module_reference(user, assessment: Assessment | None) -> list[list[str]]:
+    """Current modules visible to the uploader, optionally scoped by assessment."""
+    query = (
+        db.session.query(Module)
+        .join(Course, Course.id == Module.course_id)
+        .join(Department, Department.id == Course.department_id)
+        .filter(
+            Module.deleted_at.is_(None),
+            Course.deleted_at.is_(None),
+        )
+    )
+    if assessment and assessment.course_id:
+        query = query.filter(Module.course_id == assessment.course_id)
+    if user.institution_id:
+        query = query.filter(Department.institution_id == user.institution_id)
+
+    trainer = _uploader_trainer(user)
+    if trainer:
+        subject_ids = _trainer_subject_ids(trainer)
+        if not subject_ids:
+            return []
+        query = query.join(Subject, Subject.module_id == Module.id).filter(
+            Subject.id.in_(subject_ids),
+            Subject.deleted_at.is_(None),
+        )
+
+    rows = []
+    seen_module_ids = set()
+    for module in query.order_by(Course.name, Module.name).all():
+        if module.id in seen_module_ids:
+            continue
+        seen_module_ids.add(module.id)
+        rows.append([
+            module.code or str(module.id),
+            module.name,
+            module.course.code or str(module.course.id) if module.course else "",
+            module.course.name if module.course else "",
+        ])
+    return rows
+
+
 def _format_template_sheet(worksheet) -> None:
     worksheet.freeze_panes = "A2"
     worksheet.auto_filter.ref = worksheet.dimensions
@@ -772,7 +901,7 @@ def download_template():
 
     With `assessment_id` (and optionally `subject_code`) it comes back prefilled
     with the class list — one row per learner, marks left blank. The second sheet
-    lists module, course, and subject codes available to the uploader.
+    lists current modules available to the uploader.
     """
     user, error, status = require_permission("scores.create")
     if error:
@@ -800,6 +929,8 @@ def download_template():
     if assessment:
         term = assessment.term.name if assessment.term else ""
         subject_code = batch_subject.code if batch_subject else ""
+        module = batch_subject.module if batch_subject else assessment.module
+        module_code = module.code if module else ""
         for student in _template_roster(user, assessment, batch_subject):
             marks_sheet.append([
                 student.code or student.registration_number,
@@ -808,6 +939,7 @@ def download_template():
                 # Use the human-readable assessment code in exported files.
                 # Legacy records without a code fall back to their UUID.
                 assessment.code or str(assessment.id),
+                module_code,
                 subject_code,
                 term,
                 "",
@@ -817,11 +949,22 @@ def download_template():
     else:
         # A generic template must not contain made-up identifiers that look
         # uploadable. Select an assessment to receive a populated class list.
-        marks_sheet.append(["", "", "", "", "", "", ""])
+        marks_sheet.append(["", "", "", "", "", "", "", ""])
         filename = "marks_upload_template.xlsx"
     _format_template_sheet(marks_sheet)
 
-    reference_sheet = workbook.create_sheet("Module Course Subjects")
+    module_sheet = workbook.create_sheet("Modules")
+    module_sheet.append([
+        "module_code",
+        "module_name",
+        "course_code",
+        "course_name",
+    ])
+    for reference_row in _template_module_reference(user, assessment):
+        module_sheet.append(reference_row)
+    _format_template_sheet(module_sheet)
+
+    reference_sheet = workbook.create_sheet("Subject Codes")
     reference_sheet.append([
         "module_code",
         "module_name",
