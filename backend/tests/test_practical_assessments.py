@@ -113,3 +113,62 @@ def test_student_payload_hides_assessor_guidance_and_private_evidence(monkeypatc
     assert "expected_response" not in payload["report_sections"][0]["items"][0]
     assert "answer_guidance" not in payload["oral_questions"][0]
     assert [item["id"] for item in payload["media_attachments"]] == ["shared"]
+
+
+def test_reused_report_blueprint_keeps_design_and_clears_learner_results():
+    report = PracticalAssessmentReport(
+        id=uuid.uuid4(),
+        student_id=uuid.uuid4(),
+        trainer_id=uuid.uuid4(),
+        report_sections=[
+            {
+                "number": 1,
+                "title": "Session 1",
+                "type": "session",
+                "description": "Practical checklist",
+                "items": [
+                    {
+                        "number": 1,
+                        "prompt": "Wire the control circuit",
+                        "expected_response": "Circuit follows the approved diagram",
+                        "remark": "Completed correctly",
+                        "sub_items": ["Isolate supply", "Test continuity"],
+                        "score": 18,
+                        "max_score": 20,
+                    }
+                ],
+            }
+        ],
+        task_items=[
+            {
+                "number": 1,
+                "description": "Wire the control circuit",
+                "score": 18,
+                "remark": "Completed correctly",
+                "max_score": 20,
+            }
+        ],
+        oral_questions=[
+            {
+                "number": 1,
+                "question": "Why isolate the supply?",
+                "answer_guidance": "Prevent electrical injury",
+                "awarded_score": 1,
+                "max_score": 1,
+            }
+        ],
+    )
+
+    sections = practical_assessments._report_blueprint_sections(report)
+    tasks = practical_assessments._report_blueprint_tasks(report)
+    oral = practical_assessments._report_blueprint_oral_questions(report)
+
+    assert sections[0]["items"][0]["prompt"] == "Wire the control circuit"
+    assert sections[0]["items"][0]["expected_response"] == "Circuit follows the approved diagram"
+    assert sections[0]["items"][0]["score"] is None
+    assert sections[0]["items"][0]["remark"] is None
+    assert tasks[0]["description"] == "Wire the control circuit"
+    assert tasks[0]["score"] is None
+    assert tasks[0]["remark"] is None
+    assert oral[0]["answer_guidance"] == "Prevent electrical injury"
+    assert oral[0]["awarded_score"] is None

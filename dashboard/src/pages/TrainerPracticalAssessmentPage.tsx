@@ -10,6 +10,7 @@ import {
   ChevronRight,
   ClipboardList,
   Clock3,
+  Copy,
   Eye,
   FileCheck2,
   FileText,
@@ -26,6 +27,7 @@ import {
   Undo2,
   Upload,
   User,
+  Users,
   Video,
   X,
 } from 'lucide-react';
@@ -290,13 +292,22 @@ export default function TrainerPracticalAssessmentPage() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [existingSearch, setExistingSearch] = useState('');
+  const [studentSearch, setStudentSearch] = useState('');
+  const [studentPickerOpen, setStudentPickerOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState<'all' | PracticalAssessmentReport['status']>('all');
   const [previewReport, setPreviewReport] = useState<PracticalAssessmentReport | null>(null);
+  const [reuseReport, setReuseReport] = useState<PracticalAssessmentReport | null>(null);
+  const [reuseCandidates, setReuseCandidates] = useState<StudentOption[]>([]);
+  const [reuseStudentIds, setReuseStudentIds] = useState<string[]>([]);
+  const [reuseSearch, setReuseSearch] = useState('');
+  const [reuseCandidatesLoading, setReuseCandidatesLoading] = useState(false);
+  const [reusingReport, setReusingReport] = useState(false);
   const mediaInputRef = useRef<HTMLInputElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingStreamRef = useRef<MediaStream | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const builderRef = useRef<HTMLDivElement | null>(null);
+  const studentPickerRef = useRef<HTMLElement | null>(null);
 
   const selectedSubject = useMemo(
     () => subjectOptions.find((subject) => subject.id === selectedSubjectId) ?? null,
@@ -312,6 +323,28 @@ export default function TrainerPracticalAssessmentPage() {
     () => students.find((student) => student.id === selectedStudentId) ?? null,
     [selectedStudentId, students],
   );
+
+  const filteredStudentChoices = useMemo(() => {
+    const query = studentSearch.trim().toLowerCase();
+    if (!query) return students;
+    return students.filter((student) => (
+      student.name.toLowerCase().includes(query)
+      || student.student_id.toLowerCase().includes(query)
+      || student.email.toLowerCase().includes(query)
+    ));
+  }, [studentSearch, students]);
+
+  const reuseEligibleStudents = useMemo(() => {
+    if (!reuseReport) return [];
+    const query = reuseSearch.trim().toLowerCase();
+    return reuseCandidates.filter((student) => {
+      const matchesSearch = !query
+        || student.name.toLowerCase().includes(query)
+        || student.student_id.toLowerCase().includes(query)
+        || student.email.toLowerCase().includes(query);
+      return matchesSearch;
+    });
+  }, [reuseCandidates, reuseReport, reuseSearch]);
 
   const selectedReport = useMemo(
     () => reports.find((report) => report.id === selectedReportId) ?? null,
@@ -400,8 +433,8 @@ export default function TrainerPracticalAssessmentPage() {
       resetEditor();
       return;
     }
-    if (!students.some((student) => student.id === selectedStudentId)) {
-      setSelectedStudentId(students[0].id);
+    if (selectedStudentId && !students.some((student) => student.id === selectedStudentId)) {
+      setSelectedStudentId('');
     }
   }, [students, selectedStudentId]);
 
@@ -799,6 +832,59 @@ export default function TrainerPracticalAssessmentPage() {
     setPreviewReport(report);
   };
 
+  const openReuseReport = async (report: PracticalAssessmentReport) => {
+    setReuseReport(report);
+    setReuseCandidates([]);
+    setReuseStudentIds([]);
+    setReuseSearch('');
+    setPreviewReport(null);
+    try {
+      setReuseCandidatesLoading(true);
+      const candidates = await trainerPracticalAssessmentsAPI.getEligibleStudentsForPracticalAssessment(report.id);
+      setReuseCandidates(Array.isArray(candidates) ? candidates as StudentOption[] : []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load eligible learners');
+    } finally {
+      setReuseCandidatesLoading(false);
+    }
+  };
+
+  const toggleReuseStudent = (studentId: string) => {
+    setReuseStudentIds((current) => (
+      current.includes(studentId)
+        ? current.filter((id) => id !== studentId)
+        : current.length < 100 ? [...current, studentId] : current
+    ));
+  };
+
+  const handleReuseReport = async () => {
+    if (!reuseReport || reuseStudentIds.length === 0) {
+      setError('Select at least one learner for this report build.');
+      return;
+    }
+    try {
+      setReusingReport(true);
+      setError(null);
+      const result = await trainerPracticalAssessmentsAPI.assignPracticalAssessment(
+        reuseReport.id,
+        reuseStudentIds,
+      );
+      setAllReports((current) => [...result.created, ...current]);
+      if (selectedStudentId) await refreshReports(selectedStudentId);
+      setReuseReport(null);
+      setReuseCandidates([]);
+      setReuseStudentIds([]);
+      setSuccess(
+        `Report build assigned to ${result.created_count} learner${result.created_count === 1 ? '' : 's'} as new drafts.`,
+      );
+      window.setTimeout(() => setSuccess(null), 3500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to reuse report build');
+    } finally {
+      setReusingReport(false);
+    }
+  };
+
   const editExistingReport = (report: PracticalAssessmentReport) => {
     if (!students.some((student) => student.id === report.student_id)) {
       setSelectedSubjectId('');
@@ -813,6 +899,13 @@ export default function TrainerPracticalAssessmentPage() {
   const startNewAssessment = () => {
     resetEditor();
     setPreviewReport(null);
+    if (!selectedStudentId) {
+      setStudentPickerOpen(true);
+      setSuccess('Choose a learner to start a new practical assessment.');
+      window.setTimeout(() => setSuccess(null), 3000);
+      window.setTimeout(() => studentPickerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+      return;
+    }
     window.setTimeout(() => builderRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
   };
 
@@ -1097,7 +1190,7 @@ export default function TrainerPracticalAssessmentPage() {
       </section>
 
       <div className="grid gap-6 xl:grid-cols-[320px_1fr]">
-        <aside className="rounded-3xl border border-slate-800 bg-slate-900 p-5 shadow-lg shadow-slate-950/20">
+        <aside ref={studentPickerRef} className="scroll-mt-6 rounded-3xl border border-slate-800 bg-slate-900 p-5 shadow-lg shadow-slate-950/20">
           <div className="flex items-center gap-2 border-b border-slate-800 pb-4">
             <User size={18} className="text-teal-300" />
             <h2 className="text-lg font-semibold text-slate-100">Assigned Students</h2>
@@ -1116,35 +1209,83 @@ export default function TrainerPracticalAssessmentPage() {
             </div>
           ) : null}
 
-          <div className="mt-4 space-y-2">
+          <div className="mt-4">
             {students.length === 0 ? (
               <p className="rounded-2xl border border-dashed border-slate-700 p-4 text-sm text-slate-500">
                 {selectedSubject ? `No students are currently linked to ${selectedSubject.subject_name}.` : 'No students are assigned to your subjects yet.'}
               </p>
-            ) : students.map((student) => (
-              <button
-                key={student.id}
-                onClick={() => {
-                  setSelectedStudentId(student.id);
-                  resetEditor();
-                }}
-                className={`w-full rounded-2xl border p-4 text-left transition ${
-                  selectedStudentId === student.id
-                    ? 'border-teal-500/40 bg-teal-500/10'
-                    : 'border-slate-800 hover:border-slate-700 hover:bg-slate-800/70'
-                }`}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-semibold text-slate-100">{student.name}</p>
-                    <p className="text-xs text-slate-500">{student.student_id}</p>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setStudentPickerOpen((current) => !current)}
+                  className="w-full rounded-2xl border border-teal-500/25 bg-teal-500/[0.07] p-4 text-left transition hover:border-teal-400/40 hover:bg-teal-500/10"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-teal-300">
+                        {selectedStudent ? 'Current learner' : 'Choose learner'}
+                      </p>
+                      <p className="mt-1 truncate font-semibold text-slate-100">
+                        {selectedStudent?.name ?? 'Search assigned learners'}
+                      </p>
+                      <p className="text-xs text-slate-500">{selectedStudent?.student_id ?? `${students.length} available`}</p>
+                    </div>
+                    <ChevronRight
+                      size={18}
+                      className={`shrink-0 text-teal-300 transition ${studentPickerOpen ? 'rotate-90' : ''}`}
+                    />
                   </div>
-                  <span className="rounded-full bg-slate-800 px-2 py-1 text-xs text-slate-300">
-                    {student.overall_avg.toFixed(1)}%
-                  </span>
-                </div>
-              </button>
-            ))}
+                </button>
+
+                {studentPickerOpen ? (
+                  <div className="mt-3 overflow-hidden rounded-2xl border border-slate-700 bg-slate-950/70">
+                    <div className="border-b border-slate-800 p-3">
+                      <div className="relative">
+                        <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                        <input
+                          value={studentSearch}
+                          onChange={(event) => setStudentSearch(event.target.value)}
+                          placeholder="Name, email or registration"
+                          className="w-full rounded-xl border border-slate-700 bg-slate-900 py-2.5 pl-9 pr-3 text-sm text-slate-200 outline-none focus:border-teal-500"
+                        />
+                      </div>
+                    </div>
+                    <div className="max-h-72 overflow-y-auto p-2">
+                      {filteredStudentChoices.length === 0 ? (
+                        <p className="p-4 text-center text-sm text-slate-500">No learner matches that search.</p>
+                      ) : filteredStudentChoices.slice(0, 30).map((student) => (
+                        <button
+                          key={student.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedStudentId(student.id);
+                            setStudentPickerOpen(false);
+                            setStudentSearch('');
+                            resetEditor();
+                            window.setTimeout(() => builderRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+                          }}
+                          className={`flex w-full items-center justify-between rounded-xl px-3 py-3 text-left transition ${
+                            selectedStudentId === student.id ? 'bg-teal-500/10' : 'hover:bg-slate-800'
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-slate-200">{student.name}</p>
+                            <p className="truncate text-xs text-slate-500">{student.student_id} · {student.email}</p>
+                          </div>
+                          <span className="ml-3 text-xs font-semibold text-slate-400">{student.overall_avg.toFixed(1)}%</span>
+                        </button>
+                      ))}
+                    </div>
+                    {filteredStudentChoices.length > 30 ? (
+                      <p className="border-t border-slate-800 px-3 py-2 text-center text-xs text-slate-500">
+                        Refine your search to find the remaining learners.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </>
+            )}
           </div>
 
           <div className="mt-5 rounded-2xl border border-slate-800 bg-slate-950/50 p-4">
@@ -1293,6 +1434,12 @@ export default function TrainerPracticalAssessmentPage() {
                   <Trash2 size={16} />
                   Reset
                 </Button>
+                {selectedReport ? (
+                  <Button variant="secondary" onClick={() => openReuseReport(selectedReport)}>
+                    <Copy size={16} />
+                    Reuse for Learners
+                  </Button>
+                ) : null}
                 <Button isLoading={saving} onClick={() => persistReport('draft')}>
                   <Save size={16} />
                   Save Draft
@@ -1618,6 +1765,32 @@ export default function TrainerPracticalAssessmentPage() {
           report={previewReport}
           onClose={() => setPreviewReport(null)}
           onEdit={() => editExistingReport(previewReport)}
+          onReuse={() => openReuseReport(previewReport)}
+        />
+      ) : null}
+
+      {reuseReport ? (
+        <ReuseReportDialog
+          report={reuseReport}
+          students={reuseEligibleStudents}
+          selectedStudentIds={reuseStudentIds}
+          search={reuseSearch}
+          saving={reusingReport}
+          loading={reuseCandidatesLoading}
+          onSearchChange={setReuseSearch}
+          onToggleStudent={toggleReuseStudent}
+          onSelectVisible={() => setReuseStudentIds((current) => Array.from(new Set([
+            ...current,
+            ...reuseEligibleStudents.slice(0, 100).map((student) => student.id),
+          ])).slice(0, 100))}
+          onClear={() => setReuseStudentIds([])}
+          onConfirm={handleReuseReport}
+          onClose={() => {
+            if (reusingReport) return;
+            setReuseReport(null);
+            setReuseCandidates([]);
+            setReuseStudentIds([]);
+          }}
         />
       ) : null}
     </div>
@@ -1792,14 +1965,162 @@ function StatusPill({ status }: { status: PracticalAssessmentReport['status'] })
   );
 }
 
+function ReuseReportDialog({
+  report,
+  students,
+  selectedStudentIds,
+  search,
+  saving,
+  loading,
+  onSearchChange,
+  onToggleStudent,
+  onSelectVisible,
+  onClear,
+  onConfirm,
+  onClose,
+}: {
+  report: PracticalAssessmentReport;
+  students: StudentOption[];
+  selectedStudentIds: string[];
+  search: string;
+  saving: boolean;
+  loading: boolean;
+  onSearchChange: (value: string) => void;
+  onToggleStudent: (studentId: string) => void;
+  onSelectVisible: () => void;
+  onClear: () => void;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/85 p-3 backdrop-blur-md sm:p-6"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Reuse practical assessment report"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !saving) onClose();
+      }}
+    >
+      <div className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded-[2rem] border border-slate-700 bg-slate-900 shadow-2xl shadow-black/60">
+        <div className="border-b border-slate-800 bg-[#0b1720] px-5 py-5 sm:px-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="inline-flex items-center gap-2 text-xs font-bold uppercase tracking-[0.18em] text-teal-300">
+                <Copy size={14} /> Reuse report build
+              </div>
+              <h2 className="mt-2 text-xl font-black text-white">Assign to other learners</h2>
+              <p className="mt-1 text-sm text-slate-400">
+                {report.unit_of_competency || 'Practical Assessment'} · built from {report.student_name ?? 'the selected learner'}
+              </p>
+            </div>
+            <button type="button" onClick={onClose} disabled={saving} className="rounded-xl p-2 text-slate-500 hover:bg-slate-800 hover:text-white disabled:opacity-50">
+              <X size={21} />
+            </button>
+          </div>
+          <div className="mt-4 rounded-xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-xs leading-5 text-amber-100">
+            The report structure, prompts, rubrics, dates, and venue are copied. Learner scores, remarks, evidence, results, and release status start empty in a new draft.
+          </div>
+        </div>
+
+        <div className="border-b border-slate-800 p-4 sm:px-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+            <div className="relative flex-1">
+              <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+              <input
+                value={search}
+                onChange={(event) => onSearchChange(event.target.value)}
+                placeholder="Search eligible learners"
+                className="w-full rounded-xl border border-slate-700 bg-slate-950 py-3 pl-10 pr-3 text-sm text-slate-200 outline-none focus:border-teal-500"
+              />
+            </div>
+            <div className="flex gap-2">
+              <button type="button" onClick={onSelectVisible} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-800">
+                Select visible
+              </button>
+              <button type="button" onClick={onClear} className="rounded-xl border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-400 hover:bg-slate-800">
+                Clear
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
+          {loading ? (
+            <div className="flex min-h-48 items-center justify-center">
+              <div className="h-9 w-9 animate-spin rounded-full border-b-2 border-teal-400" />
+            </div>
+          ) : students.length === 0 ? (
+            <div className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-700 p-6 text-center">
+              <Users size={28} className="text-slate-600" />
+              <p className="mt-3 font-semibold text-slate-300">No eligible learner found</p>
+              <p className="mt-1 text-sm text-slate-500">Learners must be assigned to the same unit and assessor.</p>
+            </div>
+          ) : (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {students.slice(0, 100).map((student) => {
+                const selected = selectedStudentIds.includes(student.id);
+                return (
+                  <button
+                    key={student.id}
+                    type="button"
+                    onClick={() => onToggleStudent(student.id)}
+                    className={`flex items-center gap-3 rounded-2xl border p-3 text-left transition ${
+                      selected
+                        ? 'border-teal-400/40 bg-teal-400/10'
+                        : 'border-slate-800 bg-slate-950/40 hover:border-slate-700 hover:bg-slate-800/70'
+                    }`}
+                  >
+                    <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded border ${
+                      selected ? 'border-teal-400 bg-teal-400 text-slate-950' : 'border-slate-600'
+                    }`}>
+                      {selected ? <CheckCircle2 size={14} /> : null}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold text-slate-200">{student.name}</span>
+                      <span className="block truncate text-xs text-slate-500">{student.student_id} · {student.email}</span>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-3 border-t border-slate-800 bg-slate-950/40 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+          <p className="text-sm text-slate-400">
+            <span className="font-bold text-teal-300">{selectedStudentIds.length}</span> learner{selectedStudentIds.length === 1 ? '' : 's'} selected
+          </p>
+          <div className="flex gap-2">
+            <button type="button" onClick={onClose} disabled={saving} className="rounded-xl border border-slate-700 px-4 py-2.5 text-sm font-semibold text-slate-300 disabled:opacity-50">
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={onConfirm}
+              disabled={saving || selectedStudentIds.length === 0}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-teal-400 px-5 py-2.5 text-sm font-black text-slate-950 transition hover:bg-teal-300 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Copy size={16} />
+              {saving ? 'Creating drafts…' : 'Create learner drafts'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function AssessmentPreview({
   report,
   onClose,
   onEdit,
+  onReuse,
 }: {
   report: PracticalAssessmentReport;
   onClose: () => void;
   onEdit: () => void;
+  onReuse: () => void;
 }) {
   const sections = report.report_sections ?? [];
   const scoredSections = sections.filter((section) => section.type !== 'narrative');
@@ -1826,6 +2147,14 @@ function AssessmentPreview({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onReuse}
+              className="inline-flex items-center gap-2 rounded-xl border border-teal-500/30 bg-teal-500/10 px-3.5 py-2 text-sm font-semibold text-teal-200 transition hover:bg-teal-500/20"
+            >
+              <Copy size={16} />
+              Reuse
+            </button>
             <button
               type="button"
               onClick={() => window.print()}

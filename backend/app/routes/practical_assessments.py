@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from copy import deepcopy
 import hashlib
 import hmac
 import mimetypes
@@ -726,6 +727,37 @@ def _safe_report_sections(
     return _legacy_report_sections_from_data(report, task_rows, oral_questions)
 
 
+def _report_blueprint_sections(report: PracticalAssessmentReport) -> list[dict]:
+    """Reusable report design with all learner-specific scoring removed."""
+    sections = deepcopy(
+        _safe_report_sections(report, _safe_task_rows(report), _safe_oral_questions(report))
+    )
+    for section in sections:
+        if not isinstance(section, dict):
+            continue
+        for item in section.get("items") or []:
+            if not isinstance(item, dict):
+                continue
+            item["score"] = None
+            item["remark"] = None
+    return _normalize_report_sections(sections)
+
+
+def _report_blueprint_tasks(report: PracticalAssessmentReport) -> list[dict]:
+    items = deepcopy(_safe_task_rows(report))
+    for item in items:
+        item["score"] = None
+        item["remark"] = None
+    return _normalize_task_items(items)
+
+
+def _report_blueprint_oral_questions(report: PracticalAssessmentReport) -> list[dict]:
+    questions = deepcopy(_safe_oral_questions(report))
+    for question in questions:
+        question["awarded_score"] = None
+    return _normalize_oral_questions(questions)
+
+
 def _report_payload(report: PracticalAssessmentReport) -> dict:
     total_score, competency_outcome = _safe_computed_scores(report)
     task_rows = _safe_task_rows(report)
@@ -1213,6 +1245,179 @@ def create_practical_assessment():
         return {"error": "Practical assessment could not be saved"}, 409
     db.session.refresh(report)
     return _report_payload(report), 201
+
+
+@bp.post("/practical-assessments/<report_id>/assign")
+def assign_practical_assessment_blueprint(report_id: str):
+    """Reuse one practical report design for one or more additional learners."""
+    user, error, status = _load_current_user()
+    if error:
+        return error, status
+    if not (_is_admin(user) or _is_trainer(user)):
+        return {"error": "Trainer or admin access required"}, 403
+
+    try:
+        report_uuid = _parse_uuid(report_id, "report_id")
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+
+    source = db.session.get(PracticalAssessmentReport, report_uuid)
+    if not source or source.deleted_at:
+        return {"error": "Report not found"}, 404
+    if _is_trainer(user):
+        trainer = _trainer_profile(user)
+        if not trainer or source.trainer_id != trainer.id:
+            return {"error": "Access denied"}, 403
+
+    payload = request.get_json(silent=True) or {}
+    raw_student_ids = payload.get("student_ids")
+    if not isinstance(raw_student_ids, list) or not raw_student_ids:
+        return {"error": "Select at least one learner"}, 400
+    if len(raw_student_ids) > 100:
+        return {"error": "A report can be assigned to at most 100 learners at a time"}, 400
+
+    target_ids: list[uuid.UUID] = []
+    seen_ids: set[uuid.UUID] = set()
+    try:
+        for value in raw_student_ids:
+            student_id = _parse_uuid(str(value), "student_id")
+            if student_id not in seen_ids:
+                seen_ids.add(student_id)
+                target_ids.append(student_id)
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+
+    source_subject = _shared_subject(source.student_id, source.trainer_id)
+    targets: list[Student] = []
+    skipped_student_ids: list[str] = []
+    for student_id in target_ids:
+        if student_id == source.student_id:
+            skipped_student_ids.append(str(student_id))
+            continue
+        student = db.session.get(Student, student_id)
+        if not student or student.deleted_at:
+            return {"error": f"Learner '{student_id}' was not found"}, 404
+        if not _can_trainer_access_student(source.trainer_id, student_id):
+            return {"error": f"The report assessor is not assigned to {student.user.name if student.user else student_id}"}, 403
+        if source_subject:
+            is_enrolled = db.session.query(StudentSubject.id).filter(
+                StudentSubject.student_id == student_id,
+                StudentSubject.subject_id == source_subject.id,
+            ).first()
+            if not is_enrolled:
+                return {
+                    "error": (
+                        f"{student.user.name if student.user else student_id} is not enrolled in "
+                        f"{source_subject.name}"
+                    )
+                }, 400
+        targets.append(student)
+
+    if not targets:
+        return {"error": "Select at least one different eligible learner"}, 400
+
+    sections = _report_blueprint_sections(source)
+    task_items = _report_blueprint_tasks(source)
+    oral_questions = _report_blueprint_oral_questions(source)
+    created: list[PracticalAssessmentReport] = []
+    for student in targets:
+        report = PracticalAssessmentReport(
+            student_id=student.id,
+            trainer_id=source.trainer_id,
+            assessment_date=source.assessment_date,
+            company_name=source.company_name,
+            assessment_venue=source.assessment_venue,
+            practical_brief=source.practical_brief,
+            general_remarks=None,
+            report_sections=deepcopy(sections),
+            task_items=deepcopy(task_items),
+            oral_questions=deepcopy(oral_questions),
+            task_1_description=source.task_1_description,
+            task_2_description=source.task_2_description,
+            task_3_description=source.task_3_description,
+            task_4_description=source.task_4_description,
+            task_1_score=None,
+            task_2_score=None,
+            task_3_score=None,
+            task_4_score=None,
+            task_1_remark=None,
+            task_2_remark=None,
+            task_3_remark=None,
+            task_4_remark=None,
+            media_attachments=[],
+            status="draft",
+            released_at=None,
+            released_by_user_id=None,
+        )
+        if source.trainer:
+            _seed_context_fields(report, student, source.trainer)
+        db.session.add(report)
+        created.append(report)
+
+    try:
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        return {"error": "The report could not be assigned to the selected learners"}, 409
+
+    return {
+        "source_report_id": str(source.id),
+        "created": [_report_payload(report) for report in created],
+        "created_count": len(created),
+        "skipped_student_ids": skipped_student_ids,
+    }, 201
+
+
+@bp.get("/practical-assessments/<report_id>/eligible-students")
+def practical_assessment_eligible_students(report_id: str):
+    """Learners who can receive a draft copied from this report build."""
+    user, error, status = _load_current_user()
+    if error:
+        return error, status
+    if not (_is_admin(user) or _is_trainer(user)):
+        return {"error": "Trainer or admin access required"}, 403
+    try:
+        report_uuid = _parse_uuid(report_id, "report_id")
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+
+    source = db.session.get(PracticalAssessmentReport, report_uuid)
+    if not source or source.deleted_at:
+        return {"error": "Report not found"}, 404
+    if _is_trainer(user):
+        trainer = _trainer_profile(user)
+        if not trainer or source.trainer_id != trainer.id:
+            return {"error": "Access denied"}, 403
+
+    source_subject = _shared_subject(source.student_id, source.trainer_id)
+    query = db.session.query(Student).filter(
+        Student.id != source.student_id,
+        Student.deleted_at.is_(None),
+    )
+    if source_subject:
+        query = query.join(
+            StudentSubject, StudentSubject.student_id == Student.id
+        ).filter(StudentSubject.subject_id == source_subject.id)
+    else:
+        query = query.join(
+            StudentSubject, StudentSubject.student_id == Student.id
+        ).join(
+            TrainerSubject, TrainerSubject.subject_id == StudentSubject.subject_id
+        ).filter(TrainerSubject.trainer_id == source.trainer_id)
+
+    students = query.distinct().order_by(Student.registration_number.asc()).all()
+    return [
+        {
+            "id": str(student.id),
+            "name": student.user.name if student.user else "Unnamed learner",
+            "email": student.user.email if student.user else "",
+            "student_id": student.registration_number or student.code or "",
+            "enrollment_status": "active",
+            "overall_avg": 0,
+            "subjects": [source_subject.name] if source_subject else [],
+        }
+        for student in students
+    ], 200
 
 
 @bp.put("/practical-assessments/<report_id>")

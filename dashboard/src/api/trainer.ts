@@ -454,6 +454,11 @@ export const trainerPracticalAssessmentsAPI = {
     return response.data as PracticalAssessmentReport;
   },
 
+  async getEligibleStudentsForPracticalAssessment(reportId: string): Promise<TrainerStudent[]> {
+    const response = await apiClient.get(`/practical-assessments/${reportId}/eligible-students`);
+    return response.data as TrainerStudent[];
+  },
+
   async savePracticalAssessment(payload: PracticalAssessmentPayload): Promise<PracticalAssessmentReport> {
     const body = { ...payload };
     if (body.id) {
@@ -462,6 +467,16 @@ export const trainerPracticalAssessmentsAPI = {
     }
     const response = await apiClient.post('/practical-assessments', body);
     return response.data as PracticalAssessmentReport;
+  },
+
+  async assignPracticalAssessment(
+    reportId: string,
+    studentIds: string[],
+  ): Promise<{ created: PracticalAssessmentReport[]; created_count: number; skipped_student_ids: string[] }> {
+    const response = await apiClient.post(`/practical-assessments/${reportId}/assign`, {
+      student_ids: studentIds,
+    });
+    return response.data as { created: PracticalAssessmentReport[]; created_count: number; skipped_student_ids: string[] };
   },
 
   async uploadPracticalAssessmentMedia(
