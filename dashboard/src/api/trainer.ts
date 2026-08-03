@@ -80,6 +80,10 @@ export interface PracticalAssessmentReport {
   id: string;
   student_id: string;
   trainer_id: string;
+  /** Set when this report was copied from another build; null on the original. */
+  source_report_id?: string | null;
+  /** Shared by every report copied from the same build, including the original. */
+  template_root_id?: string | null;
   student_name?: string | null;
   student_registration_number?: string | null;
   trainer_name?: string | null;
@@ -168,6 +172,16 @@ export type PracticalAssessmentPayload = Partial<Omit<PracticalAssessmentReport,
   student_id: string;
   trainer_id?: string;
 };
+
+export interface AssignPracticalAssessmentResult {
+  created: PracticalAssessmentReport[];
+  created_count: number;
+  /** Learners left out because they already hold a copy of this report build. */
+  skipped_student_ids: string[];
+  skipped_student_names?: string[];
+  skipped_count?: number;
+  template_root_id?: string;
+}
 
 export interface TrainerStats {
   assigned_subjects: number;
@@ -472,11 +486,11 @@ export const trainerPracticalAssessmentsAPI = {
   async assignPracticalAssessment(
     reportId: string,
     studentIds: string[],
-  ): Promise<{ created: PracticalAssessmentReport[]; created_count: number; skipped_student_ids: string[] }> {
+  ): Promise<AssignPracticalAssessmentResult> {
     const response = await apiClient.post(`/practical-assessments/${reportId}/assign`, {
       student_ids: studentIds,
     });
-    return response.data as { created: PracticalAssessmentReport[]; created_count: number; skipped_student_ids: string[] };
+    return response.data as AssignPracticalAssessmentResult;
   },
 
   async uploadPracticalAssessmentMedia(
@@ -534,9 +548,10 @@ export const trainerReportsAPI = {
     return response.data;
   },
 
+  /** PDF is rendered in the browser; the API only serves formats it builds natively. */
   async exportResults(
     subjectId: string,
-    format: 'csv' | 'pdf'
+    format: 'csv' | 'xlsx'
   ): Promise<Blob> {
     const response = await apiClient.get(
       `/trainers/reports/export?subject_id=${subjectId}&format=${format}`,

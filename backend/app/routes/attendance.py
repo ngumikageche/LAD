@@ -458,7 +458,7 @@ def get_session_by_token(token: str):
 # ============================================================================
 
 @bp.get("/admin/overview")
-@admin_required()
+@admin_required("attendance.report.view")
 def admin_attendance_overview():
     """Admin view: all sessions across all trainers with student counts."""
     from ..models.subject import Subject
@@ -496,7 +496,7 @@ def admin_attendance_overview():
 
 
 @bp.get("/admin/analytics")
-@admin_required()
+@admin_required("attendance.report.view")
 def admin_attendance_analytics():
     """Aggregated analytics for admin charts."""
     from ..models.subject import Subject

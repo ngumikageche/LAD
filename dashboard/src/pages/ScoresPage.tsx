@@ -1,9 +1,10 @@
-import { useState, useEffect } from 'react';
-import { Search, Filter, TrendingUp, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { Search, Filter, TrendingUp, AlertCircle, CheckCircle2, Download, FileText } from 'lucide-react';
 import { scoresAPI } from '../api/student';
 import { useAuth } from '../auth/AuthContext';
 import { useTableControls } from '../hooks/useTableControls';
 import { TableFooter, SortableTh } from '../components/ui/TableControls';
+import { exportCSV, exportExcel, exportPDF } from '../utils/exportUtils';
 
 interface Score {
   id: string;
@@ -65,6 +66,37 @@ export default function ScoresPage() {
     });
 
   const tc = useTableControls(filteredScores);
+
+  const exportRows = useMemo(
+    () => filteredScores.map((score) => ({
+      subject: score.subject?.name ?? '—',
+      assessment: score.assessment?.name ?? '—',
+      assessment_type: score.assessment?.type ?? '—',
+      term: score.term ?? '—',
+      score: score.score,
+      grade: score.grade ?? '—',
+      outcome: score.is_passed === null ? '—' : score.is_passed ? 'Pass' : 'Fail',
+      feedback: score.feedback ?? '',
+      recorded_at: score.recorded_at
+        ? new Date(score.recorded_at).toLocaleDateString()
+        : '—',
+    })),
+    [filteredScores],
+  );
+
+  const handleExport = (format: 'excel' | 'pdf' | 'csv') => {
+    if (exportRows.length === 0) return;
+    const filename = `my-scores-${new Date().toISOString().slice(0, 10)}`;
+    const meta = {
+      generatedBy: user?.name ?? 'Unknown',
+      reportTitle: 'My Assessment Scores',
+      subtitle: searchTerm ? `Filtered by "${searchTerm}"` : undefined,
+    };
+    const sheets = [{ name: 'Scores', rows: exportRows as Record<string, unknown>[] }];
+    if (format === 'excel') exportExcel(sheets, filename, meta);
+    else if (format === 'pdf') exportPDF(sheets, filename, meta);
+    else exportCSV(exportRows as Record<string, unknown>[], filename);
+  };
 
   const stats = {
     total: scores.length,
@@ -150,9 +182,32 @@ export default function ScoresPage() {
             </div>
 
             {/* Export */}
-            <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition">
-              📥 Export as CSV
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => handleExport('excel')}
+                disabled={exportRows.length === 0}
+                className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Download size={16} /> Excel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleExport('pdf')}
+                disabled={exportRows.length === 0}
+                className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <FileText size={16} /> PDF
+              </button>
+              <button
+                type="button"
+                onClick={() => handleExport('csv')}
+                disabled={exportRows.length === 0}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Download size={16} /> CSV
+              </button>
+            </div>
           </div>
         </div>
 

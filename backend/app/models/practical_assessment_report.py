@@ -25,6 +25,18 @@ class PracticalAssessmentReport(BaseModel):
         UUID(as_uuid=True), ForeignKey("trainers.id"), nullable=False, index=True
     )
 
+    # ── Template lineage ─────────────────────────────────────────────────────
+    # Set on every copy produced by reusing an existing report build. Points at
+    # the lineage root (the first report the design was authored on), so a whole
+    # family of copies shares one id and a learner can never be issued the same
+    # template twice.
+    source_report_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("practical_assessment_reports.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     # ── Assessment context (pre-filled / configurable per report) ────────────
     institution_name: Mapped[str] = mapped_column(String(255), nullable=False,
         default="Thika Technical Training Institute")

@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { FileText, Edit2, Trash2, Upload, CheckCircle2, AlertCircle, Download } from 'lucide-react';
 import { adminScoresAPI } from '../api/admin';
 import { apiRequest } from '../api/client';
+import { useAuth } from '../auth/AuthContext';
 import { useTableControls } from '../hooks/useTableControls';
 import { TableFooter, SortableTh } from '../components/ui/TableControls';
+import { exportCSV, exportExcel, exportPDF } from '../utils/exportUtils';
 
 interface Score {
   id: string;
@@ -30,6 +32,7 @@ interface ScoreForm {
 }
 
 export default function AdminScoreManagementPage() {
+  const { user } = useAuth();
   const [scores, setScores] = useState<Score[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -180,6 +183,47 @@ export default function AdminScoreManagementPage() {
   );
 
   const tc = useTableControls(filteredScores);
+
+  /** One row shape drives every export format, so the files stay identical. */
+  const exportRows = useMemo(
+    () => filteredScores.map((score) => ({
+      student_name: score.student_name ?? '—',
+      registration_number: score.registration_number ?? '—',
+      course_name: score.course_name ?? '—',
+      subject_name: score.subject_name ?? '—',
+      assessment_name: score.assessment_name ?? '—',
+      term: score.term ?? '—',
+      marks_obtained: score.marks_obtained,
+      grade: score.grade ?? '—',
+      outcome: score.is_passed === null ? '—' : score.is_passed ? 'Pass' : 'Fail',
+      feedback: score.feedback ?? '',
+      recorded_at: score.created_at
+        ? new Date(score.created_at).toLocaleDateString()
+        : '—',
+    })),
+    [filteredScores],
+  );
+
+  const exportMeta = {
+    generatedBy: user?.name ?? 'Unknown',
+    reportTitle: 'Score Management Export',
+    subtitle: searchTerm ? `Filtered by "${searchTerm}"` : 'All recorded scores',
+  };
+  const exportName = `scores-${new Date().toISOString().slice(0, 10)}`;
+
+  const handleExport = (format: 'excel' | 'pdf' | 'csv') => {
+    if (exportRows.length === 0) {
+      setError('There are no scores to export.');
+      setTimeout(() => setError(null), 3000);
+      return;
+    }
+    const sheets = [{ name: 'Scores', rows: exportRows as Record<string, unknown>[] }];
+    if (format === 'excel') exportExcel(sheets, exportName, exportMeta);
+    else if (format === 'pdf') exportPDF(sheets, exportName, exportMeta);
+    else exportCSV(exportRows as Record<string, unknown>[], exportName);
+    setSuccess(`Exported ${exportRows.length} score${exportRows.length === 1 ? '' : 's'}.`);
+    setTimeout(() => setSuccess(null), 3000);
+  };
 
   if (loading) {
     return (
@@ -362,10 +406,38 @@ export default function AdminScoreManagementPage() {
               className="w-full px-4 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
-          <button className="px-6 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 transition font-medium flex items-center gap-2">
-            <Download size={20} />
-            Export
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => handleExport('excel')}
+              disabled={exportRows.length === 0}
+              title="Download the filtered scores as an Excel workbook"
+              className="px-4 py-2 bg-emerald-500/15 border border-emerald-400/30 text-emerald-200 rounded-lg hover:bg-emerald-500/25 transition font-medium flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Download size={18} />
+              Excel
+            </button>
+            <button
+              type="button"
+              onClick={() => handleExport('pdf')}
+              disabled={exportRows.length === 0}
+              title="Download the filtered scores as a PDF"
+              className="px-4 py-2 bg-amber-500/15 border border-amber-400/30 text-amber-200 rounded-lg hover:bg-amber-500/25 transition font-medium flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <FileText size={18} />
+              PDF
+            </button>
+            <button
+              type="button"
+              onClick={() => handleExport('csv')}
+              disabled={exportRows.length === 0}
+              title="Download the filtered scores as CSV"
+              className="px-4 py-2 bg-blue-500/15 border border-blue-400/30 text-blue-200 rounded-lg hover:bg-blue-500/25 transition font-medium flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Download size={18} />
+              CSV
+            </button>
+          </div>
         </div>
 
         {/* Scores Table */}

@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { FileText, Download, Calendar, BarChart3, AlertCircle, RefreshCw } from 'lucide-react';
-import { trainerReportsAPI, trainerSubjectsAPI } from '../api/trainer';
+import { trainerReportsAPI, trainerSubjectsAPI, type SubjectReport } from '../api/trainer';
 import { useAuth } from '../auth/AuthContext';
+import { exportPDF } from '../utils/exportUtils';
 
 interface Subject {
   id: string;
@@ -11,19 +12,30 @@ interface Subject {
 
 interface Report {
   id: string;
+  /** Kept separate from `id`: exports need the real subject id, not the row key. */
+  subject_id: string;
   subject_name: string;
   total_students: number;
   avg_score: number;
   pass_rate: number;
+  fail_rate: number;
+  highest_score: number;
+  lowest_score: number;
+  distribution: SubjectReport['distribution'];
   generated_date: string;
 }
 
-const toReport = (report: Awaited<ReturnType<typeof trainerReportsAPI.generateSubjectReport>>): Report => ({
+const toReport = (report: SubjectReport): Report => ({
   id: `${report.subject_id}-${Date.now()}`,
+  subject_id: report.subject_id,
   subject_name: report.subject_name,
   total_students: report.total_students,
   avg_score: report.avg_score,
   pass_rate: report.pass_rate,
+  fail_rate: report.fail_rate,
+  highest_score: report.highest_score,
+  lowest_score: report.lowest_score,
+  distribution: report.distribution,
   generated_date: new Date().toISOString(),
 });
 
@@ -84,18 +96,55 @@ export default function TrainerReportsPage() {
     }
   };
 
-  const handleExport = async (subjectId: string, format: 'csv' | 'pdf') => {
+  const handleExport = async (report: Report, format: 'csv' | 'xlsx') => {
     try {
-      const blob = await trainerReportsAPI.exportResults(subjectId, format);
+      setError(null);
+      const blob = await trainerReportsAPI.exportResults(report.subject_id, format);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `report.${format}`;
+      a.download = `${report.subject_name.replace(/\s+/g, '_')}_report.${format}`;
       a.click();
       window.URL.revokeObjectURL(url);
     } catch (err) {
-      setError(`Failed to export ${format.toUpperCase()}`);
+      setError(err instanceof Error ? err.message : `Failed to export ${format.toUpperCase()}`);
     }
+  };
+
+  /** Built in the browser from the loaded report, so no server round trip. */
+  const handleExportPDF = (report: Report) => {
+    exportPDF(
+      [
+        {
+          name: 'Summary',
+          rows: [{
+            subject: report.subject_name,
+            total_students: report.total_students,
+            average_score: `${report.avg_score.toFixed(1)}%`,
+            pass_rate: `${report.pass_rate.toFixed(1)}%`,
+            fail_rate: `${report.fail_rate.toFixed(1)}%`,
+            highest_score: report.highest_score,
+            lowest_score: report.lowest_score,
+          }],
+        },
+        {
+          name: 'Grade Distribution',
+          rows: Object.entries(report.distribution).map(([band, count]) => ({
+            band: band.replace(/_/g, ' '),
+            learners: count,
+            share: report.total_students
+              ? `${((count / report.total_students) * 100).toFixed(1)}%`
+              : '—',
+          })),
+        },
+      ],
+      `${report.subject_name.replace(/\s+/g, '_')}_report`,
+      {
+        generatedBy: user?.name ?? 'Unknown',
+        reportTitle: `${report.subject_name} — Subject Report`,
+        subtitle: `Generated ${new Date(report.generated_date).toLocaleString()}`,
+      },
+    );
   };
 
   const handleClassSummary = async () => {
@@ -299,18 +348,25 @@ export default function TrainerReportsPage() {
                   {/* Export Buttons */}
                   <div className="flex gap-2 ml-4">
                     <button
-                      onClick={() => handleExport(report.id, 'csv')}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium flex items-center gap-2"
+                      onClick={() => handleExport(report, 'xlsx')}
+                      className="px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition text-sm font-medium flex items-center gap-2"
                     >
                       <Download size={16} />
-                      CSV
+                      Excel
                     </button>
                     <button
-                      onClick={() => handleExport(report.id, 'pdf')}
+                      onClick={() => handleExportPDF(report)}
                       className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition text-sm font-medium flex items-center gap-2"
                     >
                       <Download size={16} />
                       PDF
+                    </button>
+                    <button
+                      onClick={() => handleExport(report, 'csv')}
+                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition text-sm font-medium flex items-center gap-2"
+                    >
+                      <Download size={16} />
+                      CSV
                     </button>
                   </div>
                 </div>

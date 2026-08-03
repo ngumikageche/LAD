@@ -874,10 +874,14 @@ export default function TrainerPracticalAssessmentPage() {
       setReuseReport(null);
       setReuseCandidates([]);
       setReuseStudentIds([]);
+      const skipped = result.skipped_count ?? result.skipped_student_ids.length;
       setSuccess(
-        `Report build assigned to ${result.created_count} learner${result.created_count === 1 ? '' : 's'} as new drafts.`,
+        `Report build assigned to ${result.created_count} learner${result.created_count === 1 ? '' : 's'} as new drafts.`
+        + (skipped
+          ? ` ${skipped} learner${skipped === 1 ? ' was' : 's were'} skipped — already assessed on this template.`
+          : ''),
       );
-      window.setTimeout(() => setSuccess(null), 3500);
+      window.setTimeout(() => setSuccess(null), skipped ? 6000 : 3500);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to reuse report build');
     } finally {
@@ -2020,6 +2024,7 @@ function ReuseReportDialog({
           </div>
           <div className="mt-4 rounded-xl border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-xs leading-5 text-amber-100">
             The report structure, prompts, rubrics, dates, and venue are copied. Learner scores, remarks, evidence, results, and release status start empty in a new draft.
+            Learners who already hold this report are hidden, so nobody is assessed on the same template twice.
           </div>
         </div>
 
@@ -2054,7 +2059,9 @@ function ReuseReportDialog({
             <div className="flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-700 p-6 text-center">
               <Users size={28} className="text-slate-600" />
               <p className="mt-3 font-semibold text-slate-300">No eligible learner found</p>
-              <p className="mt-1 text-sm text-slate-500">Learners must be assigned to the same unit and assessor.</p>
+              <p className="mt-1 text-sm text-slate-500">
+                Learners must be assigned to the same unit and assessor, and must not already hold this report.
+              </p>
             </div>
           ) : (
             <div className="grid gap-2 sm:grid-cols-2">

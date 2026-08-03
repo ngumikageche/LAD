@@ -64,69 +64,18 @@ const studentGroups: NavGroup[] = [
   },
 ];
 
-const trainerGroups: NavGroup[] = [
-  {
-    label: 'Overview',
-    items: [
-      { name: 'Dashboard',         icon: LayoutDashboard, path: '/trainer-hub',               color: 'text-blue-300' },
-      { name: 'My Feedback',       icon: Inbox,           path: '/trainer/feedback-received', color: 'text-amber-400' },
-    ],
-  },
-  {
-    label: 'Students',
-    items: [
-      { name: 'Student Profile',   icon: TrendingUp,      path: '/trainer/student-profile',   color: 'text-teal-300' },
-      { name: 'Learner Enrollment', icon: UserCheck,      path: '/trainer/enrollment',        color: 'text-cyan-300' },
-      { name: 'All Students',      icon: Users,           path: '/students',                  color: 'text-blue-300', permission: 'students.read' },
-      { name: 'Data Import',       icon: Upload,          path: '/data-import',               color: 'text-cyan-300', permission: 'data.import' },
-      { name: 'Users',             icon: Shield,          path: '/users',                     color: 'text-red-400', permission: 'users.read' },
-      { name: 'Provide Feedback',  icon: MessageSquare,   path: '/trainer/feedback',          color: 'text-amber-400'   },
-      { name: 'Online Exams',      icon: ClipboardList,   path: '/trainer/online-exams',      color: 'text-indigo-300' },
-      { name: 'Documents',         icon: BookOpen,        path: '/trainer/documents',         color: 'text-indigo-300' },
-    ],
-  },
-  {
-    label: 'Academics',
-    items: [
-      { name: 'Bulk Upload Marks', icon: Upload,          path: '/scores/bulk-upload',        color: 'text-amber-400', permission: 'scores.create' },
-      { name: 'Score Management',  icon: FileText,        path: '/admin/scores',              color: 'text-red-400', permission: 'admin.scores.read' },
-      { name: 'Subjects',          icon: Book,            path: '/subjects',                  color: 'text-amber-400', permission: 'subjects.read' },
-      { name: 'Modules',           icon: Book,            path: '/modules',                   color: 'text-blue-300', permission: 'modules.read' },
-      { name: 'Courses',           icon: Book,            path: '/courses',                   color: 'text-teal-300', permission: 'courses.read' },
-      { name: 'Progress',          icon: BarChart,        path: '/progress',                  color: 'text-green-400', permission: 'scores.read' },
-    ],
-  },
-  {
-    label: 'Reports',
-    items: [
-      { name: 'All Reports',       icon: FileText,        path: '/reports',                   color: 'text-teal-300', permission: 'reports.*' },
-      { name: 'Trainer Reports',   icon: FileText,        path: '/trainer/reports',           color: 'text-blue-300', permission: 'reports.class.performance' },
-      { name: 'Class Performance', icon: BarChart3,       path: '/trainer/class-performance', color: 'text-teal-300', permission: 'reports.class.performance' },
-      { name: 'Student Reports',   icon: FileText,        path: '/student-reports',           color: 'text-indigo-300', permission: 'reports.student.write' },
-      { name: 'Disciplinary Records', icon: HeartPulse,   path: '/disciplinary-records',      color: 'text-rose-300', permission: 'reports.student.discipline' },
-      { name: 'Practical Assess.', icon: FileText,        path: '/trainer/practical-assessments', color: 'text-teal-300' },
-      { name: 'Syllabus Coverage', icon: BookOpen,        path: '/trainer/syllabus',          color: 'text-green-400', permission: 'reports.teacher.syllabus' },
-      { name: 'Learner Attendance', icon: UserCheck,      path: '/trainer/attendance',        color: 'text-amber-400', permission: 'reports.teacher.attendance' },
-      { name: 'Manual Attendance',  icon: PenLine,         path: '/trainer/attendance/manual', color: 'text-orange-400' },
-      { name: 'Exam Results',      icon: GraduationCap,   path: '/admin/reports/exam-results', color: 'text-blue-300', permission: 'reports.admin.pass_rate' },
-      { name: 'Enrolment',         icon: ClipboardList,   path: '/admin/reports/enrolment',   color: 'text-amber-400', permission: 'reports.admin.enrolment' },
-    ],
-  },
-  {
-    label: 'Attendance',
-    items: [
-      { name: 'Take Attendance',   icon: QrCode,          path: '/trainer/attendance-session', color: 'text-teal-300' },
-    ],
-  },
-];
-
+/**
+ * Every admin destination carries the permission key that also guards its route
+ * and its API, so granting that key from the Roles page is all it takes to open
+ * the screen to a trainer, a manager, or any other custom role.
+ */
 const adminGroups: NavGroup[] = [
   {
     label: 'Overview',
     items: [
-      { name: 'Dashboard',         icon: LayoutDashboard, path: '/admin/dashboard',            color: 'text-blue-300' },
-      { name: 'Analytics',         icon: BarChart,        path: '/admin/analytics',            color: 'text-teal-300'    },
-      { name: 'Notifications',     icon: Bell,            path: '/admin/notifications',        color: 'text-amber-400'    },
+      { name: 'Dashboard',         icon: LayoutDashboard, path: '/admin/dashboard',            color: 'text-blue-300', permission: 'admin.analytics.read' },
+      { name: 'Analytics',         icon: BarChart,        path: '/admin/analytics',            color: 'text-teal-300', permission: 'admin.analytics.read' },
+      { name: 'Notifications',     icon: Bell,            path: '/admin/notifications',        color: 'text-amber-400', permission: 'notifications.read' },
     ],
   },
   {
@@ -156,8 +105,8 @@ const adminGroups: NavGroup[] = [
     items: [
       { name: 'Score Management',  icon: FileText,        path: '/admin/scores',               color: 'text-red-400', permission: 'admin.scores.read'    },
       { name: 'Bulk Upload Marks', icon: Upload,          path: '/admin/scores/bulk-upload',   color: 'text-amber-400', permission: 'scores.create'  },
-      { name: 'Practical Assess.', icon: FileText,        path: '/admin/practical-assessments', color: 'text-teal-300' },
-      { name: 'Online Exams',      icon: ClipboardList,   path: '/admin/online-exams',         color: 'text-indigo-300' },
+      { name: 'Practical Assess.', icon: FileText,        path: '/admin/practical-assessments', color: 'text-teal-300', permission: 'practical.assessments.manage' },
+      { name: 'Online Exams',      icon: ClipboardList,   path: '/admin/online-exams',         color: 'text-indigo-300', permission: 'online_exams.manage' },
       { name: 'Documents',          icon: BookOpen,        path: '/admin/documents',            color: 'text-teal-300', permission: 'documents.read'   },
       { name: 'Progress',          icon: BarChart,        path: '/progress',                   color: 'text-green-400', permission: 'scores.read'},
     ],
@@ -166,6 +115,8 @@ const adminGroups: NavGroup[] = [
     label: 'Reports',
     items: [
       { name: 'Exam Results',      icon: GraduationCap,   path: '/admin/reports/exam-results', color: 'text-blue-300', permission: 'reports.admin.pass_rate' },
+      { name: 'Exam Analysis',     icon: BarChart3,       path: '/reports/assessments/exams',  color: 'text-cyan-300', permission: 'reports.admin.pass_rate' },
+      { name: 'Practical Reports', icon: ClipboardList,   path: '/reports/assessments/practical', color: 'text-teal-300', permission: 'reports.practical.assessment' },
       { name: 'Enrolment',         icon: ClipboardList,   path: '/admin/reports/enrolment',    color: 'text-amber-400', permission: 'reports.admin.enrolment' },
       { name: 'Disciplinary Records', icon: HeartPulse,   path: '/disciplinary-records',       color: 'text-rose-300', permission: 'reports.student.discipline' },
       { name: 'All Reports',       icon: FileText,        path: '/reports',                    color: 'text-teal-300', permission: 'reports.*' },
@@ -177,7 +128,79 @@ const adminGroups: NavGroup[] = [
     items: [
       { name: 'Take Attendance',   icon: QrCode,          path: '/trainer/attendance-session', color: 'text-teal-300', permission: 'attendance.create' },
       { name: 'Manual Attendance',  icon: PenLine,         path: '/admin/attendance/manual',    color: 'text-orange-400', permission: 'attendance.create' },
-      { name: 'Attendance Report', icon: CalendarCheck,   path: '/admin/attendance',           color: 'text-green-400' },
+      { name: 'Attendance Report', icon: CalendarCheck,   path: '/admin/attendance',           color: 'text-green-400', permission: 'attendance.report.view' },
+    ],
+  },
+];
+
+/**
+ * Mirrors `adminGroups`: same group names in the same order, and shared
+ * destinations keep the same position within their group. Trainer-only
+ * destinations are appended after the shared ones.
+ */
+const trainerGroups: NavGroup[] = [
+  {
+    label: 'Overview',
+    items: [
+      { name: 'Dashboard',         icon: LayoutDashboard, path: '/trainer-hub',               color: 'text-blue-300' },
+      { name: 'Analytics',         icon: BarChart,        path: '/admin/analytics',           color: 'text-teal-300', permission: 'admin.analytics.read' },
+      { name: 'Notifications',     icon: Bell,            path: '/admin/notifications',       color: 'text-amber-400', permission: 'notifications.read' },
+    ],
+  },
+  {
+    label: 'People',
+    items: [
+      { name: 'Students',          icon: Users,           path: '/students',                  color: 'text-blue-300', permission: 'students.read' },
+      { name: 'Student Reports',   icon: FileText,        path: '/student-reports',           color: 'text-indigo-300', permission: 'reports.student.write' },
+      { name: 'My Feedback',       icon: Inbox,           path: '/trainer/feedback-received', color: 'text-amber-400' },
+      { name: 'Users',             icon: Shield,          path: '/users',                     color: 'text-red-400', permission: 'users.read' },
+      { name: 'Data Import',       icon: Upload,          path: '/data-import',               color: 'text-cyan-300', permission: 'data.import' },
+      { name: 'Student Profile',   icon: TrendingUp,      path: '/trainer/student-profile',   color: 'text-teal-300' },
+      { name: 'Learner Enrollment', icon: UserCheck,      path: '/trainer/enrollment',        color: 'text-cyan-300' },
+      { name: 'Provide Feedback',  icon: MessageSquare,   path: '/trainer/feedback',          color: 'text-amber-400' },
+    ],
+  },
+  {
+    label: 'Institution',
+    items: [
+      { name: 'Courses',           icon: Book,            path: '/courses',                   color: 'text-amber-400', permission: 'courses.read' },
+      { name: 'Modules',           icon: Book,            path: '/modules',                   color: 'text-blue-300', permission: 'modules.read' },
+      { name: 'Subjects',          icon: Book,            path: '/subjects',                  color: 'text-amber-400', permission: 'subjects.read' },
+    ],
+  },
+  {
+    label: 'Academics',
+    items: [
+      { name: 'Score Management',  icon: FileText,        path: '/admin/scores',              color: 'text-red-400', permission: 'admin.scores.read' },
+      { name: 'Bulk Upload Marks', icon: Upload,          path: '/scores/bulk-upload',        color: 'text-amber-400', permission: 'scores.create' },
+      { name: 'Practical Assess.', icon: FileText,        path: '/trainer/practical-assessments', color: 'text-teal-300' },
+      { name: 'Online Exams',      icon: ClipboardList,   path: '/trainer/online-exams',      color: 'text-indigo-300' },
+      { name: 'Documents',         icon: BookOpen,        path: '/trainer/documents',         color: 'text-indigo-300' },
+      { name: 'Progress',          icon: BarChart,        path: '/progress',                  color: 'text-green-400', permission: 'scores.read' },
+    ],
+  },
+  {
+    label: 'Reports',
+    items: [
+      { name: 'Exam Results',      icon: GraduationCap,   path: '/admin/reports/exam-results', color: 'text-blue-300', permission: 'reports.admin.pass_rate' },
+      { name: 'Exam Analysis',     icon: BarChart3,       path: '/reports/assessments/exams',  color: 'text-cyan-300', permission: 'reports.admin.pass_rate' },
+      { name: 'Practical Reports', icon: ClipboardList,   path: '/reports/assessments/practical', color: 'text-teal-300', permission: 'reports.practical.assessment' },
+      { name: 'Enrolment',         icon: ClipboardList,   path: '/admin/reports/enrolment',   color: 'text-amber-400', permission: 'reports.admin.enrolment' },
+      { name: 'Disciplinary Records', icon: HeartPulse,   path: '/disciplinary-records',      color: 'text-rose-300', permission: 'reports.student.discipline' },
+      { name: 'All Reports',       icon: FileText,        path: '/reports',                   color: 'text-teal-300', permission: 'reports.*' },
+      { name: 'Compliance',        icon: Scale,           path: '/admin/compliance',          color: 'text-emerald-300', permission: 'reports.admin.compliance' },
+      { name: 'Trainer Reports',   icon: FileText,        path: '/trainer/reports',           color: 'text-blue-300', permission: 'reports.class.performance' },
+      { name: 'Class Performance', icon: BarChart3,       path: '/trainer/class-performance', color: 'text-teal-300', permission: 'reports.class.performance' },
+      { name: 'Syllabus Coverage', icon: BookOpen,        path: '/trainer/syllabus',          color: 'text-green-400', permission: 'reports.teacher.syllabus' },
+      { name: 'Learner Attendance', icon: UserCheck,      path: '/trainer/attendance',        color: 'text-amber-400', permission: 'reports.teacher.attendance' },
+    ],
+  },
+  {
+    label: 'Attendance',
+    items: [
+      { name: 'Take Attendance',   icon: QrCode,          path: '/trainer/attendance-session', color: 'text-teal-300' },
+      { name: 'Manual Attendance',  icon: PenLine,        path: '/trainer/attendance/manual',  color: 'text-orange-400' },
+      { name: 'Attendance Report', icon: CalendarCheck,   path: '/admin/attendance',           color: 'text-green-400', permission: 'attendance.report.view' },
     ],
   },
 ];

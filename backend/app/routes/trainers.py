@@ -654,8 +654,11 @@ def trainer_report_export():
     if not subject_id:
         return {"error": "subject_id is required"}, 400
     
-    if format_type not in ["csv", "pdf"]:
-        return {"error": "format must be 'csv' or 'pdf'"}, 400
+    # PDF is rendered in the browser from the same report payload, so the API
+    # only serves the formats it can produce faithfully. It previously accepted
+    # "pdf" and returned CSV bytes under a .pdf name.
+    if format_type not in ["csv", "xlsx"]:
+        return {"error": "format must be 'csv' or 'xlsx'"}, 400
     
     try:
         sub_uuid = _parse_uuid(subject_id, "subject_id")
@@ -705,38 +708,50 @@ def trainer_report_export():
             download_name=f"report_{report['subject']['name'].replace(' ', '_')}.csv"
         )
     
-    elif format_type == "pdf":
-        # For PDF, we'll return CSV for now (PDF generation requires additional dependencies)
-        # In production, you'd use a library like reportlab or weasyprint
-        output = StringIO()
-        writer = csv.writer(output)
-        
-        writer.writerow(["Subject Report Export"])
-        writer.writerow([f"Subject: {report['subject']['name']}"])
-        writer.writerow([f"Total Students: {report['total_students']}"])
-        writer.writerow([f"Average Score: {report['average_score']:.1f}%"])
-        writer.writerow([f"Pass Rate: {report['pass_rate']:.1f}%"])
-        writer.writerow([])
-        writer.writerow(["Student Name", "Reg Number", "Average Score", "Pass Rate", "Grade"])
-        
-        for student in report.get("students", []):
-            writer.writerow([
-                student.get("name", ""),
-                student.get("registration_number", ""),
-                student.get("average_score", ""),
-                student.get("pass_rate", ""),
-                student.get("grade", ""),
-            ])
-        
-        bytes_output = BytesIO(output.getvalue().encode("utf-8"))
-        bytes_output.seek(0)
-        
-        return send_file(
-            bytes_output,
-            mimetype="application/pdf",
-            as_attachment=True,
-            download_name=f"report_{report['subject']['name'].replace(' ', '_')}.pdf"
-        )
+    # format_type == "xlsx"
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = "Subject Report"
+
+    heading = Font(bold=True)
+    sheet.append(["Subject Report Export"])
+    sheet["A1"].font = heading
+    sheet.append([f"Subject: {report['subject']['name']}"])
+    sheet.append([f"Total Students: {report['total_students']}"])
+    sheet.append([f"Average Score: {report['average_score']:.1f}%"])
+    sheet.append([f"Pass Rate: {report['pass_rate']:.1f}%"])
+    sheet.append([])
+
+    header_row = sheet.max_row + 1
+    sheet.append(["Student Name", "Reg Number", "Average Score", "Pass Rate", "Grade"])
+    for cell in sheet[header_row]:
+        cell.font = heading
+
+    for student in report.get("students", []):
+        sheet.append([
+            student.get("name", ""),
+            student.get("registration_number", ""),
+            student.get("average_score", ""),
+            student.get("pass_rate", ""),
+            student.get("grade", ""),
+        ])
+
+    for column, width in zip("ABCDE", (28, 18, 15, 12, 10)):
+        sheet.column_dimensions[column].width = width
+
+    bytes_output = BytesIO()
+    workbook.save(bytes_output)
+    bytes_output.seek(0)
+
+    return send_file(
+        bytes_output,
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        as_attachment=True,
+        download_name=f"report_{report['subject']['name'].replace(' ', '_')}.xlsx",
+    )
 
 
 @bp.post("")

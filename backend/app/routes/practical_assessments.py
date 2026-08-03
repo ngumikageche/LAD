@@ -5,6 +5,7 @@ import uuid
 from copy import deepcopy
 import hashlib
 import hmac
+import json
 import mimetypes
 import time
 from datetime import datetime
@@ -27,7 +28,7 @@ from ..models.term import Term
 from ..models.trainer import Trainer
 from ..models.trainer_subject import TrainerSubject
 from ..models.user import User
-from .permissions import get_current_user, _is_admin, _is_student, _is_trainer
+from .permissions import get_current_user, _has_permission, _is_admin, _is_student, _is_trainer
 
 
 bp = Blueprint("practical_assessments", __name__)
@@ -50,6 +51,22 @@ _STATIC_CONTEXT_VALUES = {
     "unit_code": "ENG/OS/PO/CR/01/6",
     "period": "January – April 2025",
 }
+
+
+PRACTICAL_MANAGE_PERMISSION = "practical.assessments.manage"
+
+
+def _can_manage_practical(user: User) -> bool:
+    """
+    Who may author and administer practical assessment records: admins,
+    trainers, and any other role explicitly granted the manage right from the
+    Roles page (a quality manager or HOD, for example).
+    """
+    return (
+        _is_admin(user)
+        or _is_trainer(user)
+        or _has_permission(user, PRACTICAL_MANAGE_PERMISSION)
+    )
 
 
 def _parse_uuid(value: str | None, field: str) -> uuid.UUID:
@@ -758,6 +775,83 @@ def _report_blueprint_oral_questions(report: PracticalAssessmentReport) -> list[
     return _normalize_oral_questions(questions)
 
 
+def _template_root_id(report: PracticalAssessmentReport) -> uuid.UUID:
+    """The id every copy of this report build shares."""
+    return report.source_report_id or report.id
+
+
+def _blueprint_signature(report: PracticalAssessmentReport) -> str:
+    """
+    Stable fingerprint of a report's *design*, with every learner-specific value
+    stripped out. Two reports built from the same template hash identically even
+    after one of them has been scored, which lets pre-lineage reports (created
+    before `source_report_id` existed) still be recognised as duplicates.
+    """
+    try:
+        design = {
+            "unit_code": (report.unit_code or "").strip().lower(),
+            "unit_of_competency": (report.unit_of_competency or "").strip().lower(),
+            "practical_brief": (report.practical_brief or "").strip().lower(),
+            "sections": _report_blueprint_sections(report),
+            "tasks": _report_blueprint_tasks(report),
+            "oral_questions": _report_blueprint_oral_questions(report),
+        }
+    except (AttributeError, TypeError, ValueError):
+        # A malformed report can never be matched against; fall back to its own
+        # id so it only ever collides with itself.
+        return f"unhashable:{report.id}"
+    encoded = json.dumps(design, sort_keys=True, default=str).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def _students_already_holding_template(source: PracticalAssessmentReport) -> set[uuid.UUID]:
+    """
+    Learners who already hold this report build, so reusing it must skip them.
+
+    Covers two cases: copies linked to the same lineage root, and reports that
+    predate lineage tracking but carry an identical design from the same
+    assessor.
+    """
+    root_id = _template_root_id(source)
+    holders: set[uuid.UUID] = {source.student_id}
+
+    lineage = (
+        db.session.query(PracticalAssessmentReport)
+        .filter(
+            PracticalAssessmentReport.deleted_at.is_(None),
+            db.or_(
+                PracticalAssessmentReport.id == root_id,
+                PracticalAssessmentReport.source_report_id == root_id,
+            ),
+        )
+        .all()
+    )
+    for report in lineage:
+        holders.add(report.student_id)
+
+    signature = _blueprint_signature(source)
+    if signature.startswith("unhashable:"):
+        return holders
+
+    untracked = (
+        db.session.query(PracticalAssessmentReport)
+        .filter(
+            PracticalAssessmentReport.deleted_at.is_(None),
+            PracticalAssessmentReport.trainer_id == source.trainer_id,
+            PracticalAssessmentReport.source_report_id.is_(None),
+            PracticalAssessmentReport.id != root_id,
+        )
+        .all()
+    )
+    for report in untracked:
+        if report.student_id in holders:
+            continue
+        if _blueprint_signature(report) == signature:
+            holders.add(report.student_id)
+
+    return holders
+
+
 def _report_payload(report: PracticalAssessmentReport) -> dict:
     total_score, competency_outcome = _safe_computed_scores(report)
     task_rows = _safe_task_rows(report)
@@ -778,6 +872,8 @@ def _report_payload(report: PracticalAssessmentReport) -> dict:
         "id": str(report.id),
         "student_id": str(report.student_id),
         "trainer_id": str(report.trainer_id),
+        "source_report_id": str(report.source_report_id) if report.source_report_id else None,
+        "template_root_id": str(_template_root_id(report)),
         "student_name": report.student.user.name if report.student and report.student.user else None,
         "student_registration_number": report.student.registration_number if report.student else None,
         "trainer_name": report.trainer.user.name if report.trainer and report.trainer.user else None,
@@ -1164,7 +1260,7 @@ def create_practical_assessment():
     if error:
         return error, status
 
-    if not (_is_admin(user) or _is_trainer(user)):
+    if not _can_manage_practical(user):
         return {"error": "Trainer or admin access required"}, 403
     if (request.get_json(silent=True) or {}).get("assessment_scope", "formative") != "formative":
         return {"error": "Only internal formative practical assessments are permitted"}, 400
@@ -1253,7 +1349,7 @@ def assign_practical_assessment_blueprint(report_id: str):
     user, error, status = _load_current_user()
     if error:
         return error, status
-    if not (_is_admin(user) or _is_trainer(user)):
+    if not _can_manage_practical(user):
         return {"error": "Trainer or admin access required"}, 403
 
     try:
@@ -1288,11 +1384,16 @@ def assign_practical_assessment_blueprint(report_id: str):
         return {"error": str(exc)}, 400
 
     source_subject = _shared_subject(source.student_id, source.trainer_id)
+    already_assigned = _students_already_holding_template(source)
     targets: list[Student] = []
     skipped_student_ids: list[str] = []
+    skipped_names: list[str] = []
     for student_id in target_ids:
-        if student_id == source.student_id:
+        if student_id in already_assigned:
             skipped_student_ids.append(str(student_id))
+            existing = db.session.get(Student, student_id)
+            if existing and existing.user:
+                skipped_names.append(existing.user.name)
             continue
         student = db.session.get(Student, student_id)
         if not student or student.deleted_at:
@@ -1314,8 +1415,18 @@ def assign_practical_assessment_blueprint(report_id: str):
         targets.append(student)
 
     if not targets:
+        if skipped_student_ids:
+            return {
+                "error": (
+                    "Every learner selected already has this report. "
+                    "Pick learners who have not been assessed on this template yet."
+                ),
+                "skipped_student_ids": skipped_student_ids,
+                "skipped_student_names": skipped_names,
+            }, 409
         return {"error": "Select at least one different eligible learner"}, 400
 
+    root_id = _template_root_id(source)
     sections = _report_blueprint_sections(source)
     task_items = _report_blueprint_tasks(source)
     oral_questions = _report_blueprint_oral_questions(source)
@@ -1324,6 +1435,7 @@ def assign_practical_assessment_blueprint(report_id: str):
         report = PracticalAssessmentReport(
             student_id=student.id,
             trainer_id=source.trainer_id,
+            source_report_id=root_id,
             assessment_date=source.assessment_date,
             company_name=source.company_name,
             assessment_venue=source.assessment_venue,
@@ -1362,9 +1474,12 @@ def assign_practical_assessment_blueprint(report_id: str):
 
     return {
         "source_report_id": str(source.id),
+        "template_root_id": str(root_id),
         "created": [_report_payload(report) for report in created],
         "created_count": len(created),
         "skipped_student_ids": skipped_student_ids,
+        "skipped_student_names": skipped_names,
+        "skipped_count": len(skipped_student_ids),
     }, 201
 
 
@@ -1374,7 +1489,7 @@ def practical_assessment_eligible_students(report_id: str):
     user, error, status = _load_current_user()
     if error:
         return error, status
-    if not (_is_admin(user) or _is_trainer(user)):
+    if not _can_manage_practical(user):
         return {"error": "Trainer or admin access required"}, 403
     try:
         report_uuid = _parse_uuid(report_id, "report_id")
@@ -1390,8 +1505,9 @@ def practical_assessment_eligible_students(report_id: str):
             return {"error": "Access denied"}, 403
 
     source_subject = _shared_subject(source.student_id, source.trainer_id)
+    already_assigned = _students_already_holding_template(source)
     query = db.session.query(Student).filter(
-        Student.id != source.student_id,
+        Student.id.notin_(already_assigned),
         Student.deleted_at.is_(None),
     )
     if source_subject:
@@ -1426,7 +1542,7 @@ def update_practical_assessment(report_id: str):
     if error:
         return error, status
 
-    if not (_is_admin(user) or _is_trainer(user)):
+    if not _can_manage_practical(user):
         return {"error": "Trainer or admin access required"}, 403
 
     try:
@@ -1474,7 +1590,7 @@ def upload_practical_assessment_media(report_id: str):
     if error:
         return error, status
 
-    if not (_is_admin(user) or _is_trainer(user)):
+    if not _can_manage_practical(user):
         return {"error": "Trainer or admin access required"}, 403
 
     try:
@@ -1644,7 +1760,7 @@ def release_practical_assessment(report_id: str):
     if error:
         return error, status
 
-    if not (_is_admin(user) or _is_trainer(user)):
+    if not _can_manage_practical(user):
         return {"error": "Trainer or admin access required"}, 403
 
     try:
@@ -1706,7 +1822,7 @@ def unsend_practical_assessment(report_id: str):
     if error:
         return error, status
 
-    if not (_is_admin(user) or _is_trainer(user)):
+    if not _can_manage_practical(user):
         return {"error": "Trainer or admin access required"}, 403
 
     try:
@@ -1737,7 +1853,7 @@ def delete_practical_assessment(report_id: str):
     if error:
         return error, status
 
-    if not (_is_admin(user) or _is_trainer(user)):
+    if not _can_manage_practical(user):
         return {"error": "Trainer or admin access required"}, 403
 
     try:

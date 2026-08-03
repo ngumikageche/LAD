@@ -126,6 +126,15 @@ def _is_admin(user: User) -> bool:
 
 
 def admin_required(permission_key: str | None = None):
+    """
+    Guard an administrative endpoint.
+
+    Admins always pass. When a `permission_key` is supplied, any other role that
+    has been explicitly granted that key passes too — that is what lets a
+    trainer or manager be given an admin screen from the Roles page without
+    being made an admin. A bare `admin_required()` has no key to grant, so it
+    stays admin-only.
+    """
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
@@ -133,8 +142,9 @@ def admin_required(permission_key: str | None = None):
             if error:
                 return error, status
             if not _is_admin(user):
-                return {"error": "Admin access required"}, 403
-            if permission_key and not _has_permission(user, permission_key):
+                if not permission_key or not _has_permission(user, permission_key):
+                    return {"error": "Admin access required"}, 403
+            elif permission_key and not _has_permission(user, permission_key):
                 return {"error": "Permission denied"}, 403
 
             g.current_user = user

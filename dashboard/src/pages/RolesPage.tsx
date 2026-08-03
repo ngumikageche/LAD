@@ -71,6 +71,12 @@ export const PREDEFINED_ROLES: Array<{
       'reports.student.discipline.print': true,
       'reports.student.discipline.export': true,
       'reports.student.write': true,
+      'practical.assessments.manage': true,
+      'online_exams.manage': true,
+      'reports.practical.assessment': true,
+      'reports.practical.assessment.view': true,
+      'reports.practical.assessment.print': true,
+      'reports.practical.assessment.export': true,
     },
   },
   {
@@ -99,6 +105,11 @@ export const PREDEFINED_ROLES: Array<{
       'reports.class.at_risk.view': true,
       'reports.student.write': true,
       'feedback.trainer.view': true,
+      'admin.analytics.read': true,
+      'attendance.report.view': true,
+      'reports.practical.assessment': true,
+      'reports.practical.assessment.view': true,
+      'reports.practical.assessment.export': true,
     },
   },
 ];
@@ -108,6 +119,31 @@ export const PREDEFINED_ROLES: Array<{
 type PermDef = { key: string; label: string };
 
 const PERMISSION_TABS: Array<{ label: string; permissions: PermDef[] }> = [
+  {
+    // Each key here opens the matching admin destination — its sidebar entry,
+    // its route, and its API — to whichever role is granted it. Grant these to
+    // give a trainer, a manager, or a learner access to an admin screen without
+    // making them an admin.
+    label: 'Admin Access',
+    permissions: [
+      { key: 'admin.analytics.read',      label: 'Admin Dashboard & System Analytics' },
+      { key: 'notifications.read',        label: 'Notifications Console' },
+      { key: 'attendance.report.view',    label: 'School-Wide Attendance Report' },
+      { key: 'roles.read',                label: 'Open Roles & Permissions' },
+      { key: 'institutions.read',         label: 'Open Institutions' },
+      { key: 'departments.read',          label: 'Open Departments' },
+      { key: 'admin.scores.read',         label: 'Open Score Management' },
+      { key: 'users.read',                label: 'Open User Management' },
+      { key: 'data.import',               label: 'Open Data Import' },
+      { key: 'documents.read',            label: 'Open Document Library' },
+      { key: 'practical.assessments.manage', label: 'Author Practical Assessments' },
+      { key: 'online_exams.manage',       label: 'Author Online Exams' },
+      { key: 'reports.admin.compliance',  label: 'Open Compliance Report' },
+      { key: 'reports.practical.assessment', label: 'Open Practical Assessment Reports' },
+      { key: 'reports.admin.pass_rate',   label: 'Open Exam Results & Analysis' },
+      { key: 'reports.admin.enrolment',   label: 'Open Enrolment Report' },
+    ],
+  },
   {
     label: 'People',
     permissions: [
@@ -168,14 +204,18 @@ const PERMISSION_TABS: Array<{ label: string; permissions: PermDef[] }> = [
       { key: 'student_subjects.delete',    label: 'Remove Student Subjects' },
       { key: 'trainer_subjects.read',      label: 'Read Trainer Subjects' },
       { key: 'analytics.read',             label: 'Read Analytics' },
+      { key: 'admin.analytics.read',       label: 'Read Admin Analytics' },
+      { key: 'practical.assessments.manage', label: 'Author Practical Assessments' },
+      { key: 'online_exams.manage',        label: 'Author Online Exams' },
     ],
   },
   {
     label: 'Attendance',
     permissions: [
-      { key: 'attendance.create', label: 'Create Sessions' },
-      { key: 'attendance.read',   label: 'Read Attendance' },
-      { key: 'attendance.write',  label: 'Manage Sessions (End/Regenerate)' },
+      { key: 'attendance.create',      label: 'Create Sessions' },
+      { key: 'attendance.read',        label: 'Read Attendance' },
+      { key: 'attendance.write',       label: 'Manage Sessions (End/Regenerate)' },
+      { key: 'attendance.report.view', label: 'Open School-Wide Attendance Report' },
     ],
   },
   {
@@ -235,6 +275,10 @@ const PERMISSION_TABS: Array<{ label: string; permissions: PermDef[] }> = [
       { key: 'reports.admin.compliance.view',      label: 'View Compliance Reports' },
       { key: 'reports.admin.compliance.print',     label: 'Print Compliance Reports' },
       { key: 'reports.admin.compliance.export',    label: 'Export Compliance Reports' },
+      { key: 'reports.practical.assessment',       label: 'Open Practical Assessment Reports' },
+      { key: 'reports.practical.assessment.view',  label: 'View Practical Assessment Reports' },
+      { key: 'reports.practical.assessment.print', label: 'Print Practical Assessment Reports' },
+      { key: 'reports.practical.assessment.export', label: 'Export Practical Assessment Reports' },
     ],
   },
   {

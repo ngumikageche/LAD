@@ -51,19 +51,28 @@ import StudentFeedbackPage from './pages/StudentFeedbackPage';
 import StudentDisciplinaryRecordsPage from './pages/StudentDisciplinaryRecordsPage';
 import StudentTrainerFeedbackPage from './pages/StudentTrainerFeedbackPage';
 import TrainerFeedbackInboxPage from './pages/TrainerFeedbackInboxPage';
+import PracticalAssessmentReportsPage from './pages/PracticalAssessmentReportsPage';
+import ExamResultsAnalysisPage from './pages/ExamResultsAnalysisPage';
 import { AuthProvider, useAuth } from './auth/AuthContext';
-import ProtectedRoute, { UserTypeRoute, PermissionRoute } from './auth/ProtectedRoute';
+import ProtectedRoute, { UserTypeRoute, PermissionRoute, hasPermission } from './auth/ProtectedRoute';
 
 const DashboardRedirect = () => {
   const { user } = useAuth();
   if (!user) return null;
   if (user.user_type === 'student') {
     return <Navigate to="/student/dashboard" replace />;
-  } else if (user.user_type === 'trainer') {
+  }
+  if (user.user_type === 'trainer') {
     return <Navigate to="/trainer-hub" replace />;
-  } else {
+  }
+  // Staff accounts without a student or trainer profile report as "admin".
+  // The admin dashboard is permission-gated, so a role that has not been
+  // granted it must land somewhere reachable — otherwise the denial bounces
+  // back here and the two redirects loop forever.
+  if (hasPermission(user, 'admin.analytics.read')) {
     return <Navigate to="/admin/dashboard" replace />;
   }
+  return <Navigate to="/reports" replace />;
 };
 
 function App() {
@@ -162,26 +171,52 @@ function App() {
               <Route element={<PermissionRoute permissionKey="reports.admin.enrolment" deniedTypes={['student']} />}>
                 <Route path="/admin/reports/enrolment" element={<AdminEnrolmentPage />} />
               </Route>
+              {/* Assessment reporting — granted by permission, so a trainer or
+                  manager can hold it without being made an admin. */}
+              <Route element={<PermissionRoute permissionKey="reports.practical.assessment" deniedTypes={['student']} />}>
+                <Route path="/reports/assessments/practical" element={<PracticalAssessmentReportsPage />} />
+              </Route>
+              <Route element={<PermissionRoute permissionKey="reports.admin.pass_rate" deniedTypes={['student']} />}>
+                <Route path="/reports/assessments/exams" element={<ExamResultsAnalysisPage />} />
+              </Route>
               <Route element={<PermissionRoute permissionKey="documents.read" deniedTypes={['student']} />}>
                 <Route path="/admin/documents" element={<DocumentsPage />} />
               </Route>
               <Route element={<PermissionRoute permissionKey="attendance.create" deniedTypes={['student']} />}>
                 <Route path="/admin/attendance/manual" element={<TrainerManualAttendancePage />} />
               </Route>
-              <Route element={<UserTypeRoute allowedTypes={['trainer', 'admin']} />}>
+              <Route element={<PermissionRoute permissionKey="practical.assessments.manage" allowedTypes={['trainer', 'admin']} deniedTypes={['student']} />}>
                 <Route path="/admin/practical-assessments" element={<TrainerPracticalAssessmentPage />} />
+              </Route>
+              <Route element={<PermissionRoute permissionKey="online_exams.manage" allowedTypes={['trainer', 'admin']} deniedTypes={['student']} />}>
                 <Route path="/admin/online-exams" element={<OnlineExamDesignerPage />} />
               </Route>
 
-              {/* Institution governance and school-wide oversight stay admin-only */}
-              <Route element={<UserTypeRoute allowedTypes={['admin']} />}>
+              {/* Institution governance and school-wide oversight.
+                  Admins always pass; every other role reaches these only when
+                  the matching key is granted from the Roles page, so a trainer
+                  (or any custom role) can be given an admin screen without
+                  being made an admin. */}
+              <Route element={<PermissionRoute permissionKey="admin.analytics.read" />}>
                 <Route path="/admin/dashboard" element={<AdminDashboard />} />
                 <Route path="/admin/analytics" element={<AdminSystemAnalyticsPage />} />
+              </Route>
+              <Route element={<PermissionRoute permissionKey="notifications.read" />}>
                 <Route path="/admin/notifications" element={<AdminNotificationsPage />} />
+              </Route>
+              <Route element={<PermissionRoute permissionKey="attendance.report.view" />}>
                 <Route path="/admin/attendance" element={<AdminAttendancePage />} />
+              </Route>
+              <Route element={<PermissionRoute permissionKey="reports.admin.compliance" />}>
                 <Route path="/admin/compliance" element={<AdminCompliancePage />} />
+              </Route>
+              <Route element={<PermissionRoute permissionKey="roles.read" />}>
                 <Route path="/roles" element={<RolesPage />} />
+              </Route>
+              <Route element={<PermissionRoute permissionKey="institutions.read" />}>
                 <Route path="/institutions" element={<InstitutionsPage />} />
+              </Route>
+              <Route element={<PermissionRoute permissionKey="departments.read" />}>
                 <Route path="/departments" element={<DepartmentsPage />} />
               </Route>
             </Route>

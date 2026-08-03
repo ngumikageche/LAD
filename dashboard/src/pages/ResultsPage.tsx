@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Download, Filter, Calendar, TrendingUp, Award } from 'lucide-react';
+import { Download, FileText, Filter, Calendar, TrendingUp, Award } from 'lucide-react';
 import { scoresAPI, studentAnalytics } from '../api/student';
 import { useAuth } from '../auth/AuthContext';
+import { exportCSV, exportExcel, exportPDF } from '../utils/exportUtils';
 
 interface Score {
   id: string;
@@ -93,6 +94,30 @@ export default function ResultsPage() {
       : groupedByTerm[filterTerm] || [];
 
   const sortedScores = sortScores(filteredScores);
+
+  const exportRows = sortedScores.map((score) => ({
+    marks_obtained: score.marks_obtained,
+    grade: score.grade ?? '—',
+    outcome: score.is_passed ? 'Pass' : 'Fail',
+    feedback: score.feedback ?? '',
+    recorded_at: score.created_at
+      ? new Date(score.created_at).toLocaleDateString()
+      : '—',
+  }));
+
+  const handleExport = (format: 'excel' | 'pdf' | 'csv') => {
+    if (exportRows.length === 0) return;
+    const filename = `my-results-${new Date().toISOString().slice(0, 10)}`;
+    const meta = {
+      generatedBy: user?.name ?? 'Unknown',
+      reportTitle: 'My Results',
+      subtitle: filterTerm === 'all' ? 'All periods' : filterTerm,
+    };
+    const sheets = [{ name: 'Results', rows: exportRows as Record<string, unknown>[] }];
+    if (format === 'excel') exportExcel(sheets, filename, meta);
+    else if (format === 'pdf') exportPDF(sheets, filename, meta);
+    else exportCSV(exportRows as Record<string, unknown>[], filename);
+  };
 
   // Calculate term stats
   const termStats = Object.entries(groupedByTerm).map(([term, termScores]) => ({
@@ -204,10 +229,30 @@ export default function ResultsPage() {
             </div>
 
             {/* Export */}
-            <div className="flex items-end">
-              <button className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center justify-center gap-2">
-                <Download size={18} />
-                Export Results
+            <div className="flex items-end gap-2">
+              <button
+                type="button"
+                onClick={() => handleExport('excel')}
+                disabled={exportRows.length === 0}
+                className="flex-1 px-3 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Download size={16} /> Excel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleExport('pdf')}
+                disabled={exportRows.length === 0}
+                className="flex-1 px-3 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <FileText size={16} /> PDF
+              </button>
+              <button
+                type="button"
+                onClick={() => handleExport('csv')}
+                disabled={exportRows.length === 0}
+                className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                <Download size={16} /> CSV
               </button>
             </div>
           </div>

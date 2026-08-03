@@ -16,7 +16,7 @@ from ..models.student_subject import StudentSubject
 from ..models.subject import Subject
 from ..models.trainer import Trainer
 from ..models.trainer_subject import TrainerSubject
-from .permissions import _is_admin, _is_trainer, get_current_user, student_required
+from .permissions import _has_permission, _is_admin, _is_trainer, get_current_user, student_required
 
 bp = Blueprint("online_exams", __name__, url_prefix="/online-exams")
 
@@ -55,6 +55,9 @@ def _availability_error(exam: OnlineExam) -> str | None:
     return None
 
 
+ONLINE_EXAM_MANAGE_PERMISSION = "online_exams.manage"
+
+
 def _require_exam_author():
     user, error, status = get_current_user()
     if error:
@@ -62,6 +65,9 @@ def _require_exam_author():
     if _is_admin(user):
         return user, None, None, None
     if not _is_trainer(user):
+        # A role explicitly granted the manage right authors exams like an admin.
+        if _has_permission(user, ONLINE_EXAM_MANAGE_PERMISSION):
+            return user, None, None, None
         return None, None, {"error": "Trainer or admin access required"}, 403
     trainer = db.session.query(Trainer).filter(Trainer.user_id == user.id).first()
     if not trainer:

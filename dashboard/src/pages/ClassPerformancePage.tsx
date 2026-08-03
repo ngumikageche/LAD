@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
-import { AlertCircle, Award, BarChart3, Printer, TrendingUp, Users } from 'lucide-react';
+import { AlertCircle, Award, BarChart3, Download, FileText, Printer, TrendingUp, Users } from 'lucide-react';
 import { trainerReportCardsAPI, trainerSubjectsAPI } from '../api/trainer';
+import { useAuth } from '../auth/AuthContext';
+import { exportCSV, exportExcel, exportPDF } from '../utils/exportUtils';
 import {
   ReportActionButton,
   ReportEmptyState,
@@ -35,23 +37,32 @@ interface ClassPerfReport {
   generated_at: string;
 }
 
-function exportCSV(data: ClassPerfReport) {
-  const rows = [
-    ['Rank', 'Name', 'Reg No', 'Marks', 'Grade', 'Status'],
-    ...data.students.map(s => [
-      s.rank ?? '', s.name, s.registration_number,
-      s.marks ?? 'N/A', s.grade ?? 'N/A',
-      s.is_passed === true ? 'Pass' : s.is_passed === false ? 'Fail' : 'N/A',
-    ]),
-  ];
-  const csv = rows.map(r => r.join(',')).join('\n');
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-  a.download = `class-performance-${data.subject.name}.csv`;
-  a.click();
+/** One row shape shared by the CSV, Excel, and PDF exports. */
+function exportRows(data: ClassPerfReport): Record<string, unknown>[] {
+  return data.students.map(s => ({
+    rank: s.rank ?? '',
+    name: s.name,
+    registration_number: s.registration_number,
+    marks: s.marks ?? 'N/A',
+    grade: s.grade ?? 'N/A',
+    status: s.is_passed === true ? 'Pass' : s.is_passed === false ? 'Fail' : 'N/A',
+  }));
+}
+
+function exportName(data: ClassPerfReport) {
+  return `class-performance-${data.subject.name.replace(/\s+/g, '-')}`;
+}
+
+function exportMeta(data: ClassPerfReport, generatedBy: string) {
+  return {
+    generatedBy,
+    reportTitle: `${data.subject.name} — Class Performance`,
+    subtitle: `${data.school.name} · ${data.students.length} learner${data.students.length === 1 ? '' : 's'}`,
+  };
 }
 
 export default function ClassPerformancePage() {
+  const { user } = useAuth();
   const [subjects, setSubjects] = useState<{ id: string; subject_name: string; subject_code: string }[]>([]);
   const [subjectId, setSubjectId] = useState('');
   const [data, setData] = useState<ClassPerfReport | null>(null);
@@ -121,8 +132,34 @@ export default function ClassPerformancePage() {
             <ReportActionButton onClick={() => window.print()} icon={Printer}>
               Print
             </ReportActionButton>
-            <ReportActionButton onClick={() => exportCSV(data)} variant="success">
-              Export CSV
+            <ReportActionButton
+              onClick={() => exportExcel(
+                [{ name: 'Class Performance', rows: exportRows(data) }],
+                exportName(data),
+                exportMeta(data, user?.name ?? 'Unknown'),
+              )}
+              icon={Download}
+              variant="success"
+            >
+              Excel
+            </ReportActionButton>
+            <ReportActionButton
+              onClick={() => exportPDF(
+                [{ name: 'Class Performance', rows: exportRows(data) }],
+                exportName(data),
+                exportMeta(data, user?.name ?? 'Unknown'),
+              )}
+              icon={FileText}
+              variant="warning"
+            >
+              PDF
+            </ReportActionButton>
+            <ReportActionButton
+              onClick={() => exportCSV(exportRows(data), exportName(data))}
+              icon={Download}
+              variant="primary"
+            >
+              CSV
             </ReportActionButton>
           </>
         ) : null}
