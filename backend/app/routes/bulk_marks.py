@@ -36,6 +36,22 @@ from .permissions import get_current_user, require_permission
 bp = Blueprint("bulk_marks", __name__, url_prefix="/scores/bulk-marks")
 
 
+CAT_FORMULA_SCENARIOS = {
+    "scenario_1": {
+        "label": "Scenario 1: CAT 1 /30, CAT 2 /40, CAT 3 /30",
+        "totals": [30, 40, 30],
+    },
+    "scenario_2": {
+        "label": "Scenario 2: CAT 1 /100, CAT 2 /100, CAT 3 /100",
+        "totals": [100, 100, 100],
+    },
+    "scenario_3": {
+        "label": "Scenario 3: CAT 1 /80, CAT 2 /60, CAT 3 /100",
+        "totals": [80, 60, 100],
+    },
+}
+
+
 def _cell_text(value) -> str:
     """Return a stable text value for CSV and XLSX cells."""
     if value is None:
@@ -142,6 +158,50 @@ def _resolve_module(value: str) -> Module | None:
         return db.session.get(Module, uuid.UUID(value))
     except (ValueError, TypeError):
         return None
+
+
+def _resolve_cat_formula(value: str | None) -> dict | None:
+    key = str(value or "").strip().lower()
+    return CAT_FORMULA_SCENARIOS.get(key)
+
+
+def _calculate_cat_formula_marks(row: dict[str, str], scenario: dict, assessment: Assessment | None) -> tuple[float | None, dict | None, list[str]]:
+    totals = scenario["totals"]
+    labels = ["cat_1_marks", "cat_2_marks", "cat_3_marks"]
+    component_marks = []
+    errors = []
+
+    for label, total in zip(labels, totals):
+        value = row.get(label, "")
+        if value == "":
+            errors.append(f"{label} is required for the selected CAT formula")
+            continue
+        try:
+            mark = float(value)
+        except ValueError:
+            errors.append(f"{label} must be a number")
+            continue
+        if mark < 0 or mark > total:
+            errors.append(f"{label} must be 0–{total}")
+        component_marks.append(mark)
+
+    if errors or len(component_marks) != len(totals):
+        return None, None, errors
+
+    final_percentage = (sum(component_marks) / sum(totals) * 100) if sum(totals) else 0
+    assessment_total = assessment.total_marks if assessment else 100
+    marks = round(final_percentage / 100 * assessment_total, 2)
+    return marks, {
+        "scenario": next(
+            (key for key, config in CAT_FORMULA_SCENARIOS.items() if config is scenario),
+            None,
+        ),
+        "label": scenario["label"],
+        "component_marks": component_marks,
+        "component_total_marks": totals,
+        "final_percentage": round(final_percentage, 2),
+    }, []
+
 
 def _resolve_assessment(value: str) -> Assessment | None:
     """Look up assessment by ASM-code or UUID."""
@@ -276,6 +336,25 @@ def list_assessments():
     return {"assessments": items, "total": len(items)}, 200
 
 
+@bp.get("/cat-formulas")
+def list_cat_formulas():
+    user, error, status = require_permission("scores.create")
+    if error:
+        return error, status
+
+    return {
+        "formulas": [
+            {
+                "key": key,
+                "label": config["label"],
+                "component_total_marks": config["totals"],
+                "total_marks": sum(config["totals"]),
+            }
+            for key, config in CAT_FORMULA_SCENARIOS.items()
+        ],
+    }, 200
+
+
 @bp.post("/assessments")
 def create_assessment():
     """Create an internal formative assessment for an accessible subject."""
@@ -353,7 +432,7 @@ def preview_bulk():
     Parse an uploaded CSV or XLSX file and return a preview with validation results.
     Required columns:
         student_id  (STU001 code OR registration_number)
-        marks_obtained
+        marks_obtained, or cat_1_marks/cat_2_marks/cat_3_marks with cat_formula
         assessment_code  (ASM001 code)
     Optional:
         assessment_id  (legacy; UUID or ASM-code)
@@ -384,15 +463,21 @@ def preview_bulk():
     except ValueError as exc:
         return {"error": str(exc)}, 400
 
+    cat_formula = _resolve_cat_formula(request.form.get("cat_formula"))
+    if request.form.get("cat_formula") and not cat_formula:
+        return {"error": "Unknown CAT formula scenario"}, 400
+
     fields = set(fieldnames)
     # Accept either student_id (new) or registration_number (legacy)
     has_student = "student_id" in fields or "registration_number" in fields
-    required = {"marks_obtained"}
+    required = set() if cat_formula else {"marks_obtained"}
     missing = required - fields
     if not has_student:
         missing.add("student_id")
     if "assessment_code" not in fields and "assessment_id" not in fields:
         missing.add("assessment_code")
+    if cat_formula:
+        missing.update({"cat_1_marks", "cat_2_marks", "cat_3_marks"} - fields)
     if missing:
         return {"error": f"Missing required columns: {', '.join(sorted(missing))}"}, 400
 
@@ -408,6 +493,9 @@ def preview_bulk():
         # Accept student_id (new) or registration_number (legacy)
         student_key = row.get("student_id") or row.get("registration_number", "")
         marks_str = row.get("marks_obtained", "")
+        row_cat_formula = cat_formula or _resolve_cat_formula(row.get("cat_formula"))
+        if row.get("cat_formula") and not row_cat_formula:
+            row_cat_formula = None
         assessment_id_str = row.get("assessment_code") or row.get("assessment_id", "")
         module_str = row.get("module_code") or row.get("module_id", "")
         # New exports use the accurately named subject_code column. Keep
@@ -417,13 +505,6 @@ def preview_bulk():
         feedback = row.get("feedback", "") or None
 
         errors = []
-
-        # Validate marks
-        try:
-            marks = float(marks_str)
-        except ValueError:
-            marks = None
-            errors.append("marks_obtained must be a number")
 
         # Validate assessment
         assessment = None
@@ -437,6 +518,21 @@ def preview_bulk():
                 errors.append("Only internal formative assessments can be uploaded")
         else:
             errors.append("assessment_code is required")
+
+        # Validate marks, or calculate them from CAT component columns.
+        formula_details = None
+        if row.get("cat_formula") and not _resolve_cat_formula(row.get("cat_formula")):
+            marks = None
+            errors.append("Unknown CAT formula scenario")
+        elif row_cat_formula:
+            marks, formula_details, formula_errors = _calculate_cat_formula_marks(row, row_cat_formula, assessment)
+            errors.extend(formula_errors)
+        else:
+            try:
+                marks = float(marks_str)
+            except ValueError:
+                marks = None
+                errors.append("marks_obtained must be a number")
 
         # Validate marks range
         if marks is not None and assessment:
@@ -536,6 +632,7 @@ def preview_bulk():
             "subject_name": subject.name if subject else None,
             "marks_obtained": marks,
             "total_marks": assessment.total_marks if assessment else None,
+            "cat_formula": formula_details,
             "grade": grade,
             "is_passed": is_passed,
             "term": term,
@@ -806,6 +903,19 @@ TEMPLATE_HEADER = [
     "feedback",
 ]
 
+CAT_FORMULA_TEMPLATE_HEADER = [
+    "student_id",
+    "student_name",
+    "cat_1_marks",
+    "cat_2_marks",
+    "cat_3_marks",
+    "assessment_code",
+    "module_code",
+    "subject_code",
+    "term",
+    "feedback",
+]
+
 
 def _template_roster(user, assessment: Assessment, subject: Subject | None) -> list[Student]:
     """
@@ -957,6 +1067,11 @@ def download_template():
     if subject_error:
         return subject_error, subject_status
 
+    cat_formula_key = (request.args.get("cat_formula") or "").strip().lower()
+    cat_formula = _resolve_cat_formula(cat_formula_key)
+    if cat_formula_key and not cat_formula:
+        return {"error": "Unknown CAT formula scenario"}, 400
+
     assessment_ref = (
         request.args.get("assessment_id")
         or request.args.get("assessment_code")
@@ -969,7 +1084,7 @@ def download_template():
     workbook = Workbook()
     marks_sheet = workbook.active
     marks_sheet.title = "Marks Upload"
-    marks_sheet.append(TEMPLATE_HEADER)
+    marks_sheet.append(CAT_FORMULA_TEMPLATE_HEADER if cat_formula else TEMPLATE_HEADER)
 
     learner_rows = 0
     if assessment:
@@ -978,24 +1093,40 @@ def download_template():
         module = batch_subject.module if batch_subject else assessment.module
         module_code = module.code if module else ""
         for student in _template_roster(user, assessment, batch_subject):
-            marks_sheet.append([
+            common = [
                 student.code or student.registration_number,
                 student.user.name if student.user else "",
-                "",  # marks_obtained — the one column to fill in
-                # Use the human-readable assessment code in exported files.
-                # Legacy records without a code fall back to their UUID.
-                assessment.code or str(assessment.id),
-                module_code,
-                subject_code,
-                term,
-                "",
-            ])
+            ]
+            if cat_formula:
+                marks_sheet.append([
+                    *common,
+                    "",
+                    "",
+                    "",
+                    # Use the human-readable assessment code in exported files.
+                    # Legacy records without a code fall back to their UUID.
+                    assessment.code or str(assessment.id),
+                    module_code,
+                    subject_code,
+                    term,
+                    "",
+                ])
+            else:
+                marks_sheet.append([
+                    *common,
+                    "",  # marks_obtained — the one column to fill in
+                    assessment.code or str(assessment.id),
+                    module_code,
+                    subject_code,
+                    term,
+                    "",
+                ])
             learner_rows += 1
         filename = f"marks_template_{assessment.code or 'assessment'}.xlsx"
     else:
         # A generic template must not contain made-up identifiers that look
         # uploadable. Select an assessment to receive a populated class list.
-        marks_sheet.append(["", "", "", "", "", "", "", ""])
+        marks_sheet.append(["" for _ in (CAT_FORMULA_TEMPLATE_HEADER if cat_formula else TEMPLATE_HEADER)])
         filename = "marks_upload_template.xlsx"
     _format_template_sheet(marks_sheet)
 
@@ -1034,6 +1165,8 @@ def download_template():
     )
     response.headers["X-Template-Rows"] = str(learner_rows)
     response.headers["X-Template-Prefilled"] = "1" if assessment else "0"
+    if cat_formula:
+        response.headers["X-CAT-Formula"] = cat_formula_key
     return response
 
 

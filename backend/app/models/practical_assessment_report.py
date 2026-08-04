@@ -12,7 +12,7 @@ from .base import BaseModel
 
 class PracticalAssessmentReport(BaseModel):
     """
-    TVET CDACC Candidate Practical Tool — Practical Assessment record.
+    College Candidate Practical Tool — Practical Assessment record.
     One record per student per unit of competency assessment.
     """
     __tablename__ = "practical_assessment_reports"
@@ -43,7 +43,7 @@ class PracticalAssessmentReport(BaseModel):
     department_name: Mapped[str] = mapped_column(String(255), nullable=False,
         default="Electrical and Electronics Engineering Department")
     awarding_body: Mapped[str] = mapped_column(String(255), nullable=False,
-        default="TVET Curriculum Development, Assessment and Certification Council (TVET CDACC)")
+        default="Thika Technical Training Institute")
     qualification: Mapped[str] = mapped_column(String(255), nullable=False,
         default="Electrical Engineering Level 6")
     unit_of_competency: Mapped[str] = mapped_column(String(255), nullable=False,

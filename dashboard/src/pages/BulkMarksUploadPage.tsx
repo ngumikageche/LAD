@@ -56,6 +56,13 @@ interface PreviewRow {
   is_passed: boolean | null;
   term: string | null;
   feedback: string | null;
+  cat_formula?: {
+    scenario: string | null;
+    label: string;
+    component_marks: number[];
+    component_total_marks: number[];
+    final_percentage: number;
+  } | null;
   errors: string[];
   valid: boolean;
   /** True when this learner already has a mark for the assessment. */
@@ -92,6 +99,27 @@ const GRADE_COLORS: Record<string, string> = {
   F: 'bg-red-500/15 text-red-300',
 };
 
+const CAT_FORMULA_SCENARIOS = [
+  {
+    key: 'scenario_1',
+    label: 'Scenario 1',
+    detail: 'CAT 1 /30, CAT 2 /40, CAT 3 /30',
+    totals: [30, 40, 30],
+  },
+  {
+    key: 'scenario_2',
+    label: 'Scenario 2',
+    detail: 'CAT 1 /100, CAT 2 /100, CAT 3 /100',
+    totals: [100, 100, 100],
+  },
+  {
+    key: 'scenario_3',
+    label: 'Scenario 3',
+    detail: 'CAT 1 /80, CAT 2 /60, CAT 3 /100',
+    totals: [80, 60, 100],
+  },
+];
+
 export default function BulkMarksUploadPage() {
   const { token } = useAuth();
   const fileRef = useRef<HTMLInputElement>(null);
@@ -99,6 +127,7 @@ export default function BulkMarksUploadPage() {
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [assessmentLoadError, setAssessmentLoadError] = useState<string | null>(null);
   const [selectedAssessment, setSelectedAssessment] = useState<Assessment | null>(null);
+  const [selectedCatFormula, setSelectedCatFormula] = useState('');
   const [assessmentSearch, setAssessmentSearch] = useState('');
   const [showCreateAssessment, setShowCreateAssessment] = useState(false);
   const [newAssessmentName, setNewAssessmentName] = useState('');
@@ -157,6 +186,8 @@ export default function BulkMarksUploadPage() {
     );
   }, [subjects, subjectSearch]);
 
+  const selectedCatFormulaConfig = CAT_FORMULA_SCENARIOS.find((scenario) => scenario.key === selectedCatFormula);
+
   const handleCreateAssessment = async () => {
     const subject = subjects.find((item) => item.id === newAssessmentSubjectId);
     if (!subject || !newAssessmentName.trim()) {
@@ -199,6 +230,7 @@ export default function BulkMarksUploadPage() {
 
     const fd = new FormData();
     fd.append('file', file);
+    if (selectedCatFormula) fd.append('cat_formula', selectedCatFormula);
     if (selectedSubject?.code) fd.append('subject_code', selectedSubject.code);
     else if (selectedSubject) fd.append('subject_id', selectedSubject.id);
 
@@ -230,6 +262,7 @@ export default function BulkMarksUploadPage() {
     fd.append('rows', JSON.stringify(preview.rows));
     if (selectedSubject?.code) fd.append('subject_code', selectedSubject.code);
     else if (selectedSubject) fd.append('subject_id', selectedSubject.id);
+    if (selectedCatFormula) fd.append('cat_formula', selectedCatFormula);
     examCopies.forEach((copy) => fd.append('exam_copies', copy));
     if (choice) fd.append('on_conflict', choice);
 
@@ -286,6 +319,7 @@ export default function BulkMarksUploadPage() {
 
     const params = new URLSearchParams();
     if (selectedAssessment) params.set('assessment_id', selectedAssessment.code ?? selectedAssessment.id);
+    if (selectedCatFormula) params.set('cat_formula', selectedCatFormula);
     if (selectedSubject?.code) params.set('subject_code', selectedSubject.code);
     else if (selectedSubject) params.set('subject_id', selectedSubject.id);
 
@@ -321,7 +355,11 @@ export default function BulkMarksUploadPage() {
         );
       } else {
         setTemplateNote(
-          `Template prefilled with ${rows} learner${rows === 1 ? '' : 's'}. Fill in the marks_obtained column and upload it below.`,
+          `Template prefilled with ${rows} learner${rows === 1 ? '' : 's'}. ${
+            selectedCatFormulaConfig
+              ? `Fill CAT 1, CAT 2, and CAT 3 marks for ${selectedCatFormulaConfig.detail}.`
+              : 'Fill in the marks_obtained column and upload it below.'
+          }`,
         );
       }
     } catch {
@@ -339,6 +377,7 @@ export default function BulkMarksUploadPage() {
     setTemplateNote(null);
     setExamCopies([]);
     setSelectedAssessment(null);
+    setSelectedCatFormula('');
     setAssessmentSearch('');
     setSelectedSubject(null);
     setSubjectSearch('');
@@ -544,6 +583,48 @@ export default function BulkMarksUploadPage() {
             </button>
           </div>
         )}
+
+        <div className="mt-4 rounded-xl border border-slate-700 bg-slate-800/70 p-4">
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-slate-200">CAT formula for final marks</p>
+              <p className="text-xs text-slate-500">
+                Select a scenario to upload CAT 1, CAT 2, and CAT 3 columns; the final mark is calculated automatically.
+              </p>
+            </div>
+            {selectedCatFormula && (
+              <button
+                type="button"
+                onClick={() => setSelectedCatFormula('')}
+                className="shrink-0 text-xs font-semibold text-slate-400 hover:text-slate-200"
+              >
+                Use single mark
+              </button>
+            )}
+          </div>
+          <div className="grid gap-2 md:grid-cols-3">
+            {CAT_FORMULA_SCENARIOS.map((scenario) => (
+              <button
+                key={scenario.key}
+                type="button"
+                onClick={() => setSelectedCatFormula(scenario.key)}
+                className={`rounded-lg border px-3 py-2 text-left text-sm transition ${
+                  selectedCatFormula === scenario.key
+                    ? 'border-amber-400/60 bg-amber-400/10 text-amber-100'
+                    : 'border-slate-700 bg-slate-900 text-slate-300 hover:border-slate-500'
+                }`}
+              >
+                <span className="block font-semibold">{scenario.label}</span>
+                <span className="mt-0.5 block text-xs text-slate-500">{scenario.detail}</span>
+              </button>
+            ))}
+          </div>
+          {selectedCatFormulaConfig && (
+            <p className="mt-3 text-xs text-amber-200">
+              Formula: final mark = (CAT 1 + CAT 2 + CAT 3) / {selectedCatFormulaConfig.totals.reduce((sum, value) => sum + value, 0)} × 100.
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Step 2 — Subject picker (by code) */}
@@ -644,7 +725,9 @@ export default function BulkMarksUploadPage() {
               <Upload size={28} className="mx-auto mb-2 text-slate-600" />
               <p className="text-sm">Click to select an Excel or CSV file</p>
               <p className="text-xs mt-1">
-                Upload the Excel class list from Step 1, or a CSV with student_id, marks_obtained, assessment_code
+                {selectedCatFormulaConfig
+                  ? 'Upload the formula class list, or a CSV with student_id, cat_1_marks, cat_2_marks, cat_3_marks, assessment_code'
+                  : 'Upload the Excel class list from Step 1, or a CSV with student_id, marks_obtained, assessment_code'}
               </p>
             </div>
           )}
@@ -694,7 +777,15 @@ export default function BulkMarksUploadPage() {
             {[
               { col: 'student_id', req: true, desc: 'Student code (STU001) or reg number' },
               { col: 'student_name', req: false, desc: 'Prefilled for reference — ignored on upload' },
-              { col: 'marks_obtained', req: true, desc: 'Numeric score — the column you fill in' },
+              ...(selectedCatFormulaConfig
+                ? [
+                    { col: 'cat_1_marks', req: true, desc: `CAT 1 score out of ${selectedCatFormulaConfig.totals[0]}` },
+                    { col: 'cat_2_marks', req: true, desc: `CAT 2 score out of ${selectedCatFormulaConfig.totals[1]}` },
+                    { col: 'cat_3_marks', req: true, desc: `CAT 3 score out of ${selectedCatFormulaConfig.totals[2]}` },
+                  ]
+                : [
+                    { col: 'marks_obtained', req: true, desc: 'Numeric score — the column you fill in' },
+                  ]),
               { col: 'assessment_code', req: true, desc: 'Assessment code (ASM001) — auto-filled in Class List' },
               { col: 'module_code', req: false, desc: 'Module code (MOD001) — auto-filled in Class List' },
               { col: 'subject_code', req: false, desc: 'Subject code (SUB001) — auto-filled in Class List' },
@@ -953,6 +1044,16 @@ export default function BulkMarksUploadPage() {
                               <p className="text-slate-500 mb-0.5">Feedback</p>
                               <p className="text-slate-300">{row.feedback ?? '—'}</p>
                             </div>
+                            {row.cat_formula && (
+                              <div>
+                                <p className="text-slate-500 mb-0.5">CAT Formula</p>
+                                <p className="text-slate-300">
+                                  {row.cat_formula.component_marks.map((mark, index) => (
+                                    `${mark}/${row.cat_formula?.component_total_marks[index] ?? ''}`
+                                  )).join(' + ')} = {row.cat_formula.final_percentage}%
+                                </p>
+                              </div>
+                            )}
                             {row.errors.length > 0 && (
                               <div>
                                 <p className="text-red-400 mb-0.5 font-semibold">Errors</p>

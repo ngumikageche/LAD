@@ -478,6 +478,82 @@ def test_prefilled_template_round_trips_through_preview(client, app):
     assert row["errors"] == []
 
 
+def test_cat_formula_scenario_1_uses_30_40_30_totals(client, app):
+    ids = _seed(app)
+    headers = _login(client, "admin@example.com")
+    body = (
+        "student_id,cat_1_marks,cat_2_marks,cat_3_marks,assessment_code,module_code,subject_code\n"
+        f"{ids['student_code']},20,35,25,{ids['assessment_code']},{ids['module_code']},{ids['assigned_subject_code']}\n"
+    )
+
+    response = client.post(
+        "/scores/bulk-marks/preview",
+        headers=headers,
+        data={
+            "file": (io.BytesIO(body.encode("utf-8")), "marks.csv"),
+            "cat_formula": "scenario_1",
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200, response.get_json()
+    row = response.get_json()["rows"][0]
+    assert row["valid"] is True
+    assert row["marks_obtained"] == 80
+    assert row["cat_formula"]["component_total_marks"] == [30, 40, 30]
+    assert row["cat_formula"]["final_percentage"] == 80
+
+
+def test_cat_formula_scenario_3_uses_80_60_100_totals(client, app):
+    ids = _seed(app)
+    headers = _login(client, "admin@example.com")
+    body = (
+        "student_id,cat_1_marks,cat_2_marks,cat_3_marks,assessment_code,module_code,subject_code\n"
+        f"{ids['student_code']},40,30,50,{ids['assessment_code']},{ids['module_code']},{ids['assigned_subject_code']}\n"
+    )
+
+    response = client.post(
+        "/scores/bulk-marks/preview",
+        headers=headers,
+        data={
+            "file": (io.BytesIO(body.encode("utf-8")), "marks.csv"),
+            "cat_formula": "scenario_3",
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200, response.get_json()
+    row = response.get_json()["rows"][0]
+    assert row["valid"] is True
+    assert row["marks_obtained"] == 50
+    assert row["cat_formula"]["component_total_marks"] == [80, 60, 100]
+    assert row["cat_formula"]["final_percentage"] == 50
+
+
+def test_cat_formula_rejects_component_marks_over_their_maximum(client, app):
+    ids = _seed(app)
+    headers = _login(client, "admin@example.com")
+    body = (
+        "student_id,cat_1_marks,cat_2_marks,cat_3_marks,assessment_code,module_code,subject_code\n"
+        f"{ids['student_code']},31,35,25,{ids['assessment_code']},{ids['module_code']},{ids['assigned_subject_code']}\n"
+    )
+
+    response = client.post(
+        "/scores/bulk-marks/preview",
+        headers=headers,
+        data={
+            "file": (io.BytesIO(body.encode("utf-8")), "marks.csv"),
+            "cat_formula": "scenario_1",
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200, response.get_json()
+    row = response.get_json()["rows"][0]
+    assert row["valid"] is False
+    assert "cat_1_marks must be 0–30" in row["errors"]
+
+
 def test_commit_stores_the_selected_subject_without_requiring_exam_copies(client, app):
     ids = _seed(app)
     headers = _login(client, "trainer@example.com")
