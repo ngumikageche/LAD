@@ -39,8 +39,9 @@ export interface PracticalSummaryBlock {
   draft: number;
   complete: number;
   released: number;
+  attained_mastery: number;
+  proficient: number;
   competent: number;
-  borderline: number;
   not_yet_competent: number;
   incomplete: number;
   competency_rate: number;

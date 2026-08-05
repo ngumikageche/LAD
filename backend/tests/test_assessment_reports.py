@@ -105,7 +105,7 @@ def _seed(app):
             db.session.add(StudentSubject(student_id=student.id, subject_id=subject.id))
             students.append(student)
 
-        # One competent practical report, one not yet competent.
+        # 22/25 = 88% (attained mastery), 8/25 = 32% (not yet competent).
         for student, score in zip(students, (22.0, 8.0)):
             db.session.add(
                 PracticalAssessmentReport(
@@ -164,8 +164,11 @@ def test_practical_summary_aggregates_competency_outcomes(client, app):
     body = response.get_json()
     assert body["summary"]["total_reports"] == 2
     assert body["summary"]["learners_assessed"] == 2
-    assert body["summary"]["competent"] == 1
+    assert body["summary"]["attained_mastery"] == 1
+    assert body["summary"]["proficient"] == 0
+    assert body["summary"]["competent"] == 0
     assert body["summary"]["not_yet_competent"] == 1
+    # Every rating from 50% upwards counts towards the competency rate.
     assert body["summary"]["competency_rate"] == 50.0
     assert len(body["by_unit"]) == 1
     assert body["by_unit"][0]["reports"] == 2
@@ -184,7 +187,7 @@ def test_practical_detailed_lists_learners_with_task_breakdown(client, app):
     assert body["row_count"] == 2
     assert body["truncated"] is False
     row = next(r for r in body["rows"] if r["registration_number"] == "REG-001")
-    assert row["competency_outcome"] == "COMPETENT"
+    assert row["competency_outcome"] == "ATTAINED MASTERY"
     assert row["total_score"] == 22.0
     assert row["tasks_total"] == 1
     assert row["tasks_scored"] == 1

@@ -20,6 +20,7 @@ import {
   type PracticalSummaryReport,
 } from '../api/assessmentReports';
 import { exportCSV, exportExcel, exportPDF } from '../utils/exportUtils';
+import { competenceTone } from '../utils/competence';
 import {
   ReportActionButton,
   ReportMetricCard,
@@ -43,12 +44,7 @@ const emptyFilters: PracticalFilters = {
   date_to: '',
 };
 
-const outcomeTone: Record<string, string> = {
-  COMPETENT: 'border-emerald-400/30 bg-emerald-400/10 text-emerald-200',
-  BORDERLINE: 'border-amber-400/30 bg-amber-400/10 text-amber-200',
-  'NOT YET COMPETENT': 'border-rose-400/30 bg-rose-400/10 text-rose-200',
-  INCOMPLETE: 'border-slate-500/30 bg-slate-500/10 text-slate-300',
-};
+const outcomeTone = competenceTone;
 
 const statusTone: Record<string, string> = {
   draft: 'border-slate-500/30 bg-slate-500/10 text-slate-300',
@@ -131,8 +127,9 @@ export default function PracticalAssessmentReportsPage() {
               total_reports: summary.summary.total_reports,
               learners_assessed: summary.summary.learners_assessed,
               units_covered: summary.summary.units_covered,
+              attained_mastery: summary.summary.attained_mastery,
+              proficient: summary.summary.proficient,
               competent: summary.summary.competent,
-              borderline: summary.summary.borderline,
               not_yet_competent: summary.summary.not_yet_competent,
               incomplete: summary.summary.incomplete,
               competency_rate: summary.summary.competency_rate,
@@ -365,7 +362,7 @@ export default function PracticalAssessmentReportsPage() {
             value={`${stats.competency_rate}%`}
             icon={Award}
             accent="emerald"
-            helper={`${stats.competent} competent · ${stats.not_yet_competent} not yet`}
+            helper={`${stats.attained_mastery} mastery · ${stats.proficient} proficient · ${stats.competent} competent · ${stats.not_yet_competent} not yet`}
           />
           <ReportMetricCard
             label="Average Score"

@@ -60,7 +60,10 @@ EXAM_PERMISSION = "reports.admin.pass_rate"
 DETAIL_ROW_LIMIT_DEFAULT = 1000
 DETAIL_ROW_LIMIT_MAX = 5000
 
-OUTCOME_ORDER = ["COMPETENT", "BORDERLINE", "NOT YET COMPETENT", "INCOMPLETE"]
+OUTCOME_ORDER = [
+    *PracticalAssessmentReport.COMPETENCE_RATINGS,
+    PracticalAssessmentReport.INCOMPLETE_OUTCOME,
+]
 
 
 # ── Access ───────────────────────────────────────────────────────────────────
@@ -211,7 +214,11 @@ def _practical_metrics(report: PracticalAssessmentReport) -> dict:
 
 def _practical_group_stats(entries: list[dict]) -> dict:
     percentages = [e["score_percentage"] for e in entries if e["score_percentage"] is not None]
-    competent = sum(1 for e in entries if e["competency_outcome"] == "COMPETENT")
+    # Every rating from the 50% pass mark upwards counts as competent.
+    competent = sum(
+        1 for e in entries
+        if PracticalAssessmentReport.is_competent(e["competency_outcome"])
+    )
     return {
         "reports": len(entries),
         "learners": len({e["student_id"] for e in entries}),
@@ -275,6 +282,10 @@ def _practical_summary_block(rows: list[dict]) -> dict:
         statuses[row["status"]] += 1
 
     scored = sum(outcomes[key] for key in OUTCOME_ORDER if key != "INCOMPLETE")
+    competent = sum(
+        count for outcome, count in outcomes.items()
+        if PracticalAssessmentReport.is_competent(outcome)
+    )
     return {
         "total_reports": len(rows),
         "learners_assessed": len({r["student_id"] for r in rows}),
@@ -283,11 +294,13 @@ def _practical_summary_block(rows: list[dict]) -> dict:
         "draft": statuses.get("draft", 0),
         "complete": statuses.get("complete", 0),
         "released": statuses.get("released", 0),
+        "attained_mastery": outcomes.get("ATTAINED MASTERY", 0),
+        "proficient": outcomes.get("PROFICIENT", 0),
         "competent": outcomes.get("COMPETENT", 0),
-        "borderline": outcomes.get("BORDERLINE", 0),
         "not_yet_competent": outcomes.get("NOT YET COMPETENT", 0),
         "incomplete": outcomes.get("INCOMPLETE", 0),
-        "competency_rate": _pct(outcomes.get("COMPETENT", 0), scored),
+        # Share of marked reports at or above the 50% competence pass mark.
+        "competency_rate": _pct(competent, scored),
         "average_score_pct": _avg(percentages),
         "highest_score_pct": max(percentages) if percentages else None,
         "lowest_score_pct": min(percentages) if percentages else None,

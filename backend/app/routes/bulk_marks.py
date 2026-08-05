@@ -24,6 +24,10 @@ from ..models.trainer import Trainer
 from ..models.trainer_subject import TrainerSubject
 from .permissions import _is_admin
 from ..services.bulk_people_import import conflict_response, resolve_conflict_mode
+from ..services.subject_enrollment import (
+    link_student_to_subject,
+    student_subject_link_exists,
+)
 from ..services.score_evidence import (
     EVIDENCE_UPLOAD_FOLDER,
     can_access_score_evidence,
@@ -601,6 +605,12 @@ def preview_bulk():
             grade = _grade(marks, assessment.total_marks)
             is_passed = marks >= (assessment.pass_marks or assessment.total_marks * 0.5)
 
+        # Flag learners the commit will pull onto the subject, so attaching them
+        # is visible up front rather than a silent side effect of the upload.
+        subject_link_missing = bool(
+            student and subject and not student_subject_link_exists(student.id, subject.id)
+        )
+
         # Flag rows that would overwrite a mark, so the uploader sees what is at
         # stake before committing rather than after.
         existing_score = None
@@ -613,6 +623,7 @@ def preview_bulk():
             )
 
         rows.append({
+            "subject_link_missing": subject_link_missing,
             "has_existing_score": existing_score is not None,
             "existing_marks": existing_score.marks_obtained if existing_score else None,
             "existing_grade": existing_score.grade if existing_score else None,
@@ -643,11 +654,16 @@ def preview_bulk():
 
     valid_count = sum(1 for r in rows if r["valid"])
     existing_count = sum(1 for r in rows if r["valid"] and r["has_existing_score"])
+    link_count = len({
+        r["student_id"] for r in rows if r["valid"] and r["subject_link_missing"]
+    })
     return {
         "total": len(rows),
         "valid": valid_count,
         "invalid": len(rows) - valid_count,
         "existing": existing_count,
+        # Distinct learners the commit will attach to the subject.
+        "subject_links_missing": link_count,
         "rows": rows,
         "subject": {
             "id": str(batch_subject.id),
@@ -688,6 +704,7 @@ def commit_bulk():
     inserted = 0
     updated = 0
     skipped = 0
+    subjects_linked = 0
     errors = []
     conflicts: list[dict] = []
     assessment_ids = set()
@@ -806,6 +823,12 @@ def commit_bulk():
                 skipped += 1
                 continue
 
+        # The row is accepted for this subject, so the learner takes it. Attach
+        # them if the roster was missing the link, otherwise the mark lands but
+        # the learner stays invisible on every subject and dashboard roster.
+        if subject_id and link_student_to_subject(student.id, subject_id):
+            subjects_linked += 1
+
         existing = (
             db.session.query(Score)
             .filter_by(student_id=student.id, assessment_id=assessment_uuid)
@@ -878,6 +901,9 @@ def commit_bulk():
         "inserted": inserted,
         "updated": updated,
         "skipped": skipped,
+        # Learners this upload attached to the subject because the roster was
+        # missing them.
+        "subjects_linked": subjects_linked,
         "errors": errors,
         "on_conflict": mode,
         "batch_id": batch_id,
@@ -924,6 +950,12 @@ def _template_roster(user, assessment: Assessment, subject: Subject | None) -> l
     Mirrors the rules `commit_bulk` enforces — enrolled in the assessment's
     course, and within the uploader's own subjects when they are a trainer — so
     a prefilled row never turns into a rejected one.
+
+    A selected subject with nobody on its roster yet is the one case the class
+    list cannot come from: it falls back to the learners enrolled in the
+    assessment's course, which is how a subject taught to a course that was
+    never split into subject rosters gets its first class list. Committing the
+    marks attaches them, so the fallback only ever applies once.
     """
     query = (
         db.session.query(Student)
@@ -949,14 +981,19 @@ def _template_roster(user, assessment: Assessment, subject: Subject | None) -> l
             if not subject_ids:
                 return []
 
-    if subject_ids is not None:
-        query = query.join(
-            StudentSubject, StudentSubject.student_id == Student.id
-        ).filter(StudentSubject.subject_id.in_(subject_ids))
-
     if not assessment.course_id and subject_ids is None:
         # Nothing to scope by — refuse to dump every learner in the institution.
         return []
+
+    scoped_query = query
+    if subject_ids is not None:
+        scoped_query = query.join(
+            StudentSubject, StudentSubject.student_id == Student.id
+        ).filter(StudentSubject.subject_id.in_(subject_ids))
+
+    roster = scoped_query.distinct().order_by(Student.code.asc()).all()
+    if roster or not subject or not assessment.course_id:
+        return roster
 
     return query.distinct().order_by(Student.code.asc()).all()
 

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Upload, Download, CheckCircle2, XCircle, AlertCircle, AlertTriangle,
-  FileText, Send, RefreshCw, ChevronDown, ChevronUp, Book, Plus,
+  FileText, Send, RefreshCw, ChevronDown, ChevronUp, Book, Plus, UserPlus,
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { apiRequest } from '../api/client';
@@ -69,6 +69,8 @@ interface PreviewRow {
   has_existing_score?: boolean;
   existing_marks?: number | null;
   existing_grade?: string | null;
+  /** True when committing will attach this learner to the subject. */
+  subject_link_missing?: boolean;
 }
 
 interface PreviewResult {
@@ -77,6 +79,8 @@ interface PreviewResult {
   invalid: number;
   /** Valid rows that would overwrite a mark unless skipped. */
   existing?: number;
+  /** Distinct learners the commit will attach to the subject. */
+  subject_links_missing?: number;
   rows: PreviewRow[];
 }
 
@@ -84,6 +88,8 @@ interface CommitResult {
   inserted: number;
   updated: number;
   skipped: number;
+  /** Learners attached to the subject because the roster was missing them. */
+  subjects_linked?: number;
   errors: string[];
   on_conflict?: ConflictChoice | null;
   batch_id?: string;
@@ -869,6 +875,17 @@ export default function BulkMarksUploadPage() {
               <p className="text-xs text-slate-400 mt-1">Rows skipped</p>
             </div>
           </div>
+          {commitResult.subjects_linked ? (
+            <p className="mt-4 flex items-center gap-2 rounded-lg border border-teal-500/30 bg-teal-500/10 px-4 py-3 text-sm text-teal-200">
+              <UserPlus size={16} />
+              <span>
+                <span className="font-semibold">{commitResult.subjects_linked}</span>{' '}
+                {commitResult.subjects_linked === 1 ? 'learner was' : 'learners were'} attached to the
+                subject — they were marked but missing from its roster, and now count towards your
+                subject and dashboard totals.
+              </span>
+            </p>
+          ) : null}
           <p className="mt-4 text-sm text-slate-400">
             Exam evidence files uploaded: <span className="font-semibold text-slate-200">{commitResult.evidence_files ?? 0}</span>
             {commitResult.subject ? (
@@ -910,6 +927,14 @@ export default function BulkMarksUploadPage() {
                     title="These learners already have a mark for this assessment. You will be asked before anything is overwritten."
                   >
                     <AlertTriangle size={14} /> {preview.existing} already scored
+                  </span>
+                ) : null}
+                {preview.subject_links_missing ? (
+                  <span
+                    className="flex items-center gap-1 text-teal-300"
+                    title="These learners are not on the subject roster yet. Committing attaches them, so they start counting towards your subject and dashboard totals."
+                  >
+                    <UserPlus size={14} /> {preview.subject_links_missing} to attach
                   </span>
                 ) : null}
                 <span className="text-slate-500">/ {preview.total} total</span>
@@ -975,6 +1000,13 @@ export default function BulkMarksUploadPage() {
                               size={14}
                               className="text-amber-400"
                               aria-label="Already scored"
+                            />
+                          ) : null}
+                          {row.valid && row.subject_link_missing ? (
+                            <UserPlus
+                              size={14}
+                              className="text-teal-400"
+                              aria-label="Will be attached to the subject"
                             />
                           ) : null}
                         </span>

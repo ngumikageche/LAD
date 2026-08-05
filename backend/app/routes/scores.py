@@ -18,6 +18,7 @@ from ..models.subject import Subject
 from ..models.score_evidence import ScoreEvidence
 from .permissions import log_view, require_permission, get_current_user
 from ..services.score_evidence import EVIDENCE_UPLOAD_FOLDER, can_access_score_evidence
+from ..services.subject_enrollment import link_student_to_subject
 
 bp = Blueprint('scores', __name__, url_prefix='/scores')
 
@@ -141,6 +142,11 @@ def create_score():
     is_passed = None
     if assessment.pass_marks is not None:
         is_passed = marks_obtained >= assessment.pass_marks
+
+    # A mark against a subject means the learner takes it, so attach them if the
+    # roster never had them — otherwise the mark lands but the learner is
+    # missing from every subject and dashboard count built on that roster.
+    link_student_to_subject(enrollment.student_id, subject_id)
 
     # Create score
     score = Score(

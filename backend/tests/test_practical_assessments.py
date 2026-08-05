@@ -2,6 +2,7 @@ import uuid
 
 import pytest
 
+from app.models.institution import Institution
 from app.models.practical_assessment_report import PracticalAssessmentReport
 from app.models.student import Student
 from app.models.trainer import Trainer
@@ -172,3 +173,106 @@ def test_reused_report_blueprint_keeps_design_and_clears_learner_results():
     assert tasks[0]["remark"] is None
     assert oral[0]["answer_guidance"] == "Prevent electrical injury"
     assert oral[0]["awarded_score"] is None
+
+
+@pytest.mark.parametrize(
+    ("percentage", "rating"),
+    [
+        (100.0, "ATTAINED MASTERY"),
+        (80.0, "ATTAINED MASTERY"),
+        (79.9, "PROFICIENT"),
+        (65.0, "PROFICIENT"),
+        (64.9, "COMPETENT"),
+        (50.0, "COMPETENT"),
+        (49.9, "NOT YET COMPETENT"),
+        (0.0, "NOT YET COMPETENT"),
+        (None, "INCOMPLETE"),
+    ],
+)
+def test_competence_rating_bands(percentage, rating):
+    assert PracticalAssessmentReport.rating_for(percentage) == rating
+
+
+def test_only_ratings_at_or_above_the_pass_mark_count_as_competent():
+    assert PracticalAssessmentReport.is_competent("ATTAINED MASTERY") is True
+    assert PracticalAssessmentReport.is_competent("PROFICIENT") is True
+    assert PracticalAssessmentReport.is_competent("COMPETENT") is True
+    assert PracticalAssessmentReport.is_competent("NOT YET COMPETENT") is False
+    assert PracticalAssessmentReport.is_competent("INCOMPLETE") is False
+    assert PracticalAssessmentReport.is_competent(None) is False
+
+
+def test_compute_rates_marked_sections_against_the_competence_bands():
+    report = PracticalAssessmentReport(
+        id=uuid.uuid4(),
+        student_id=uuid.uuid4(),
+        trainer_id=uuid.uuid4(),
+        report_sections=[
+            {
+                "number": 1,
+                "title": "Session 1",
+                "type": "session",
+                "items": [
+                    {"number": 1, "prompt": "Wire the control circuit", "score": 13, "max_score": 20}
+                ],
+            }
+        ],
+    )
+
+    report.compute()
+
+    assert report.total_score == 13
+    assert report.competency_outcome == "PROFICIENT"  # 65%
+
+
+def _candidate_and_assessor():
+    student_user = User(
+        id=uuid.uuid4(),
+        name="Student Example",
+        email="student@example.com",
+        password_hash="hash",
+        role_id=uuid.uuid4(),
+    )
+    trainer_user = User(
+        id=uuid.uuid4(),
+        name="Trainer Example",
+        email="trainer@example.com",
+        password_hash="hash",
+        role_id=uuid.uuid4(),
+    )
+    student = Student(
+        id=uuid.uuid4(),
+        user_id=student_user.id,
+        user=student_user,
+        registration_number="REG-001",
+        enrollment_year=2025,
+    )
+    trainer = Trainer(id=uuid.uuid4(), user_id=trainer_user.id, user=trainer_user)
+    return student, trainer
+
+
+def test_institution_is_read_from_the_linked_database_record():
+    student, trainer = _candidate_and_assessor()
+    institution = Institution(
+        id=uuid.uuid4(),
+        name="Riverside Technical College",
+        type="TVET",
+        location="Nairobi",
+    )
+    student.user.institution = institution
+
+    assert practical_assessments._resolve_institution(student, trainer) is institution
+
+
+def test_legacy_sample_institution_name_is_never_displayed():
+    report = PracticalAssessmentReport(
+        id=uuid.uuid4(),
+        student_id=uuid.uuid4(),
+        trainer_id=uuid.uuid4(),
+        institution_name="Thika Technical Training Institute",
+    )
+
+    assert practical_assessments._display_context_value(report, "institution_name", {}) is None
+    assert practical_assessments._display_context_value(
+        report, "institution_name", {"institution_name": "Riverside Technical College"}
+    ) == "Riverside Technical College"

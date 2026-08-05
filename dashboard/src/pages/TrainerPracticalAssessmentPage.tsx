@@ -37,6 +37,13 @@ import { FormField, Input, Select, TextArea } from '../components/ui/Form';
 import type { PracticalAssessmentPayload, PracticalAssessmentReport } from '../api/trainer';
 import { trainerPracticalAssessmentsAPI, trainerStudentsAPI, trainerSubjectsAPI } from '../api/trainer';
 import { apiRequest, resolveApiUrl } from '../api/client';
+import {
+  COMPETENCE_BANDS,
+  COMPETENCE_PASS_MARK,
+  competenceChartColor,
+  isCompetent,
+  ratingFor,
+} from '../utils/competence';
 
 type StudentOption = {
   id: string;
@@ -734,8 +741,7 @@ export default function TrainerPracticalAssessmentPage() {
     return {
       totalScore: scoredItems.length ? totalScore : null,
       totalMax: scoredItems.length ? totalMax : null,
-      outcome:
-        percentage == null ? 'INCOMPLETE' : percentage >= 70 ? 'COMPETENT' : percentage >= 50 ? 'BORDERLINE' : 'NOT YET COMPETENT',
+      outcome: ratingFor(percentage),
     };
   }, [sections]);
 
@@ -755,9 +761,13 @@ export default function TrainerPracticalAssessmentPage() {
     const averageScore = completedLatest.length
       ? completedLatest.reduce((sum, report) => sum + (report.score_percentage ?? 0), 0) / completedLatest.length
       : null;
-    const competentCount = latestReports.filter((report) => report.competency_outcome === 'COMPETENT').length;
+    const competentCount = latestReports.filter((report) => isCompetent(report.competency_outcome)).length;
     const atRiskStudents = latestReports
-      .filter((report) => report.score_percentage == null || (report.score_percentage ?? 0) < 50 || report.competency_outcome === 'NOT YET COMPETENT')
+      .filter((report) => (
+        report.score_percentage == null
+        || (report.score_percentage ?? 0) < COMPETENCE_PASS_MARK
+        || report.competency_outcome === 'NOT YET COMPETENT'
+      ))
       .map((report) => {
         const matchedStudent = students.find((student) => student.id === report.student_id);
         return {
@@ -772,10 +782,12 @@ export default function TrainerPracticalAssessmentPage() {
       .sort((a, b) => (a.score ?? -1) - (b.score ?? -1));
 
     const outcomeCounts = [
-      { label: 'Competent', value: latestReports.filter((report) => report.competency_outcome === 'COMPETENT').length, color: 'bg-emerald-400' },
-      { label: 'Borderline', value: latestReports.filter((report) => report.competency_outcome === 'BORDERLINE').length, color: 'bg-amber-400' },
-      { label: 'Not Yet', value: latestReports.filter((report) => report.competency_outcome === 'NOT YET COMPETENT').length, color: 'bg-rose-400' },
-      { label: 'Incomplete', value: latestReports.filter((report) => report.competency_outcome === 'INCOMPLETE' || report.score_percentage == null).length, color: 'bg-slate-400' },
+      ...COMPETENCE_BANDS.map((band) => ({
+        label: band.short_label,
+        value: latestReports.filter((report) => report.competency_outcome === band.rating).length,
+        color: competenceChartColor[band.rating] ?? 'bg-slate-400',
+      })),
+      { label: 'Incomplete', value: latestReports.filter((report) => report.competency_outcome === 'INCOMPLETE' || report.score_percentage == null).length, color: competenceChartColor.INCOMPLETE },
     ];
 
     const sectionMap = new Map<string, { total: number; count: number }>();
@@ -1096,7 +1108,7 @@ export default function TrainerPracticalAssessmentPage() {
           <OverviewStat icon={<FileText size={19} />} label="All records" value={String(allReports.length)} tone="teal" />
           <OverviewStat icon={<Clock3 size={19} />} label="In draft" value={String(allReports.filter((report) => report.status === 'draft').length)} tone="amber" />
           <OverviewStat icon={<FileCheck2 size={19} />} label="Released" value={String(allReports.filter((report) => report.status === 'released').length)} tone="blue" />
-          <OverviewStat icon={<Award size={19} />} label="Competent" value={String(allReports.filter((report) => report.competency_outcome === 'COMPETENT').length)} tone="green" />
+          <OverviewStat icon={<Award size={19} />} label="Competent" value={String(allReports.filter((report) => isCompetent(report.competency_outcome)).length)} tone="green" />
         </div>
 
         {error ? (
@@ -2190,6 +2202,12 @@ function AssessmentPreview({
               <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.25em] text-teal-300">{report.awarding_body || 'TVET CDACC'}</p>
+                  {report.institution_name ? (
+                    <p className="mt-2 text-sm font-bold uppercase tracking-[0.15em] text-slate-200">
+                      {report.institution_name}
+                      {report.institution_location ? <span className="font-medium text-slate-500"> · {report.institution_location}</span> : null}
+                    </p>
+                  ) : null}
                   <h3 className="mt-3 max-w-2xl text-2xl font-black uppercase leading-tight text-white">
                     {report.unit_of_competency || 'Practical Assessment'}
                   </h3>

@@ -18,6 +18,7 @@ from ..models.trainer import Trainer
 from ..models.trainer_subject import TrainerSubject
 from ..models.user import User
 from .learning_analytics import build_role_dashboard
+from .subject_enrollment import link_student_to_subject
 
 PASS_MARK = 50.0
 
@@ -83,21 +84,17 @@ def ensure_subject_access(trainer: Trainer, subject_id: uuid.UUID) -> Subject:
 
 
 def ensure_student_enrolled(student_id: uuid.UUID, subject_id: uuid.UUID) -> Student:
+    """
+    The learner the mark belongs to, attached to the subject if they were not
+    already. Callers check the trainer owns the subject first, which is the same
+    right the enrolment endpoint requires, so recording a mark also fixes a
+    roster that never had the learner on the subject.
+    """
     student = db.session.get(Student, student_id)
-    if not student:
+    if not student or student.deleted_at:
         abort(404, description="Student not found")
 
-    enrollment = (
-        db.session.query(StudentSubject.id)
-        .filter(
-            StudentSubject.student_id == student_id,
-            StudentSubject.subject_id == subject_id,
-        )
-        .first()
-    )
-    if not enrollment:
-        abort(400, description="Student is not enrolled in this subject")
-
+    link_student_to_subject(student_id, subject_id)
     return student
 
 

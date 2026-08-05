@@ -3,19 +3,16 @@ import type { ForwardedRef } from 'react';
 import { trainerPracticalAssessmentsAPI } from '../../api/trainer';
 import type { PracticalAssessmentReport } from '../../api/trainer';
 import { resolveApiUrl } from '../../api/client';
+import {
+  COMPETENCE_BANDS,
+  COMPETENCE_PASS_MARK,
+  competencePrintTone,
+  ratingLabel,
+} from '../../utils/competence';
 
-const outcomeClass = (outcome: string | null) => {
-  switch ((outcome ?? '').toUpperCase()) {
-    case 'COMPETENT':
-      return 'border-green-700 bg-green-50 text-green-800';
-    case 'BORDERLINE':
-      return 'border-amber-700 bg-amber-50 text-amber-800';
-    case 'NOT YET COMPETENT':
-      return 'border-red-700 bg-red-50 text-red-800';
-    default:
-      return 'border-slate-400 bg-slate-100 text-slate-700';
-  }
-};
+const outcomeClass = (outcome: string | null) => (
+  competencePrintTone[(outcome ?? '').toUpperCase()] ?? competencePrintTone.INCOMPLETE
+);
 
 const formatDate = (value: string | null | undefined) => {
   if (!value) return 'Not set';
@@ -61,6 +58,9 @@ const PracticalAssessmentReportView = forwardRef(function PracticalAssessmentRep
   const oralSections = sections.filter((section) => section.type === 'oral');
   const totalMax = report.total_max_score ?? 0;
   const mediaAttachments = report.media_attachments ?? [];
+  const location = institutionLocation ?? report.institution_location ?? null;
+  const ratingBands = report.competence_rating_scale?.length ? report.competence_rating_scale : COMPETENCE_BANDS;
+  const passMark = report.competence_pass_mark ?? COMPETENCE_PASS_MARK;
 
   return (
     <div
@@ -69,9 +69,18 @@ const PracticalAssessmentReportView = forwardRef(function PracticalAssessmentRep
     >
       <div className="border border-slate-300 p-6 print:border-0">
         <div className="text-center">
-          <p className="text-sm font-semibold uppercase tracking-[0.2em]">{report.qualification}</p>
+          {report.institution_name ? (
+            <h1 className="text-xl font-bold uppercase tracking-wide">{report.institution_name}</h1>
+          ) : null}
+          {location ? (
+            <p className="mt-1 text-xs uppercase tracking-[0.2em] text-slate-600">{location}</p>
+          ) : null}
+          {report.department_name ? (
+            <p className="mt-1 text-sm font-medium uppercase">{report.department_name}</p>
+          ) : null}
+          <p className="mt-4 text-sm font-semibold uppercase tracking-[0.2em]">{report.qualification}</p>
           <p className="mt-1 text-sm font-medium uppercase">{report.unit_code}</p>
-          <h1 className="mt-3 text-2xl font-bold uppercase">{report.unit_of_competency}</h1>
+          <h2 className="mt-3 text-2xl font-bold uppercase">{report.unit_of_competency}</h2>
           <p className="mt-2 text-sm">{report.period}</p>
           <p className="mt-4 text-sm font-semibold uppercase">{report.awarding_body}</p>
         </div>
@@ -257,16 +266,48 @@ const PracticalAssessmentReportView = forwardRef(function PracticalAssessmentRep
 
           <div className="mt-5 grid gap-4 md:grid-cols-2">
             <div>
-              <p className="text-sm font-semibold uppercase">Assessment Outcome</p>
+              <p className="text-sm font-semibold uppercase">Competence Rating</p>
               <div className={`mt-2 inline-flex rounded border px-4 py-2 text-sm font-semibold ${outcomeClass(report.competency_outcome)}`}>
                 {report.competency_outcome ?? 'INCOMPLETE'}
               </div>
-              <p className="mt-2 text-sm">The candidate is competent if the candidate obtains at least 50%.</p>
+              <p className="mt-2 text-sm">
+                The candidate is competent if the candidate obtains at least {passMark}%.
+              </p>
             </div>
             <div className="text-sm">
               <p><strong>Percentage:</strong> {report.score_percentage == null ? 'Incomplete' : `${report.score_percentage.toFixed(1)}%`}</p>
               <p className="mt-2"><strong>Released By:</strong> {report.released_by_name ?? 'Not released'}</p>
               <p className="mt-2"><strong>Generated:</strong> {formatDateTime(report.created_at)}</p>
+            </div>
+          </div>
+
+          <div className="mt-6">
+            <p className="text-sm font-semibold uppercase">Competence Rating Scale</p>
+            <div className="mt-3 overflow-hidden border border-slate-300 md:max-w-md">
+              <table className="w-full border-collapse text-sm">
+                <thead className="bg-slate-100">
+                  <tr>
+                    <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Marks (%)</th>
+                    <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Competence Rating</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ratingBands.map((band) => {
+                    const isAwarded = (report.competency_outcome ?? '').toUpperCase() === band.rating;
+                    return (
+                      <tr key={band.rating} className={isAwarded ? 'bg-slate-50 font-semibold' : undefined}>
+                        <td className="border border-slate-300 px-3 py-2">{band.min}–{band.max}</td>
+                        <td className="border border-slate-300 px-3 py-2">
+                          {ratingLabel(band.rating)}
+                          {band.short_label && band.short_label.toLowerCase() !== band.rating.toLowerCase()
+                            ? ` (${band.short_label})`
+                            : ''}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

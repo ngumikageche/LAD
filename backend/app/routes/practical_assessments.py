@@ -10,7 +10,7 @@ import mimetypes
 import time
 from datetime import datetime
 
-from flask import Blueprint, current_app, request, send_from_directory, url_for
+from flask import Blueprint, current_app, has_request_context, request, send_from_directory, url_for
 from sqlalchemy import exists
 from werkzeug.utils import secure_filename
 
@@ -43,14 +43,31 @@ PRACTICAL_MEDIA_ALLOWED_EXTENSIONS = {
 PRACTICAL_MEDIA_MAX_BYTES = 25 * 1024 * 1024
 PRACTICAL_PREVIEW_TTL_SECONDS = 5 * 60
 
+DEFAULT_AWARDING_BODY = "TVET Curriculum Development, Assessment and Certification Council (TVET CDACC)"
+
+# Sample values that older reports were seeded with before the assessment
+# context was resolved from the database. They are never shown: a report falls
+# back to the live institution, department, course and subject records instead.
 _STATIC_CONTEXT_VALUES = {
-    "institution_name": "Thika Technical Training Institute",
-    "department_name": "Electrical and Electronics Engineering Department",
-    "qualification": "Electrical Engineering Level 6",
-    "unit_of_competency": "Install Electrical Power Lines",
-    "unit_code": "ENG/OS/PO/CR/01/6",
-    "period": "January – April 2025",
+    "institution_name": {"Thika Technical Training Institute"},
+    "department_name": {"Electrical and Electronics Engineering Department"},
+    "awarding_body": {"Thika Technical Training Institute"},
+    "qualification": {"Electrical Engineering Level 6"},
+    "unit_of_competency": {"Install Electrical Power Lines"},
+    "unit_code": {"ENG/OS/PO/CR/01/6"},
+    "period": {"January – April 2025", "January - April 2025"},
 }
+
+# Context keys that map to a column on the report and can therefore be seeded.
+_CONTEXT_COLUMN_FIELDS = (
+    "institution_name",
+    "department_name",
+    "awarding_body",
+    "qualification",
+    "unit_of_competency",
+    "unit_code",
+    "period",
+)
 
 
 PRACTICAL_MANAGE_PERMISSION = "practical.assessments.manage"
@@ -194,16 +211,43 @@ def _assessment_period(student: Student) -> str | None:
     return active_term.name if active_term else None
 
 
-def _assessment_context(student: Student, trainer: Trainer) -> dict[str, str | None]:
-    institution_name = None
+def _fallback_institution() -> Institution | None:
+    """
+    Last resort when neither the candidate nor the assessor is linked to an
+    institution: a single-institution deployment can only mean that one. With
+    several on record we would be guessing, so we show nothing instead.
+    """
+    institutions = (
+        db.session.query(Institution)
+        .filter(Institution.deleted_at.is_(None))
+        .limit(2)
+        .all()
+    )
+    return institutions[0] if len(institutions) == 1 else None
+
+
+def _resolve_institution(student: Student, trainer: Trainer) -> Institution | None:
+    """The institution this assessment belongs to, always read from the DB."""
     if student.user and student.user.institution:
-        institution_name = student.user.institution.name
-    elif student.course and student.course.department and student.course.department.institution:
-        institution_name = student.course.department.institution.name
-    elif trainer.user and trainer.user.institution:
-        institution_name = trainer.user.institution.name
-    elif trainer.department and trainer.department.institution:
-        institution_name = trainer.department.institution.name
+        return student.user.institution
+    if student.course and student.course.department and student.course.department.institution:
+        return student.course.department.institution
+    if trainer.user and trainer.user.institution:
+        return trainer.user.institution
+    if trainer.department and trainer.department.institution:
+        return trainer.department.institution
+
+    if has_request_context():
+        current_user, error, _ = get_current_user()
+        if not error and current_user is not None and current_user.institution:
+            return current_user.institution
+
+    return _fallback_institution()
+
+
+def _assessment_context(student: Student, trainer: Trainer) -> dict[str, str | None]:
+    institution = _resolve_institution(student, trainer)
+    institution_name = institution.name if institution else None
 
     department_name = None
     if student.course and student.course.department:
@@ -219,8 +263,9 @@ def _assessment_context(student: Student, trainer: Trainer) -> dict[str, str | N
 
     return {
         "institution_name": institution_name,
+        "institution_location": institution.location if institution else None,
         "department_name": department_name,
-        "awarding_body": "TVET Curriculum Development, Assessment and Certification Council (TVET CDACC)",
+        "awarding_body": DEFAULT_AWARDING_BODY,
         "qualification": qualification,
         "unit_of_competency": unit_of_competency,
         "unit_code": unit_code,
@@ -228,19 +273,25 @@ def _assessment_context(student: Student, trainer: Trainer) -> dict[str, str | N
     }
 
 
-def _display_context_value(report: PracticalAssessmentReport, field: str, context: dict[str, str | None]) -> str | None:
-    resolved = context.get(field)
-    if resolved:
-        return resolved
-    stored_value = getattr(report, field)
-    if stored_value in (None, "", _STATIC_CONTEXT_VALUES.get(field)):
+def _stored_context_value(report: PracticalAssessmentReport, field: str) -> str | None:
+    """The value saved on the report, ignoring the legacy sample values."""
+    stored_value = (getattr(report, field, None) or "").strip()
+    if not stored_value or stored_value in _STATIC_CONTEXT_VALUES.get(field, ()):
         return None
     return stored_value
 
 
+def _display_context_value(report: PracticalAssessmentReport, field: str, context: dict[str, str | None]) -> str | None:
+    resolved = context.get(field)
+    if resolved:
+        return resolved
+    return _stored_context_value(report, field)
+
+
 def _seed_context_fields(report: PracticalAssessmentReport, student: Student, trainer: Trainer) -> None:
     context = _assessment_context(student, trainer)
-    for field, value in context.items():
+    for field in _CONTEXT_COLUMN_FIELDS:
+        value = context.get(field)
         if value:
             setattr(report, field, value)
 
@@ -276,11 +327,7 @@ def _computed_scores(report: PracticalAssessmentReport) -> tuple[float | None, s
         if len(scores) < total_items or total_max <= 0:
             return total, "INCOMPLETE"
         percentage = (total / total_max) * 100
-        if percentage >= 70:
-            return total, "COMPETENT"
-        if percentage >= 50:
-            return total, "BORDERLINE"
-        return total, "NOT YET COMPETENT"
+        return total, PracticalAssessmentReport.rating_for(percentage)
 
     if isinstance(report.task_items, list) and report.task_items:
         filled_scores = [float(item.get("score")) for item in report.task_items if item.get("score") is not None]
@@ -292,11 +339,7 @@ def _computed_scores(report: PracticalAssessmentReport) -> tuple[float | None, s
         if len(filled_scores) < len(report.task_items) or total_max <= 0:
             return total, "INCOMPLETE"
         percentage = (total / total_max) * 100
-        if percentage >= 70:
-            return total, "COMPETENT"
-        if percentage >= 50:
-            return total, "BORDERLINE"
-        return total, "NOT YET COMPETENT"
+        return total, PracticalAssessmentReport.rating_for(percentage)
 
     scores = [report.task_1_score, report.task_2_score, report.task_3_score, report.task_4_score]
     filled_scores = [score for score in scores if score is not None]
@@ -307,11 +350,8 @@ def _computed_scores(report: PracticalAssessmentReport) -> tuple[float | None, s
     if len(filled_scores) < len(scores):
         return total, "INCOMPLETE"
 
-    if total >= 70:
-        return total, "COMPETENT"
-    if total >= 50:
-        return total, "BORDERLINE"
-    return total, "NOT YET COMPETENT"
+    legacy_max = float(PracticalAssessmentReport.MAX_TASK_SCORE * len(scores))
+    return total, PracticalAssessmentReport.rating_for((total / legacy_max) * 100)
 
 
 def _normalize_task_items(raw_items) -> list[dict]:
@@ -878,8 +918,10 @@ def _report_payload(report: PracticalAssessmentReport) -> dict:
         "student_registration_number": report.student.registration_number if report.student else None,
         "trainer_name": report.trainer.user.name if report.trainer and report.trainer.user else None,
         "institution_name": _display_context_value(report, "institution_name", context),
+        "institution_location": context.get("institution_location"),
         "department_name": _display_context_value(report, "department_name", context),
-        "awarding_body": context.get("awarding_body") or report.awarding_body,
+        # An awarding body entered on the report wins; otherwise the default.
+        "awarding_body": _stored_context_value(report, "awarding_body") or DEFAULT_AWARDING_BODY,
         "qualification": _display_context_value(report, "qualification", context),
         "unit_of_competency": _display_context_value(report, "unit_of_competency", context),
         "unit_code": _display_context_value(report, "unit_code", context),
@@ -909,6 +951,8 @@ def _report_payload(report: PracticalAssessmentReport) -> dict:
         "total_max_score": total_max_score,
         "score_percentage": section_percentage if section_percentage is not None else _score_percentage(task_rows),
         "competency_outcome": competency_outcome,
+        "competence_rating_scale": PracticalAssessmentReport.COMPETENCE_BANDS,
+        "competence_pass_mark": PracticalAssessmentReport.COMPETENCE_PASS_MARK,
         "released_at": report.released_at.isoformat() if report.released_at else None,
         "released_by_user_id": str(report.released_by_user_id) if report.released_by_user_id else None,
         "released_by_name": report.released_by.name if report.released_by else None,

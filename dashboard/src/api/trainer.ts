@@ -87,7 +87,8 @@ export interface PracticalAssessmentReport {
   student_name?: string | null;
   student_registration_number?: string | null;
   trainer_name?: string | null;
-  institution_name: string;
+  institution_name: string | null;
+  institution_location?: string | null;
   department_name: string;
   awarding_body: string;
   qualification: string;
@@ -145,6 +146,8 @@ export interface PracticalAssessmentReport {
   total_max_score?: number | null;
   score_percentage?: number | null;
   competency_outcome: string | null;
+  competence_rating_scale?: Array<{ min: number; max: number; rating: string; short_label: string }>;
+  competence_pass_mark?: number;
   released_at: string | null;
   released_by_user_id: string | null;
   released_by_name?: string | null;

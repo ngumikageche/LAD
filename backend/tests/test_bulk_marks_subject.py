@@ -1,5 +1,6 @@
 import io
 import json
+import uuid
 
 from openpyxl import load_workbook
 from werkzeug.security import generate_password_hash
@@ -149,6 +150,7 @@ def _seed(app):
             "module_name": module.name,
             "student_code": student.code,
             "student_id": str(student.id),
+            "other_student_id": str(other_student.id),
             "assigned_subject_code": assigned_subject.code,
             "assigned_subject_id": str(assigned_subject.id),
             "unassigned_subject_code": unassigned_subject.code,
@@ -632,3 +634,192 @@ def test_individual_scores_reuse_one_assessment_record(client, app):
 
     assert duplicate.status_code == 409
     assert "already has a score" in duplicate.get_json()["error"]
+
+
+def test_preview_flags_learners_missing_from_the_subject_roster(client, app):
+    """Learner Two is enrolled in the course but not on the assessed subject."""
+    ids = _seed(app)
+    headers = _login(client, "trainer@example.com")
+
+    body = client.post(
+        "/scores/bulk-marks/preview",
+        headers=headers,
+        data={
+            "file": _csv(ids["other_student_code"], ids["assessment_code"]),
+            "subject_code": ids["assigned_subject_code"],
+        },
+        content_type="multipart/form-data",
+    ).get_json()
+
+    assert body["valid"] == 1
+    assert body["subject_links_missing"] == 1
+    assert body["rows"][0]["subject_link_missing"] is True
+
+
+def test_preview_does_not_flag_learners_already_on_the_subject(client, app):
+    ids = _seed(app)
+    headers = _login(client, "trainer@example.com")
+
+    body = client.post(
+        "/scores/bulk-marks/preview",
+        headers=headers,
+        data={
+            "file": _csv(ids["student_code"], ids["assessment_code"]),
+            "subject_code": ids["assigned_subject_code"],
+        },
+        content_type="multipart/form-data",
+    ).get_json()
+
+    assert body["subject_links_missing"] == 0
+    assert body["rows"][0]["subject_link_missing"] is False
+
+
+def test_commit_attaches_marked_learners_who_were_missing_the_subject(client, app):
+    """
+    The whole point: a learner who is marked for a subject must end up on its
+    roster, or they stay invisible in every trainer count built from it.
+    """
+    ids = _seed(app)
+    headers = _login(client, "trainer@example.com")
+
+    preview = client.post(
+        "/scores/bulk-marks/preview",
+        headers=headers,
+        data={
+            "file": _csv(ids["other_student_code"], ids["assessment_code"]),
+            "subject_code": ids["assigned_subject_code"],
+        },
+        content_type="multipart/form-data",
+    ).get_json()
+
+    response = client.post(
+        "/scores/bulk-marks/commit",
+        headers=headers,
+        data={
+            "rows": json.dumps(preview["rows"]),
+            "subject_code": ids["assigned_subject_code"],
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["inserted"] == 1
+    assert body["subjects_linked"] == 1
+
+    from app.extensions import db
+    from app.models.student_subject import StudentSubject
+
+    with app.app_context():
+        link = (
+            db.session.query(StudentSubject)
+            .filter(
+                StudentSubject.subject_id == uuid.UUID(ids["assigned_subject_id"]),
+                StudentSubject.student_id == uuid.UUID(ids["other_student_id"]),
+            )
+            .one_or_none()
+        )
+        assert link is not None
+
+
+def test_commit_does_not_duplicate_an_existing_subject_link(client, app):
+    ids = _seed(app)
+    headers = _login(client, "trainer@example.com")
+
+    preview = client.post(
+        "/scores/bulk-marks/preview",
+        headers=headers,
+        data={
+            "file": _csv(ids["student_code"], ids["assessment_code"]),
+            "subject_code": ids["assigned_subject_code"],
+        },
+        content_type="multipart/form-data",
+    ).get_json()
+
+    body = client.post(
+        "/scores/bulk-marks/commit",
+        headers=headers,
+        data={
+            "rows": json.dumps(preview["rows"]),
+            "subject_code": ids["assigned_subject_code"],
+        },
+        content_type="multipart/form-data",
+    ).get_json()
+
+    assert body["subjects_linked"] == 0
+
+    from app.extensions import db
+    from app.models.student_subject import StudentSubject
+
+    with app.app_context():
+        links = (
+            db.session.query(StudentSubject)
+            .filter(
+                StudentSubject.subject_id == uuid.UUID(ids["assigned_subject_id"]),
+                StudentSubject.student_id == uuid.UUID(ids["student_id"]),
+            )
+            .count()
+        )
+        assert links == 1
+
+
+def test_marked_learners_start_counting_on_the_trainer_dashboard(client, app):
+    """The dashboard total is built from the subject roster, so it must move."""
+    ids = _seed(app)
+    headers = _login(client, "trainer@example.com")
+
+    before = client.get("/api/v1/trainer/dashboard", headers=headers).get_json()
+    assert before["total_students"] == 1
+
+    preview = client.post(
+        "/scores/bulk-marks/preview",
+        headers=headers,
+        data={
+            "file": _csv(ids["other_student_code"], ids["assessment_code"]),
+            "subject_code": ids["assigned_subject_code"],
+        },
+        content_type="multipart/form-data",
+    ).get_json()
+    client.post(
+        "/scores/bulk-marks/commit",
+        headers=headers,
+        data={
+            "rows": json.dumps(preview["rows"]),
+            "subject_code": ids["assigned_subject_code"],
+        },
+        content_type="multipart/form-data",
+    )
+
+    after = client.get("/api/v1/trainer/dashboard", headers=headers).get_json()
+    assert after["total_students"] == 2
+
+
+def test_template_falls_back_to_the_course_when_the_subject_has_no_roster(client, app):
+    """
+    A subject nobody is attached to yet cannot produce a class list, and an
+    empty template would leave the trainer with no way to bootstrap one.
+    """
+    ids = _seed(app)
+    headers = _login(client, "admin@example.com")
+
+    from app.extensions import db
+    from app.models.student_subject import StudentSubject
+
+    with app.app_context():
+        db.session.query(StudentSubject).filter(
+            StudentSubject.subject_id == uuid.UUID(ids["assigned_subject_id"])
+        ).delete(synchronize_session=False)
+        db.session.commit()
+
+    response = client.get(
+        f"/scores/bulk-marks/template?assessment_id={ids['assessment_code']}"
+        f"&subject_code={ids['assigned_subject_code']}",
+        headers=headers,
+    )
+
+    rows = _sheet_rows(_load_template(response), "Marks Upload")
+    assert {row["student_id"] for row in rows} == {
+        ids["student_code"],
+        ids["other_student_code"],
+    }
+    assert all(row["subject_code"] == ids["assigned_subject_code"] for row in rows)

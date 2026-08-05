@@ -38,12 +38,14 @@ class PracticalAssessmentReport(BaseModel):
     )
 
     # ── Assessment context (pre-filled / configurable per report) ────────────
+    # institution_name and awarding_body carry no hardcoded school: they are
+    # seeded from the institution the candidate/assessor belongs to in the DB.
     institution_name: Mapped[str] = mapped_column(String(255), nullable=False,
-        default="Thika Technical Training Institute")
+        default="")
     department_name: Mapped[str] = mapped_column(String(255), nullable=False,
         default="Electrical and Electronics Engineering Department")
     awarding_body: Mapped[str] = mapped_column(String(255), nullable=False,
-        default="Thika Technical Training Institute")
+        default="")
     qualification: Mapped[str] = mapped_column(String(255), nullable=False,
         default="Electrical Engineering Level 6")
     unit_of_competency: Mapped[str] = mapped_column(String(255), nullable=False,
@@ -82,7 +84,8 @@ class PracticalAssessmentReport(BaseModel):
 
     # ── Computed fields ───────────────────────────────────────────────────────
     total_score: Mapped[float | None] = mapped_column(Float, nullable=True)
-    # "COMPETENT" | "NOT YET COMPETENT" | "BORDERLINE" | "INCOMPLETE"
+    # One of COMPETENCE_RATINGS, or "INCOMPLETE" while marks are still missing.
+    # Legacy rows may still hold "BORDERLINE"; every read recomputes the rating.
     competency_outcome: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
     # ── Visibility / release ──────────────────────────────────────────────────
@@ -110,6 +113,34 @@ class PracticalAssessmentReport(BaseModel):
         "Support end post with stay wire",
         "Perform tests on installed system for functionality",
     ]
+
+    # ── Competence rating bands ───────────────────────────────────────────────
+    # Marks (%) → competence rating. A candidate is competent from 50%.
+    INCOMPLETE_OUTCOME = "INCOMPLETE"
+    COMPETENCE_PASS_MARK = 50.0
+    COMPETENCE_BANDS = [
+        {"min": 80.0, "max": 100.0, "rating": "ATTAINED MASTERY", "short_label": "Mastery"},
+        {"min": 65.0, "max": 79.0, "rating": "PROFICIENT", "short_label": "Proficiency"},
+        {"min": 50.0, "max": 64.0, "rating": "COMPETENT", "short_label": "Competent"},
+        {"min": 0.0, "max": 49.0, "rating": "NOT YET COMPETENT", "short_label": "NYC"},
+    ]
+    COMPETENCE_RATINGS = [band["rating"] for band in COMPETENCE_BANDS]
+    COMPETENT_RATINGS = {"ATTAINED MASTERY", "PROFICIENT", "COMPETENT"}
+
+    @classmethod
+    def rating_for(cls, percentage: float | None) -> str:
+        """Competence rating for a mark expressed as a percentage."""
+        if percentage is None:
+            return cls.INCOMPLETE_OUTCOME
+        for band in cls.COMPETENCE_BANDS:
+            if percentage >= band["min"]:
+                return band["rating"]
+        return cls.COMPETENCE_BANDS[-1]["rating"]
+
+    @classmethod
+    def is_competent(cls, outcome: str | None) -> bool:
+        """True for every rating at or above the 50% competence pass mark."""
+        return (outcome or "").upper() in cls.COMPETENT_RATINGS
 
     def compute(self) -> None:
         """Recompute total and competency outcome from task scores."""
@@ -140,12 +171,7 @@ class PracticalAssessmentReport(BaseModel):
                 return
 
             percentage = (self.total_score / total_max_score) * 100
-            if percentage >= 70:
-                self.competency_outcome = "COMPETENT"
-            elif percentage >= 50:
-                self.competency_outcome = "BORDERLINE"
-            else:
-                self.competency_outcome = "NOT YET COMPETENT"
+            self.competency_outcome = self.rating_for(percentage)
             return
 
         items = self.task_items if isinstance(self.task_items, list) else []
@@ -166,12 +192,7 @@ class PracticalAssessmentReport(BaseModel):
                 return
 
             percentage = (self.total_score / total_max_score) * 100
-            if percentage >= 70:
-                self.competency_outcome = "COMPETENT"
-            elif percentage >= 50:
-                self.competency_outcome = "BORDERLINE"
-            else:
-                self.competency_outcome = "NOT YET COMPETENT"
+            self.competency_outcome = self.rating_for(percentage)
             return
 
         scores = [self.task_1_score, self.task_2_score, self.task_3_score, self.task_4_score]
@@ -186,12 +207,10 @@ class PracticalAssessmentReport(BaseModel):
             self.competency_outcome = "INCOMPLETE"
             return
 
-        if self.total_score >= 70:
-            self.competency_outcome = "COMPETENT"
-        elif self.total_score >= 50:
-            self.competency_outcome = "BORDERLINE"
-        else:
-            self.competency_outcome = "NOT YET COMPETENT"
+        # The four legacy tasks are marked out of 25 each, so the total is a
+        # percentage already — normalise anyway so the bands stay the authority.
+        legacy_max = float(self.MAX_TASK_SCORE * len(scores))
+        self.competency_outcome = self.rating_for((self.total_score / legacy_max) * 100)
 
     @staticmethod
     def auto_remark(score: float | None) -> str:
