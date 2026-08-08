@@ -1,7 +1,14 @@
-import { useState, useEffect, type FormEvent } from 'react';
-import { Bell, Plus, Edit2, Trash2, CheckCircle2, AlertCircle, Calendar, Send } from 'lucide-react';
+import { useCallback, useState, useEffect, useRef, type FormEvent } from 'react';
+import { Bell, Plus, Edit2, Trash2, CheckCircle2, AlertCircle, Calendar, ChevronLeft, ChevronRight, RefreshCw, Send } from 'lucide-react';
 import { adminNotificationsAPI } from '../api/admin';
 import { apiRequest } from '../api/client';
+import {
+  LIST_POLL_MS,
+  PAGE_SIZE_OPTIONS,
+  notifyNotificationsChanged,
+  useBackgroundRefresh,
+  useNotificationPageSize,
+} from '../hooks/useNotifications';
 
 interface Notification {
   id: string;
@@ -81,6 +88,13 @@ export default function AdminNotificationsPage() {
   const [subjects, setSubjects] = useState<ResourceOption[]>([]);
   const [years, setYears] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useNotificationPageSize('admin');
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -104,20 +118,43 @@ export default function AdminNotificationsPage() {
 
   const [formData, setFormData] = useState<NotificationForm>(emptyForm);
 
-  const loadNotifications = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await adminNotificationsAPI.getNotifications() as Notification[];
-      setNotifications(Array.isArray(data) ? data : []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load notifications');
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Background polls must not clobber a page or filter the user just moved to.
+  const requestRef = useRef(0);
+  // Only the very first fetch blocks the page; later ones swap the list in place.
+  const loadedOnceRef = useRef(false);
 
-  useEffect(() => { loadNotifications(); }, []);
+  const loadNotifications = useCallback(
+    async ({ background = false }: { background?: boolean } = {}) => {
+      const requestId = ++requestRef.current;
+      try {
+        if (background || loadedOnceRef.current) setRefreshing(true);
+        else setLoading(true);
+        setError(null);
+        const data = await adminNotificationsAPI.getNotifications({ page, per_page: pageSize, status: filterRead });
+        if (requestId !== requestRef.current) return;
+        setNotifications(Array.isArray(data.items) ? data.items : []);
+        setTotal(data.pagination?.total ?? 0);
+        setTotalPages(data.pagination?.total_pages ?? 1);
+        setUnreadCount(data.unread_count ?? 0);
+        setLastUpdated(new Date());
+      } catch (err) {
+        if (requestId !== requestRef.current) return;
+        setError(err instanceof Error ? err.message : 'Failed to load notifications');
+      } finally {
+        if (requestId === requestRef.current) {
+          loadedOnceRef.current = true;
+          setLoading(false);
+          setRefreshing(false);
+        }
+      }
+    },
+    [page, pageSize, filterRead]
+  );
+
+  useEffect(() => { void loadNotifications(); }, [loadNotifications]);
+
+  // Keeps the visible page current without a spinner or a lost scroll position.
+  useBackgroundRefresh(() => void loadNotifications({ background: true }), LIST_POLL_MS);
 
   useEffect(() => {
     localStorage.setItem('adminSmsConfig', JSON.stringify(smsConfig));
@@ -210,7 +247,9 @@ export default function AdminNotificationsPage() {
         setSuccess(`Message processed via ${(result.delivery_channels || selectedChannels).join(', ')}${result.delivery_summary?.system?.created ? ' with an in-app notification created.' : '.'}`);
       }
       resetForm();
-      await loadNotifications();
+      setPage(1);
+      await loadNotifications({ background: true });
+      notifyNotificationsChanged();
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save notification');
@@ -237,19 +276,28 @@ export default function AdminNotificationsPage() {
     if (!confirm('Are you sure you want to delete this notification?')) return;
     try {
       await adminNotificationsAPI.deleteNotification(id);
-      setNotifications(notifications.filter((n) => n.id !== id));
       setSuccess('Notification deleted!');
+      // The page is server-side, so pull the replacement row in.
+      await loadNotifications({ background: true });
+      notifyNotificationsChanged();
       setTimeout(() => setSuccess(null), 3000);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to delete notification');
     }
   };
 
-  const filteredNotifications = notifications.filter((n) => {
-    if (filterRead === 'read') return n.is_read;
-    if (filterRead === 'unread') return !n.is_read;
-    return true;
-  });
+  const changePageSize = (next: number) => {
+    setPageSize(next);
+    setPage(1);
+  };
+
+  const changeFilter = (next: 'all' | 'read' | 'unread') => {
+    setFilterRead(next);
+    setPage(1);
+  };
+
+  const rangeStart = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const rangeEnd = (page - 1) * pageSize + notifications.length;
 
   if (loading) {
     return (
@@ -537,28 +585,55 @@ export default function AdminNotificationsPage() {
         )}
 
         {/* Filter */}
-        <div className="mb-6 bg-slate-900 border border-slate-800 p-4 rounded-lg shadow flex gap-4">
+        <div className="mb-6 bg-slate-900 border border-slate-800 p-4 rounded-lg shadow flex flex-wrap items-center gap-4">
           {(['all', 'unread', 'read'] as const).map((f) => (
             <button
               key={f}
-              onClick={() => setFilterRead(f)}
+              onClick={() => changeFilter(f)}
               className={`px-4 py-2 rounded-lg capitalize font-medium transition ${filterRead === f ? 'bg-purple-600 text-white' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'}`}
             >
               {f}
             </button>
           ))}
-          <span className="ml-auto text-sm text-slate-500 self-center">{filteredNotifications.length} notifications</span>
+          <label className="flex items-center gap-2 text-sm text-slate-400">
+            Show
+            <select
+              value={pageSize}
+              onChange={(e) => changePageSize(Number(e.target.value))}
+              className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-slate-100 focus:border-purple-500 focus:outline-none"
+            >
+              {PAGE_SIZE_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            per page
+          </label>
+          <button
+            type="button"
+            onClick={() => void loadNotifications({ background: true })}
+            disabled={refreshing}
+            className="flex items-center gap-2 rounded-lg bg-slate-800 px-4 py-2 text-sm font-medium text-slate-300 transition hover:bg-slate-700 disabled:opacity-60"
+          >
+            <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+            Refresh
+          </button>
+          <span className="ml-auto text-sm text-slate-500 self-center">
+            {total > 0 ? `${rangeStart}–${rangeEnd} of ${total}` : '0'} notifications · {unreadCount} unread
+            {lastUpdated ? ` · updated ${lastUpdated.toLocaleTimeString()}` : ''}
+          </span>
         </div>
 
         {/* Notifications List */}
         <div className="space-y-3">
-          {filteredNotifications.length === 0 ? (
+          {notifications.length === 0 ? (
             <div className="text-center py-12 bg-slate-900 border border-slate-800 rounded-lg">
               <Bell size={48} className="mx-auto text-slate-500 mb-4" />
               <p className="text-slate-500 text-lg">No notifications</p>
             </div>
           ) : (
-            filteredNotifications.map((notification) => (
+            notifications.map((notification) => (
               <div
                 key={notification.id}
                 className={`rounded-lg shadow p-5 ${
@@ -607,6 +682,30 @@ export default function AdminNotificationsPage() {
             ))
           )}
         </div>
+
+        {totalPages > 1 && (
+          <div className="mt-6 flex items-center justify-between gap-3 bg-slate-900 border border-slate-800 p-4 rounded-lg">
+            <button
+              type="button"
+              onClick={() => setPage((current) => Math.max(1, current - 1))}
+              disabled={page <= 1}
+              className="flex items-center gap-1 px-4 py-2 bg-slate-800 text-slate-200 rounded-lg font-medium transition hover:bg-slate-700 disabled:opacity-40"
+            >
+              <ChevronLeft size={16} />
+              Newer
+            </button>
+            <span className="text-sm text-slate-500">Page {page} of {totalPages}</span>
+            <button
+              type="button"
+              onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+              disabled={page >= totalPages}
+              className="flex items-center gap-1 px-4 py-2 bg-slate-800 text-slate-200 rounded-lg font-medium transition hover:bg-slate-700 disabled:opacity-40"
+            >
+              Older
+              <ChevronRight size={16} />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

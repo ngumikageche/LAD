@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from flask import Blueprint, g, request
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from werkzeug.exceptions import HTTPException
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -21,6 +22,8 @@ from .permissions import student_required
 
 
 bp = Blueprint("student_portal", __name__, url_prefix="/api/v1/student")
+NOTIFICATIONS_PAGE_SIZE = 10
+NOTIFICATIONS_PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
 
 
 @bp.errorhandler(ValueError)
@@ -33,9 +36,9 @@ def handle_http_error(error: HTTPException):
     return {"error": error.description}, error.code
 
 
-def _parse_pagination() -> tuple[int, int]:
+def _parse_pagination(default_per_page: int = 20) -> tuple[int, int]:
     page = max(int(request.args.get("page", 1)), 1)
-    per_page = min(max(int(request.args.get("per_page", 20)), 1), 100)
+    per_page = min(max(int(request.args.get("per_page", default_per_page)), 1), 100)
     return page, per_page
 
 
@@ -165,8 +168,28 @@ def get_performance():
 @bp.get("/notifications")
 @student_required()
 def get_notifications():
-    page, per_page = _parse_pagination()
-    return student_notifications(g.current_student, page, per_page), 200
+    page, per_page = _parse_pagination(NOTIFICATIONS_PAGE_SIZE)
+    payload = student_notifications(g.current_student, page, per_page)
+    payload["page_size_options"] = NOTIFICATIONS_PAGE_SIZE_OPTIONS
+    return payload, 200
+
+
+@bp.get("/notifications/summary")
+@student_required()
+def get_notifications_summary():
+    """Cheap counter for the header badge — polled, so it stays out of the audit log."""
+    base = db.session.query(Notification).filter(
+        Notification.user_id == g.current_user.id,
+        Notification.deleted_at.is_(None),
+    )
+    total = base.count()
+    unread_count = base.filter(Notification.is_read.is_(False)).count()
+    latest_created_at = base.with_entities(func.max(Notification.created_at)).scalar()
+    return {
+        "unread_count": unread_count or 0,
+        "total": total or 0,
+        "latest_created_at": latest_created_at.isoformat() if latest_created_at else None,
+    }, 200
 
 
 @bp.get("/feedback-reports")

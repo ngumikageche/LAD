@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 
 from flask import Blueprint, request
-from sqlalchemy import distinct
+from sqlalchemy import distinct, func
 from sqlalchemy.exc import IntegrityError
 
 from ..extensions import db
@@ -21,6 +21,10 @@ from .permissions import _is_admin, log_view, require_permission
 
 bp = Blueprint("notifications", __name__, url_prefix="/notifications")
 ALLOWED_DELIVERY_CHANNELS = {"system", "email", "sms"}
+DEFAULT_PAGE_SIZE = 10
+MAX_PAGE_SIZE = 100
+PAGE_SIZE_OPTIONS = [10, 25, 50, 100]
+TRUTHY = {"1", "true", "yes", "on"}
 
 
 def _parse_uuid(value: str | None, field: str) -> uuid.UUID:
@@ -41,6 +45,25 @@ def _notification_payload(notification: Notification) -> dict:
         "is_read": notification.is_read,
         "created_at": notification.created_at.isoformat() if notification.created_at else None,
     }
+
+
+def _parse_pagination() -> tuple[int, int]:
+    try:
+        page = max(int(request.args.get("page", 1)), 1)
+        per_page = int(request.args.get("per_page", DEFAULT_PAGE_SIZE))
+    except (TypeError, ValueError) as exc:
+        raise ValueError("'page' and 'per_page' must be integers") from exc
+    return page, min(max(per_page, 1), MAX_PAGE_SIZE)
+
+
+def _scoped_notification_query(user: User, target_user_id: str | None):
+    """Notifications the actor may see: their own, or anyone's when admin."""
+    query = db.session.query(Notification).filter(Notification.deleted_at.is_(None))
+    if not _is_admin(user):
+        return query.filter(Notification.user_id == user.id)
+    if target_user_id:
+        return query.filter(Notification.user_id == _parse_uuid(target_user_id, "user_id"))
+    return query
 
 
 def _recipient_payload(user: User) -> dict:
@@ -318,20 +341,76 @@ def list_notifications():
     if error:
         return error, status
 
-    target_user_id = request.args.get("user_id")
-    query = db.session.query(Notification)
-    if not _is_admin(user):
-        query = query.filter(Notification.user_id == user.id)
-    elif target_user_id:
-        try:
-            user_uuid = _parse_uuid(target_user_id, "user_id")
-        except ValueError as exc:
-            return {"error": str(exc)}, 400
-        query = query.filter(Notification.user_id == user_uuid)
+    status_filter = request.args.get("status", "all").strip().lower()
+    if request.args.get("unread_only", "").strip().lower() in TRUTHY:
+        status_filter = "unread"
+    if status_filter not in {"all", "read", "unread"}:
+        return {"error": "'status' must be one of: all, read, unread"}, 400
 
-    notifications = query.order_by(Notification.created_at.desc()).all()
-    log_view(user, "notifications", metadata={"scope": "list"})
-    return [_notification_payload(notification) for notification in notifications], 200
+    try:
+        base_query = _scoped_notification_query(user, request.args.get("user_id"))
+        page, per_page = _parse_pagination()
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+
+    listed_query = base_query
+    if status_filter != "all":
+        listed_query = listed_query.filter(Notification.is_read.is_(status_filter == "read"))
+
+    # Callers that ask for a page get the paginated envelope; a bare request
+    # keeps the legacy bare-array contract.
+    wants_page = any(key in request.args for key in ("page", "per_page", "paginated"))
+    if not wants_page:
+        notifications = listed_query.order_by(Notification.created_at.desc()).all()
+        log_view(user, "notifications", metadata={"scope": "list", "status": status_filter})
+        return [_notification_payload(notification) for notification in notifications], 200
+
+    total = listed_query.count()
+    notifications = (
+        listed_query.order_by(Notification.created_at.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
+    )
+    unread_count = base_query.filter(Notification.is_read.is_(False)).count()
+
+    log_view(
+        user,
+        "notifications",
+        metadata={"scope": "list", "page": page, "per_page": per_page, "status": status_filter},
+    )
+    return {
+        "items": [_notification_payload(notification) for notification in notifications],
+        "pagination": {
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "total_pages": max(1, -(-total // per_page)),
+        },
+        "unread_count": unread_count,
+        "page_size_options": PAGE_SIZE_OPTIONS,
+    }, 200
+
+
+@bp.get("/unread-count")
+def notifications_unread_count():
+    """Cheap counter for the header badge — polled, so it is not audit-logged."""
+    user, error, status = require_permission("notifications.read")
+    if error:
+        return error, status
+
+    try:
+        base_query = _scoped_notification_query(user, request.args.get("user_id"))
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+
+    unread_count = base_query.filter(Notification.is_read.is_(False)).count()
+    latest_created_at = base_query.with_entities(func.max(Notification.created_at)).scalar()
+    return {
+        "unread_count": unread_count,
+        "total": base_query.count(),
+        "latest_created_at": latest_created_at.isoformat() if latest_created_at else None,
+    }, 200
 
 
 @bp.get("/<notification_id>")

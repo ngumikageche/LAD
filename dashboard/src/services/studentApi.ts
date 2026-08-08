@@ -136,6 +136,17 @@ export type StudentProfile = {
   phone: string | null;
 };
 
+export type StudentNotificationPage = PaginatedResponse<StudentNotification> & {
+  unread_count: number;
+  page_size_options?: number[];
+};
+
+export type NotificationCountSummary = {
+  unread_count: number;
+  total: number;
+  latest_created_at: string | null;
+};
+
 export type PaginatedResponse<T> = {
   items: T[];
   pagination: {
@@ -200,12 +211,14 @@ export const studentApi = {
   },
 
   async getNotifications(page = 1, perPage = 10) {
-    const response = await studentClient.get<PaginatedResponse<StudentNotification> & { unread_count: number }>(
-      '/api/v1/student/notifications',
-      {
-        params: { page, per_page: perPage },
-      }
-    );
+    const response = await studentClient.get<StudentNotificationPage>('/api/v1/student/notifications', {
+      params: { page, per_page: perPage },
+    });
+    return response.data;
+  },
+
+  async getNotificationsSummary() {
+    const response = await studentClient.get<NotificationCountSummary>('/api/v1/student/notifications/summary');
     return response.data;
   },
 

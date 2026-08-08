@@ -1,36 +1,75 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Bell, BellRing, CheckCheck, ChevronRight, ClipboardCheck, Megaphone } from 'lucide-react';
+import { Bell, BellRing, CheckCheck, ChevronLeft, ChevronRight, ClipboardCheck, Megaphone, RefreshCw } from 'lucide-react';
 import { studentApi, type StudentAnnouncement, type StudentNotification } from '../services/studentApi';
+import {
+  LIST_POLL_MS,
+  PAGE_SIZE_OPTIONS,
+  notifyNotificationsChanged,
+  useBackgroundRefresh,
+  useNotificationPageSize,
+} from '../hooks/useNotifications';
 
 const StudentNotificationsPage = () => {
   const [notifications, setNotifications] = useState<StudentNotification[]>([]);
   const [announcements, setAnnouncements] = useState<StudentAnnouncement[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [pageSize, setPageSize] = useNotificationPageSize('student');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [error, setError] = useState('');
+  // Background polls must not clobber a page the user just navigated away from.
+  const requestRef = useRef(0);
+  // Only the very first fetch blocks the page; later ones swap the list in place.
+  const loadedOnceRef = useRef(false);
 
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      setError('');
-      const [notificationResponse, announcementResponse] = await Promise.all([
-        studentApi.getNotifications(1, 20),
-        studentApi.getAnnouncements(1, 10),
-      ]);
-      setNotifications(notificationResponse.items);
-      setUnreadCount(notificationResponse.unread_count);
-      setAnnouncements(announcementResponse.items);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load notifications');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const loadData = useCallback(
+    async ({ background = false }: { background?: boolean } = {}) => {
+      const requestId = ++requestRef.current;
+      try {
+        if (background || loadedOnceRef.current) setRefreshing(true);
+        else setLoading(true);
+        setError('');
+        const [notificationResponse, announcementResponse] = await Promise.all([
+          studentApi.getNotifications(page, pageSize),
+          studentApi.getAnnouncements(1, 10),
+        ]);
+        if (requestId !== requestRef.current) return;
+        setNotifications(notificationResponse.items);
+        setUnreadCount(notificationResponse.unread_count);
+        setTotal(notificationResponse.pagination?.total ?? notificationResponse.items.length);
+        setTotalPages(notificationResponse.pagination?.total_pages ?? 1);
+        setAnnouncements(announcementResponse.items);
+        setLastUpdated(new Date());
+      } catch (err) {
+        if (requestId !== requestRef.current) return;
+        setError(err instanceof Error ? err.message : 'Failed to load notifications');
+      } finally {
+        if (requestId === requestRef.current) {
+          loadedOnceRef.current = true;
+          setLoading(false);
+          setRefreshing(false);
+        }
+      }
+    },
+    [page, pageSize]
+  );
 
   useEffect(() => {
-    loadData();
-  }, []);
+    void loadData();
+  }, [loadData]);
+
+  // Keeps the visible page current without a spinner or a lost scroll position.
+  useBackgroundRefresh(() => void loadData({ background: true }), LIST_POLL_MS);
+
+  const changePageSize = (next: number) => {
+    setPageSize(next);
+    setPage(1);
+  };
 
   const markAsRead = async (notificationId: string) => {
     try {
@@ -39,6 +78,7 @@ const StudentNotificationsPage = () => {
         current.map((item) => (item.id === notificationId ? { ...item, read: true } : item))
       );
       setUnreadCount((current) => Math.max(0, current - 1));
+      notifyNotificationsChanged();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update notification');
     }
@@ -59,9 +99,35 @@ const StudentNotificationsPage = () => {
           <h1 className="text-4xl font-bold text-slate-100">Notifications</h1>
           <p className="mt-2 text-slate-600">Stay up to date with new scores, alerts, and school announcements.</p>
         </div>
-        <div className="rounded-3xl bg-slate-900 px-6 py-4 text-white shadow-sm">
-          <p className="text-sm text-slate-300">Unread notifications</p>
-          <p className="mt-1 text-3xl font-bold">{unreadCount}</p>
+        <div className="flex flex-wrap items-center gap-3">
+          <label className="flex items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-300">
+            Show
+            <select
+              value={pageSize}
+              onChange={(event) => changePageSize(Number(event.target.value))}
+              className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-sm text-slate-100 focus:border-teal-400 focus:outline-none"
+            >
+              {PAGE_SIZE_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+            per page
+          </label>
+          <button
+            type="button"
+            onClick={() => void loadData({ background: true })}
+            disabled={refreshing}
+            className="flex items-center gap-2 rounded-2xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm font-medium text-slate-300 transition hover:bg-slate-800 disabled:opacity-60"
+          >
+            <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            Refresh
+          </button>
+          <div className="rounded-3xl bg-slate-900 px-6 py-4 text-white shadow-sm">
+            <p className="text-sm text-slate-300">Unread notifications</p>
+            <p className="mt-1 text-3xl font-bold">{unreadCount}</p>
+          </div>
         </div>
       </div>
 
@@ -69,9 +135,15 @@ const StudentNotificationsPage = () => {
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <section className="rounded-3xl border border-slate-700 bg-slate-900 border border-slate-800 p-6 shadow-sm">
-          <div className="mb-6 flex items-center gap-3">
+          <div className="mb-6 flex flex-wrap items-center gap-3">
             <BellRing className="h-6 w-6 text-slate-700" />
             <h2 className="text-2xl font-semibold text-slate-100">My Alerts</h2>
+            <span className="ml-auto text-xs text-slate-500">
+              {total > 0
+                ? `Showing ${(page - 1) * pageSize + 1}–${(page - 1) * pageSize + notifications.length} of ${total}`
+                : 'Nothing to show'}
+              {lastUpdated ? ` · updated ${lastUpdated.toLocaleTimeString()}` : ''}
+            </span>
           </div>
 
           <div className="space-y-4">
@@ -134,6 +206,32 @@ const StudentNotificationsPage = () => {
           {notifications.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center text-slate-500">
               No notifications available.
+            </div>
+          ) : null}
+
+          {totalPages > 1 ? (
+            <div className="mt-6 flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+                disabled={page <= 1}
+                className="inline-flex items-center gap-1 rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800 disabled:opacity-40"
+              >
+                <ChevronLeft size={16} />
+                Newer
+              </button>
+              <span className="text-sm text-slate-500">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
+                disabled={page >= totalPages}
+                className="inline-flex items-center gap-1 rounded-xl border border-slate-700 bg-slate-900 px-4 py-2 text-sm font-medium text-slate-200 transition hover:bg-slate-800 disabled:opacity-40"
+              >
+                Older
+                <ChevronRight size={16} />
+              </button>
             </div>
           ) : null}
         </section>

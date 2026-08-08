@@ -162,10 +162,43 @@ export const adminAPI = {
   },
 };
 
+export type AdminNotificationItem = {
+  id: string;
+  user_id: string;
+  title: string;
+  message: string;
+  is_read: boolean;
+  created_at: string | null;
+};
+
+export type AdminNotificationPage = {
+  items: AdminNotificationItem[];
+  pagination: { page: number; per_page: number; total: number; total_pages: number };
+  unread_count: number;
+  page_size_options: number[];
+};
+
+export type NotificationCountSummary = {
+  unread_count: number;
+  total: number;
+  latest_created_at: string | null;
+};
+
 // Admin Notifications API
 export const adminNotificationsAPI = {
-  async getNotifications() {
-    const response = await apiClient.get('/notifications');
+  /** Paginated: the server caps per_page at 100 and defaults to the latest 10. */
+  async getNotifications(params: { page?: number; per_page?: number; status?: 'all' | 'read' | 'unread' } = {}) {
+    const query = new URLSearchParams({
+      page: String(params.page ?? 1),
+      per_page: String(params.per_page ?? 10),
+    });
+    if (params.status && params.status !== 'all') query.set('status', params.status);
+    const response = await apiClient.get<AdminNotificationPage>(`/notifications?${query}`);
+    return response.data;
+  },
+
+  async getUnreadCount() {
+    const response = await apiClient.get<NotificationCountSummary>('/notifications/unread-count');
     return response.data;
   },
 

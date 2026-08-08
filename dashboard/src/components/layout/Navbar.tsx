@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Search, Bell, User, Menu, LogOut, ChevronDown } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../auth/AuthContext';
+import { useNotificationCount } from '../../hooks/useNotifications';
 import theme from '../../theme/theme';
 
 type NavbarProps = {
@@ -11,6 +12,7 @@ type NavbarProps = {
 const Navbar = ({ onMenuClick }: NavbarProps) => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const { unreadCount } = useNotificationCount();
   const [profileOpen, setProfileOpen] = useState(false);
 
   const handleLogout = () => {
@@ -51,9 +53,14 @@ const Navbar = ({ onMenuClick }: NavbarProps) => {
           type="button"
           onClick={() => navigate(notificationPath)}
           className="relative rounded-xl p-2.5 transition-all duration-200 hover:bg-blue-800/70 hover:text-teal-300"
-          aria-label="Open notifications"
+          aria-label={unreadCount > 0 ? `Open notifications, ${unreadCount} unread` : 'Open notifications'}
         >
           <Bell size={20} className="text-slate-200" />
+          {unreadCount > 0 ? (
+            <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-teal-500 px-1 text-[11px] font-bold leading-none text-white shadow-md shadow-teal-500/30">
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </span>
+          ) : null}
         </button>
         <div className="relative">
           <button
