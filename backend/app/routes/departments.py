@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from ..extensions import db
 from ..models.department import Department
 from ..models.institution import Institution
+from ..services.scoping import can_access_institution, scope_departments
 from .permissions import log_view, require_permission
 
 
@@ -35,7 +36,7 @@ def _department_payload(department: Department) -> dict:
 
 @bp.post("")
 def create_department():
-    _, error, status = require_permission("departments.create")
+    user, error, status = require_permission("departments.create")
     if error:
         return error, status
     payload = request.get_json(silent=True) or {}
@@ -49,7 +50,7 @@ def create_department():
     except ValueError as exc:
         return {"error": str(exc)}, 400
 
-    if not db.session.get(Institution, institution_id):
+    if not db.session.get(Institution, institution_id) or not can_access_institution(user, institution_id):
         return {"error": "Invalid 'institution_id'"}, 400
 
     department = Department(
@@ -73,7 +74,7 @@ def list_departments():
     if error:
         return error, status
 
-    query = db.session.query(Department).order_by(Department.name.asc())
+    query = scope_departments(db.session.query(Department), user).order_by(Department.name.asc())
     institution_id = request.args.get("institution_id")
     if institution_id:
         try:
@@ -98,7 +99,7 @@ def get_department(department_id: str):
         return {"error": str(exc)}, 400
 
     department = db.session.get(Department, department_uuid)
-    if not department:
+    if not department or not can_access_institution(user, department.institution_id):
         return {"error": "Department not found"}, 404
 
     log_view(user, "departments", entity_id=department_id, metadata={"scope": "detail"})
@@ -107,7 +108,7 @@ def get_department(department_id: str):
 
 @bp.put("/<department_id>")
 def update_department(department_id: str):
-    _, error, status = require_permission("departments.update")
+    user, error, status = require_permission("departments.update")
     if error:
         return error, status
     try:
@@ -116,7 +117,7 @@ def update_department(department_id: str):
         return {"error": str(exc)}, 400
 
     department = db.session.get(Department, department_uuid)
-    if not department:
+    if not department or not can_access_institution(user, department.institution_id):
         return {"error": "Department not found"}, 404
 
     payload = request.get_json(silent=True) or {}
@@ -132,7 +133,7 @@ def update_department(department_id: str):
             institution_id = _parse_uuid(payload.get("institution_id"), "institution_id")
         except ValueError as exc:
             return {"error": str(exc)}, 400
-        if not db.session.get(Institution, institution_id):
+        if not db.session.get(Institution, institution_id) or not can_access_institution(user, institution_id):
             return {"error": "Invalid 'institution_id'"}, 400
         department.institution_id = institution_id
 
@@ -147,7 +148,7 @@ def update_department(department_id: str):
 
 @bp.delete("/<department_id>")
 def delete_department(department_id: str):
-    _, error, status = require_permission("departments.delete")
+    user, error, status = require_permission("departments.delete")
     if error:
         return error, status
     try:
@@ -156,7 +157,7 @@ def delete_department(department_id: str):
         return {"error": str(exc)}, 400
 
     department = db.session.get(Department, department_uuid)
-    if not department:
+    if not department or not can_access_institution(user, department.institution_id):
         return {"error": "Department not found"}, 404
 
     db.session.delete(department)

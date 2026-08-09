@@ -850,25 +850,13 @@ def build_role_dashboard(
     module_id: str | None = None,
     subject_id: str | None = None,
 ) -> dict:
+    # No subject filter means "everything in this person's scope". Defaulting to
+    # their first subject — which is what this used to do — made class average,
+    # mastery, and the attendance signal describe one arbitrary unit and read as
+    # 0% whenever that unit happened to have no data. `trainer_id`/`student_id`
+    # already scope every query below, so leaving this None is both correct and
+    # narrower than any wildcard.
     resolved_subject_id = subject_id
-    if role == "student" and student_id:
-        student_subject = (
-            db.session.query(StudentSubject)
-            .filter(StudentSubject.student_id == uuid.UUID(student_id))
-            .order_by(StudentSubject.created_at.asc())
-            .first()
-        )
-        if not resolved_subject_id:
-            resolved_subject_id = str(student_subject.subject_id) if student_subject else None
-    elif role == "trainer" and trainer_id:
-        trainer_subject = (
-            db.session.query(Subject.id)
-            .join(TrainerSubject, TrainerSubject.subject_id == Subject.id)
-            .filter(TrainerSubject.trainer_id == uuid.UUID(trainer_id))
-            .first()
-        )
-        if not resolved_subject_id:
-            resolved_subject_id = str(trainer_subject[0]) if trainer_subject else None
 
     at_risk = get_at_risk_analytics(
         department_id=department_id,

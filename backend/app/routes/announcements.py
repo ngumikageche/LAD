@@ -8,7 +8,10 @@ from ..extensions import db
 from ..models.announcement import Announcement, AnnouncementRead
 from ..models.course import Course
 from ..models.enrollment import Enrollment
+from ..models.notification import Notification
 from ..models.student import Student
+from ..models.user import User
+from ..services.scoping import can_view_master_data
 from .permissions import require_permission, log_view
 
 bp = Blueprint("announcements", __name__, url_prefix="/announcements")
@@ -66,6 +69,7 @@ def create_announcement():
 
     announcement = Announcement(
         creator_id=user.id,
+        institution_id=user.institution_id,
         title=title.strip(),
         content=content.strip(),
         course_id=course_id,
@@ -74,10 +78,99 @@ def create_announcement():
     )
 
     db.session.add(announcement)
+    db.session.flush()
+
+    # Storing the row was never enough on its own — nothing appeared in anyone's
+    # notification list, which is what "announcements are not going through"
+    # described. Publishing now fans out to the audience it targets.
+    delivered = _deliver(announcement) if announcement.is_published else 0
     db.session.commit()
 
-    log_view(user, "announcements", entity_id=str(announcement.id), metadata={"action": "created"})
-    return _announcement_payload(announcement), 201
+    log_view(
+        user,
+        "announcements",
+        entity_id=str(announcement.id),
+        metadata={"action": "created", "delivered": delivered},
+    )
+    return {**_announcement_payload(announcement), "delivered_to": delivered}, 201
+
+
+def _audience_user_ids(announcement: Announcement) -> list:
+    """
+    Users an announcement reaches: the learners on its course, or everyone in
+    the creating institution when it is not course-specific.
+    """
+    if announcement.course_id:
+        rows = (
+            db.session.query(Student.user_id)
+            .outerjoin(Enrollment, Enrollment.student_id == Student.id)
+            .filter(
+                Student.user_id.isnot(None),
+                Student.deleted_at.is_(None),
+                or_(
+                    Student.course_id == announcement.course_id,
+                    Enrollment.course_id == announcement.course_id,
+                ),
+            )
+            .distinct()
+            .all()
+        )
+        return [row[0] for row in rows]
+
+    query = db.session.query(User.id).filter(User.deleted_at.is_(None))
+    if announcement.institution_id:
+        query = query.filter(User.institution_id == announcement.institution_id)
+    return [row[0] for row in query.all()]
+
+
+def _deliver(announcement: Announcement) -> int:
+    """Create one notification per recipient. Returns how many were created."""
+    recipient_ids = [
+        user_id for user_id in _audience_user_ids(announcement)
+        if user_id and user_id != announcement.creator_id
+    ]
+    prefix = "Important announcement" if announcement.is_important else "Announcement"
+    db.session.add_all(
+        Notification(
+            user_id=user_id,
+            title=f"{prefix}: {announcement.title}",
+            message=announcement.content[:1000],
+            is_read=False,
+        )
+        for user_id in recipient_ids
+    )
+    return len(recipient_ids)
+
+
+@bp.post("/<announcement_id>/publish")
+def publish_announcement(announcement_id: str):
+    """Publish a held announcement and deliver it to its audience."""
+    user, error, status = require_permission("announcements.create")
+    if error:
+        return error, status
+
+    try:
+        announcement_uuid = _parse_uuid(announcement_id, "announcement_id")
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+
+    announcement = db.session.get(Announcement, announcement_uuid)
+    if not announcement:
+        return {"error": "Announcement not found"}, 404
+    if announcement.is_published:
+        return {"error": "Announcement is already published"}, 409
+
+    announcement.is_published = True
+    delivered = _deliver(announcement)
+    db.session.commit()
+
+    log_view(
+        user,
+        "announcements",
+        entity_id=announcement_id,
+        metadata={"action": "published", "delivered": delivered},
+    )
+    return {**_announcement_payload(announcement), "delivered_to": delivered}, 200
 
 
 @bp.get("")
@@ -88,6 +181,16 @@ def list_announcements():
         return error, status
 
     query = db.session.query(Announcement).filter(Announcement.is_published == True)
+
+    # An announcement belongs to the institution that raised it. Legacy rows
+    # carry no institution and stay visible to everyone rather than vanishing.
+    if not can_view_master_data(user) and user.institution_id:
+        query = query.filter(
+            or_(
+                Announcement.institution_id == user.institution_id,
+                Announcement.institution_id.is_(None),
+            )
+        )
 
     # Filter by course
     course_id = request.args.get("course_id")

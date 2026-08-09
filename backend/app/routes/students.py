@@ -21,6 +21,11 @@ from ..models.student_subject import StudentSubject
 from ..models.subject import Subject
 from ..models.trainer_subject import TrainerSubject
 from ..models.trainer import Trainer
+from ..services.scoping import (
+    can_access_student,
+    can_view_master_data,
+    scope_students,
+)
 from .permissions import log_view, require_permission
 from .permissions import get_current_user
 from ..services.bulk_people_import import (
@@ -50,7 +55,7 @@ def enroll_student(student_id):
         return {"error": str(exc)}, 400
 
     student = db.session.get(Student, student_uuid)
-    if not student:
+    if not student or not can_access_student(user, student.id):
         return {"error": "Student not found"}, 404
 
     course = db.session.get(Course, course_uuid)
@@ -728,7 +733,7 @@ def list_students():
     if error:
         return error, status
 
-    query = db.session.query(Student).order_by(Student.created_at.desc())
+    query = scope_students(db.session.query(Student), user).order_by(Student.created_at.desc())
     course_id = request.args.get("course_id")
     if course_id:
         try:
@@ -738,7 +743,11 @@ def list_students():
         query = query.filter(Student.course_id == course_uuid)
 
     students = query.all()
-    log_view(user, "students", metadata={"scope": "list"})
+    log_view(
+        user,
+        "students",
+        metadata={"scope": "list", "master": can_view_master_data(user), "count": len(students)},
+    )
     return [_student_payload(student) for student in students], 200
 
 
@@ -786,7 +795,7 @@ def get_student(student_id: str):
         return {"error": str(exc)}, 400
 
     student = db.session.get(Student, student_uuid)
-    if not student:
+    if not student or not can_access_student(user, student.id):
         return {"error": "Student not found"}, 404
 
     log_view(user, "students", entity_id=student_id, metadata={"scope": "detail"})
@@ -795,7 +804,7 @@ def get_student(student_id: str):
 
 @bp.put("/<student_id>")
 def update_student(student_id: str):
-    _, error, status = require_permission("students.update")
+    user, error, status = require_permission("students.update")
     if error:
         return error, status
     try:
@@ -804,7 +813,7 @@ def update_student(student_id: str):
         return {"error": str(exc)}, 400
 
     student = db.session.get(Student, student_uuid)
-    if not student:
+    if not student or not can_access_student(user, student.id):
         return {"error": "Student not found"}, 404
 
     payload = request.get_json(silent=True) or {}
@@ -868,7 +877,7 @@ def update_student(student_id: str):
 
 @bp.delete("/<student_id>")
 def delete_student(student_id: str):
-    _, error, status = require_permission("students.delete")
+    user, error, status = require_permission("students.delete")
     if error:
         return error, status
     try:
@@ -877,7 +886,7 @@ def delete_student(student_id: str):
         return {"error": str(exc)}, 400
 
     student = db.session.get(Student, student_uuid)
-    if not student:
+    if not student or not can_access_student(user, student.id):
         return {"error": "Student not found"}, 404
 
     db.session.delete(student)
@@ -934,7 +943,7 @@ def get_student_enrolled_subjects(student_id: str):
         return {"error": str(exc)}, 400
     
     student = db.session.get(Student, student_uuid)
-    if not student:
+    if not student or not can_access_student(user, student.id):
         return {"error": "Student not found"}, 404
     
     # Get all student-subject enrollments
@@ -955,7 +964,7 @@ def get_student_enrolled_subjects(student_id: str):
 @bp.post("/<student_id>/subjects/<subject_id>")
 def enroll_student_in_subject(student_id: str, subject_id: str):
     """Enroll a student in a subject"""
-    _, error, status = require_permission("students.update")
+    user, error, status = require_permission("students.update")
     if error:
         return error, status
     
@@ -966,7 +975,7 @@ def enroll_student_in_subject(student_id: str, subject_id: str):
         return {"error": str(exc)}, 400
     
     student = db.session.get(Student, student_uuid)
-    if not student:
+    if not student or not can_access_student(user, student.id):
         return {"error": "Student not found"}, 404
     
     subject = db.session.get(Subject, subject_uuid)
@@ -991,7 +1000,7 @@ def enroll_student_in_subject(student_id: str, subject_id: str):
 @bp.delete("/<student_id>/subjects/<subject_id>")
 def unenroll_student_from_subject(student_id: str, subject_id: str):
     """Remove a subject from a student's enrollment"""
-    _, error, status = require_permission("students.update")
+    user, error, status = require_permission("students.update")
     if error:
         return error, status
     
@@ -1001,6 +1010,9 @@ def unenroll_student_from_subject(student_id: str, subject_id: str):
     except ValueError as exc:
         return {"error": str(exc)}, 400
     
+    if not can_access_student(user, student_uuid):
+        return {"error": "Student not found"}, 404
+
     enrollment = db.session.query(StudentSubject).filter(
         and_(
             StudentSubject.student_id == student_uuid,

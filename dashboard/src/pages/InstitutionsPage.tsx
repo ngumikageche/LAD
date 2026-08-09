@@ -22,6 +22,12 @@ type InstitutionForm = {
   location: string;
 };
 
+type InstitutionFilters = {
+  types: string[];
+  locations: string[];
+  can_view_master_data: boolean;
+};
+
 const emptyForm: InstitutionForm = { name: '', type: '', location: '' };
 
 // ── Manage Types Modal ────────────────────────────────────────────────────────
@@ -170,17 +176,24 @@ const InstitutionsPage = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [formState, setFormState] = useState<InstitutionForm>(emptyForm);
   const [previewInstitutionId, setPreviewInstitutionId] = useState('');
+  const [typeFilter, setTypeFilter] = useState('');
+  const [locationFilter, setLocationFilter] = useState('');
+  const [locations, setLocations] = useState<string[]>([]);
+  const [canViewMasterData, setCanViewMasterData] = useState(false);
 
   const loadData = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const [data, typesData] = await Promise.all([
+      const [data, filterData] = await Promise.all([
         apiRequest<Institution[]>('/institutions', { token }),
-        apiRequest<{ types: string[] }>('/institutions/types', { token }).catch(() => ({ types: [] })),
+        apiRequest<InstitutionFilters>('/institutions/filters', { token })
+          .catch(() => ({ types: [], locations: [], can_view_master_data: false })),
       ]);
       setInstitutions(data);
-      setInstitutionTypes(typesData.types);
+      setInstitutionTypes(filterData.types);
+      setLocations(filterData.locations);
+      setCanViewMasterData(filterData.can_view_master_data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load institutions');
     } finally {
@@ -190,14 +203,26 @@ const InstitutionsPage = () => {
 
   useEffect(() => { if (token) loadData(); }, [token]);
 
+  // Filtering runs client-side against the already-scoped list the API returned,
+  // matching how Courses and Subjects filter — the dropdowns narrow what is on
+  // screen, they never widen it past what this account is allowed to see.
   const filtered = useMemo(() => {
-    const search = searchTerm.toLowerCase();
-    return institutions.filter((item) =>
-      item.name.toLowerCase().includes(search) ||
-      item.type.toLowerCase().includes(search) ||
-      item.location.toLowerCase().includes(search)
-    );
-  }, [institutions, searchTerm]);
+    const search = searchTerm.trim().toLowerCase();
+    return institutions.filter((item) => {
+      if (typeFilter && item.type !== typeFilter) return false;
+      if (locationFilter && item.location !== locationFilter) return false;
+      if (!search) return true;
+      return (
+        item.name.toLowerCase().includes(search) ||
+        (item.code ?? '').toLowerCase().includes(search) ||
+        item.type.toLowerCase().includes(search) ||
+        item.location.toLowerCase().includes(search)
+      );
+    });
+  }, [institutions, searchTerm, typeFilter, locationFilter]);
+
+  const hasActiveFilter = Boolean(searchTerm || typeFilter || locationFilter);
+  const clearFilters = () => { setSearchTerm(''); setTypeFilter(''); setLocationFilter(''); };
 
   const tc = useTableControls(filtered);
 
@@ -291,14 +316,56 @@ const InstitutionsPage = () => {
 
       {/* Table card */}
       <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-lg overflow-hidden">
-        <div className="p-6 border-b border-slate-700">
-          <input
-            type="text"
-            placeholder="Search by name, type, location..."
-            className="w-full max-w-md px-4 py-2.5 rounded-lg border border-slate-700 bg-slate-800 text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+        <div className="p-6 border-b border-slate-700 space-y-3">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+            <div className="flex-1">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Search</label>
+              <input
+                type="text"
+                placeholder="Search by ID, name, type, location..."
+                className="w-full px-4 py-2.5 rounded-lg border border-slate-700 bg-slate-800 text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <div className="w-full lg:w-56">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Type</label>
+              <select
+                value={typeFilter}
+                onChange={(e) => setTypeFilter(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-lg border border-slate-700 bg-slate-800 text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">All types</option>
+                {institutionTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div className="w-full lg:w-56">
+              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">Location</label>
+              <select
+                value={locationFilter}
+                onChange={(e) => setLocationFilter(e.target.value)}
+                className="w-full px-4 py-2.5 rounded-lg border border-slate-700 bg-slate-800 text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">All locations</option>
+                {locations.map((l) => <option key={l} value={l}>{l}</option>)}
+              </select>
+            </div>
+            {hasActiveFilter && (
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="px-4 py-2.5 text-sm font-medium text-slate-300 bg-slate-800 border border-slate-700 rounded-lg hover:bg-slate-700"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+          <p className="text-xs text-slate-500">
+            Showing {filtered.length} of {institutions.length} institution{institutions.length === 1 ? '' : 's'}
+            {canViewMasterData
+              ? ' across all institutions (master data access).'
+              : ' within your institution.'}
+          </p>
         </div>
 
         {isLoading ? (

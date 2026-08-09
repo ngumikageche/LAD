@@ -28,6 +28,7 @@ interface ReportCard {
   student: { id: string; name: string; registration_number: string; enrollment_year: number; course: string | null };
   term: { id: string | null; name: string | null; start_date: string | null; end_date: string | null };
   subjects: SubjectRow[];
+  overall_percentage?: number | null;
   attendance: { total: number; present: number; absent: number; late: number };
   generated_at: string;
 }
@@ -159,6 +160,17 @@ export default function ReportCardPage() {
                   </tr>
                 ))}
               </tbody>
+              {data.subjects.length > 0 ? (
+                <tfoot>
+                  <tr className="bg-slate-800/70 font-semibold text-white">
+                    <td className="px-3 py-3" colSpan={3}>Overall</td>
+                    <td className="px-3 py-3 text-center">
+                      {data.overall_percentage != null ? `${data.overall_percentage}%` : '—'}
+                    </td>
+                    <td className="px-3 py-3" colSpan={2} />
+                  </tr>
+                </tfoot>
+              ) : null}
             </table>
           </div>
         </div>

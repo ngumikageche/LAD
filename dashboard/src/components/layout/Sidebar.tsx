@@ -160,17 +160,16 @@ const trainerGroups: NavGroup[] = [
       { name: 'Provide Feedback',  icon: MessageSquare,   path: '/trainer/feedback',          color: 'text-amber-400' },
     ],
   },
-  {
-    label: 'Institution',
-    items: [
-      { name: 'Courses',           icon: Book,            path: '/courses',                   color: 'text-amber-400', permission: 'courses.read' },
-      { name: 'Modules',           icon: Book,            path: '/modules',                   color: 'text-blue-300', permission: 'modules.read' },
-      { name: 'Subjects',          icon: Book,            path: '/subjects',                  color: 'text-amber-400', permission: 'subjects.read' },
-    ],
-  },
+  // No Institution group: a trainer manages their own teaching load, not the
+  // institution's structure. What they still need — their courses, modules, and
+  // subjects — lives under Academics, and each of those screens is scoped to the
+  // subjects assigned to them unless they hold `data.master`.
   {
     label: 'Academics',
     items: [
+      { name: 'My Courses',        icon: Book,            path: '/courses',                   color: 'text-amber-400', permission: 'courses.read' },
+      { name: 'My Modules',        icon: Book,            path: '/modules',                   color: 'text-blue-300', permission: 'modules.read' },
+      { name: 'My Subjects',       icon: Book,            path: '/subjects',                  color: 'text-amber-400', permission: 'subjects.read' },
       { name: 'Score Management',  icon: FileText,        path: '/admin/scores',              color: 'text-red-400', permission: 'admin.scores.read' },
       { name: 'Bulk Upload Marks', icon: Upload,          path: '/scores/bulk-upload',        color: 'text-amber-400', permission: 'scores.create' },
       { name: 'Practical Assess.', icon: FileText,        path: '/trainer/practical-assessments', color: 'text-teal-300' },

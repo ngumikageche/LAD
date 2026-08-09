@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from ..extensions import db
 from ..models.course import Course
 from ..models.department import Department
+from ..services.scoping import can_access_institution, scope_courses
 from .permissions import log_view, require_permission
 
 
@@ -34,9 +35,21 @@ def _course_payload(course: Course) -> dict:
     }
 
 
+def _department_in_scope(user, department_id) -> bool:
+    """A department the caller may attach a course to, within their institution."""
+    department = db.session.get(Department, department_id)
+    if not department:
+        return False
+    return can_access_institution(user, department.institution_id)
+
+
+def _course_in_scope(user, course_uuid) -> Course | None:
+    return scope_courses(db.session.query(Course), user).filter(Course.id == course_uuid).first()
+
+
 @bp.post("")
 def create_course():
-    _, error, status = require_permission("courses.create")
+    user, error, status = require_permission("courses.create")
     if error:
         return error, status
     payload = request.get_json(silent=True) or {}
@@ -54,7 +67,7 @@ def create_course():
     except ValueError as exc:
         return {"error": str(exc)}, 400
 
-    if not db.session.get(Department, department_id):
+    if not _department_in_scope(user, department_id):
         return {"error": "Invalid 'department_id'"}, 400
 
     course = Course(
@@ -79,7 +92,7 @@ def list_courses():
     if error:
         return error, status
 
-    query = db.session.query(Course).order_by(Course.name.asc())
+    query = scope_courses(db.session.query(Course), user).order_by(Course.name.asc())
     department_id = request.args.get("department_id")
     if department_id:
         try:
@@ -103,7 +116,7 @@ def get_course(course_id: str):
     except ValueError as exc:
         return {"error": str(exc)}, 400
 
-    course = db.session.get(Course, course_uuid)
+    course = _course_in_scope(user, course_uuid)
     if not course:
         return {"error": "Course not found"}, 404
 
@@ -113,7 +126,7 @@ def get_course(course_id: str):
 
 @bp.put("/<course_id>")
 def update_course(course_id: str):
-    _, error, status = require_permission("courses.update")
+    user, error, status = require_permission("courses.update")
     if error:
         return error, status
     try:
@@ -121,7 +134,7 @@ def update_course(course_id: str):
     except ValueError as exc:
         return {"error": str(exc)}, 400
 
-    course = db.session.get(Course, course_uuid)
+    course = _course_in_scope(user, course_uuid)
     if not course:
         return {"error": "Course not found"}, 404
 
@@ -144,7 +157,7 @@ def update_course(course_id: str):
             department_id = _parse_uuid(payload.get("department_id"), "department_id")
         except ValueError as exc:
             return {"error": str(exc)}, 400
-        if not db.session.get(Department, department_id):
+        if not _department_in_scope(user, department_id):
             return {"error": "Invalid 'department_id'"}, 400
         course.department_id = department_id
 
@@ -159,7 +172,7 @@ def update_course(course_id: str):
 
 @bp.delete("/<course_id>")
 def delete_course(course_id: str):
-    _, error, status = require_permission("courses.delete")
+    user, error, status = require_permission("courses.delete")
     if error:
         return error, status
     try:
@@ -167,7 +180,7 @@ def delete_course(course_id: str):
     except ValueError as exc:
         return {"error": str(exc)}, 400
 
-    course = db.session.get(Course, course_uuid)
+    course = _course_in_scope(user, course_uuid)
     if not course:
         return {"error": "Course not found"}, 404
 

@@ -10,6 +10,25 @@ import {
   ratingLabel,
 } from '../../utils/competence';
 
+/**
+ * The single "Sub items / Rubrics / Assessor Guide" list for an item.
+ *
+ * Since the merge, saving writes the same text to `sub_items` and to
+ * `expected_response`, so printing both would duplicate every line. Older
+ * reports genuinely hold two different things, so those are concatenated.
+ */
+const mergedGuide = (item: { sub_items?: string[] | null; expected_response?: string | null }): string[] => {
+  const lines = (item.sub_items ?? []).map((line) => String(line).trim()).filter(Boolean);
+  const seen = new Set(lines);
+  for (const line of (item.expected_response ?? '').split('\n').map((value) => value.trim()).filter(Boolean)) {
+    if (!seen.has(line)) {
+      lines.push(line);
+      seen.add(line);
+    }
+  }
+  return lines;
+};
+
 const outcomeClass = (outcome: string | null) => (
   competencePrintTone[(outcome ?? '').toUpperCase()] ?? competencePrintTone.INCOMPLETE
 );
@@ -147,15 +166,12 @@ const PracticalAssessmentReportView = forwardRef(function PracticalAssessmentRep
                         <td className="border border-slate-300 px-3 py-2 align-top">{item.number}</td>
                         <td className="border border-slate-300 px-3 py-2 align-top">
                           <div className="font-medium">{item.prompt ?? ''}</div>
-                          {item.sub_items?.length ? (
+                          {mergedGuide(item).length ? (
                             <ul className="mt-1 list-disc pl-5">
-                              {item.sub_items.map((subItem, subIndex) => (
-                                <li key={`${subItem}-${subIndex}`}>{subItem}</li>
+                              {mergedGuide(item).map((line, lineIndex) => (
+                                <li key={`${line}-${lineIndex}`}>{line}</li>
                               ))}
                             </ul>
-                          ) : null}
-                          {item.expected_response ? (
-                            <p className="mt-2 text-xs text-slate-600"><strong>Rubric:</strong> {item.expected_response}</p>
                           ) : null}
                           {item.remark ? (
                             <p className="mt-2 text-xs text-slate-600"><strong>Remark:</strong> {item.remark}</p>
@@ -194,7 +210,7 @@ const PracticalAssessmentReportView = forwardRef(function PracticalAssessmentRep
                     <tr>
                       <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Q#</th>
                       <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Question</th>
-                      <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Rubrics / Assessor Guide</th>
+                      <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Sub items / Rubrics / Assessor Guide</th>
                       <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Max Marks</th>
                       <th className="border border-slate-300 px-3 py-2 text-left font-semibold">Awarded</th>
                     </tr>
@@ -204,7 +220,11 @@ const PracticalAssessmentReportView = forwardRef(function PracticalAssessmentRep
                       <tr key={`${item.prompt ?? 'oral'}-${item.number}`}>
                         <td className="border border-slate-300 px-3 py-2 align-top">{item.number}</td>
                         <td className="border border-slate-300 px-3 py-2 align-top">{item.prompt ?? `Question ${item.number}`}</td>
-                        <td className="border border-slate-300 px-3 py-2 align-top">{item.expected_response ?? 'Not recorded'}</td>
+                        <td className="border border-slate-300 px-3 py-2 align-top">
+                          {mergedGuide(item).length
+                            ? <ul className="list-disc pl-5">{mergedGuide(item).map((line, lineIndex) => <li key={`${line}-${lineIndex}`}>{line}</li>)}</ul>
+                            : 'Not recorded'}
+                        </td>
                         <td className="border border-slate-300 px-3 py-2 align-top">{(item.max_score ?? 1).toFixed(1)}</td>
                         <td className="border border-slate-300 px-3 py-2 align-top">{item.score == null ? '' : item.score.toFixed(1)}</td>
                       </tr>

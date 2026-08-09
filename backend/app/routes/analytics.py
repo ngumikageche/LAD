@@ -14,6 +14,24 @@ from ..models.student import Student
 from ..models.term import Term
 from .permissions import require_permission
 
+
+def _score_total(score) -> float:
+    """
+    The denominator for a score.
+
+    A score with no assessment is recorded straight out of 100, and reaching
+    through `score.assessment.total_marks` on one of those raised an
+    AttributeError that took the whole analytics response down — which is why
+    dashboards showed nothing rather than a partial figure.
+    """
+    assessment = getattr(score, "assessment", None)
+    total = getattr(assessment, "total_marks", None) if assessment else None
+    try:
+        total = float(total) if total is not None else 0.0
+    except (TypeError, ValueError):
+        total = 0.0
+    return total if total > 0 else 100.0
+
 bp = Blueprint("analytics", __name__, url_prefix="/analytics")
 
 
@@ -60,7 +78,7 @@ def student_performance_summary(student_id: str):
 
     # Calculate overall average
     total_marks = sum(s.marks_obtained for s in scores)
-    max_possible = sum(s.assessment.total_marks for s in scores) if scores else 1
+    max_possible = sum(_score_total(s) for s in scores) if scores else 1
     overall_avg = (total_marks / max_possible * 100) if max_possible > 0 else 0
 
     # Count pass/fail
@@ -75,7 +93,7 @@ def student_performance_summary(student_id: str):
         if course_id not in subject_avg:
             subject_avg[course_id] = {"name": course_name, "scores": [], "total_marks": []}
         subject_avg[course_id]["scores"].append(score.marks_obtained)
-        subject_avg[course_id]["total_marks"].append(score.assessment.total_marks)
+        subject_avg[course_id]["total_marks"].append(_score_total(score))
 
     avg_by_subject = []
     for course_id, data in subject_avg.items():
@@ -92,12 +110,12 @@ def student_performance_summary(student_id: str):
     # Average by term
     term_avg = {}
     for score in scores:
-        term_id = str(score.assessment.term_id)
-        term_name = score.assessment.term.name if score.assessment.term else "Unknown"
+        term_id = str(score.assessment.term_id) if score.assessment else "unassessed"
+        term_name = score.assessment.term.name if score.assessment and score.assessment.term else "Unknown"
         if term_id not in term_avg:
             term_avg[term_id] = {"name": term_name, "scores": [], "total_marks": []}
         term_avg[term_id]["scores"].append(score.marks_obtained)
-        term_avg[term_id]["total_marks"].append(score.assessment.total_marks)
+        term_avg[term_id]["total_marks"].append(_score_total(score))
 
     avg_by_term = []
     for term_id, data in term_avg.items():
@@ -152,7 +170,7 @@ def student_performance_trends(student_id: str):
     # Group by term and calculate average per term
     term_trends = {}
     for score in scores_by_term:
-        term_id = str(score.assessment.term_id)
+        term_id = str(score.assessment.term_id) if score.assessment else "unassessed"
         if term_id not in term_trends:
             term_trends[term_id] = {
                 "term_name": score.assessment.term.name if score.assessment.term else "Unknown",
@@ -160,7 +178,7 @@ def student_performance_trends(student_id: str):
                 "total_marks": [],
             }
         term_trends[term_id]["scores"].append(score.marks_obtained)
-        term_trends[term_id]["total_marks"].append(score.assessment.total_marks)
+        term_trends[term_id]["total_marks"].append(_score_total(score))
 
     # Calculate trend per term
     trends = []
@@ -231,7 +249,7 @@ def student_weak_subjects(student_id: str):
                 "fail_count": 0,
             }
         subject_stats[course_id]["scores"].append(score.marks_obtained)
-        subject_stats[course_id]["total_marks"].append(score.assessment.total_marks)
+        subject_stats[course_id]["total_marks"].append(_score_total(score))
         if score.is_passed:
             subject_stats[course_id]["pass_count"] += 1
         elif score.is_passed is False:
@@ -306,7 +324,7 @@ def student_dashboard(student_id: str):
             "course_name": score.enrollment.course.name,
             "assessment_name": score.assessment.name,
             "marks": score.marks_obtained,
-            "total_marks": score.assessment.total_marks,
+            "total_marks": _score_total(score),
             "grade": score.grade,
             "is_passed": score.is_passed,
             "date": score.created_at.isoformat() if score.created_at else None,

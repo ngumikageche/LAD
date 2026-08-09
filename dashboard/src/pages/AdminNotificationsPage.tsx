@@ -2,6 +2,8 @@ import { useCallback, useState, useEffect, useRef, type FormEvent } from 'react'
 import { Bell, Plus, Edit2, Trash2, CheckCircle2, AlertCircle, Calendar, ChevronLeft, ChevronRight, RefreshCw, Send } from 'lucide-react';
 import { adminNotificationsAPI } from '../api/admin';
 import { apiRequest } from '../api/client';
+import { useAuth } from '../auth/AuthContext';
+import { isAdminUser } from '../auth/ProtectedRoute';
 import {
   LIST_POLL_MS,
   PAGE_SIZE_OPTIONS,
@@ -81,6 +83,9 @@ const defaultSmsConfig: SmsConfig = {
 };
 
 export default function AdminNotificationsPage() {
+  const { user } = useAuth();
+  // A trainer without master data reaches only their own learners.
+  const isScopedTrainer = user?.user_type === 'trainer' && !isAdminUser(user) && user?.permissions?.['data.master'] !== true;
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
   const [courses, setCourses] = useState<ResourceOption[]>([]);
@@ -102,6 +107,18 @@ export default function AdminNotificationsPage() {
   const [filterRead, setFilterRead] = useState<'all' | 'read' | 'unread'>('all');
   const [composeMode, setComposeMode] = useState<ComposeMode>('single');
   const [bulkFilters, setBulkFilters] = useState<BulkFilters>(emptyFilters);
+
+  // `user` arrives after the first render, so the default "all users" target
+  // can be selected before we know the sender is a scoped trainer. Move them to
+  // the narrowest target they can actually use.
+  useEffect(() => {
+    if (!isScopedTrainer) return;
+    setBulkFilters((current) => (
+      current.target === 'all' || current.target === 'role'
+        ? { ...emptyFilters, target: 'subject' }
+        : current
+    ));
+  }, [isScopedTrainer]);
   const [smsConfig, setSmsConfig] = useState<SmsConfig>(() => {
     try {
       const stored = localStorage.getItem('adminSmsConfig');
@@ -447,13 +464,22 @@ export default function AdminNotificationsPage() {
                             onChange={(e) => setBulkFilters({ ...emptyFilters, target: e.target.value as BulkTarget })}
                             className="w-full px-4 py-2 bg-slate-800 text-slate-200 border border-slate-700 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                           >
-                            <option value="all">All active users</option>
-                            <option value="role">Certain role/group</option>
+                            {/* A scoped trainer may only reach the learners they
+                                teach; the API refuses the wide targets for them,
+                                so offering those here would only produce an
+                                error after they had typed the message. */}
+                            {!isScopedTrainer && <option value="all">All active users</option>}
+                            {!isScopedTrainer && <option value="role">Certain role/group</option>}
                             <option value="course">Students in course</option>
                             <option value="module">Students in module</option>
                             <option value="subject">Students in subject</option>
                             <option value="year">Students by enrollment year</option>
                           </select>
+                          {isScopedTrainer && (
+                            <p className="mt-2 text-xs text-slate-500">
+                              Recipients are limited to learners in the subjects assigned to you.
+                            </p>
+                          )}
                         </div>
 
                         {bulkFilters.target === 'role' && (

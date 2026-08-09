@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { Plus, X } from 'lucide-react';
 import { apiRequest } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
@@ -61,8 +61,20 @@ const AssignSubjectsModal = ({ isOpen, onClose, trainer, token }: AssignSubjects
   const [selectedCourseId, setSelectedCourseId] = useState('');
   const [selectedModuleId, setSelectedModuleId] = useState('');
   const [selectedSubjectIds, setSelectedSubjectIds] = useState<string[]>([]);
+  const [assignedSubjectIds, setAssignedSubjectIds] = useState<string[]>([]);
+  const [removingSubjectId, setRemovingSubjectId] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState('');
+
+  const loadAssigned = useCallback(async () => {
+    if (!trainer?.id) return;
+    try {
+      const result = await apiRequest<{ data: string[] }>(`/trainer-subjects/${trainer.id}`, { token });
+      setAssignedSubjectIds(result.data ?? []);
+    } catch {
+      setAssignedSubjectIds([]);
+    }
+  }, [trainer?.id, token]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -75,10 +87,26 @@ const AssignSubjectsModal = ({ isOpen, onClose, trainer, token }: AssignSubjects
     apiRequest<SubjectOption[]>('/subjects', { token })
       .then(setSubjects)
       .catch(() => setSubjects([]));
+    loadAssigned();
     setSelectedCourseId('');
     setSelectedModuleId('');
     setSelectedSubjectIds([]);
-  }, [isOpen, token]);
+  }, [isOpen, token, loadAssigned]);
+
+  const handleUnassign = async (subjectId: string) => {
+    if (!trainer?.id) return;
+    setRemovingSubjectId(subjectId);
+    setMessage('');
+    try {
+      await apiRequest(`/trainer-subjects/${trainer.id}/${subjectId}`, { method: 'DELETE', token });
+      await loadAssigned();
+      setMessage('Unit removed from this trainer.');
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : 'Failed to remove unit');
+    } finally {
+      setRemovingSubjectId(null);
+    }
+  };
 
   const filteredModules = selectedCourseId
     ? modules.filter((m) => m.course_id === selectedCourseId)
@@ -102,7 +130,8 @@ const AssignSubjectsModal = ({ isOpen, onClose, trainer, token }: AssignSubjects
         },
       });
       setMessage('Subjects assigned successfully!');
-      setTimeout(onClose, 1000);
+      setSelectedSubjectIds([]);
+      await loadAssigned();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : 'Failed to assign subjects');
     } finally {
@@ -175,6 +204,39 @@ const AssignSubjectsModal = ({ isOpen, onClose, trainer, token }: AssignSubjects
           {isSubmitting ? 'Assigning...' : 'Assign Subjects'}
         </button>
         {message && <div className="mt-4 text-green-400">{message}</div>}
+
+        {/* Assignments drive what this trainer can see, so they have to be
+            removable here rather than only ever added to. */}
+        <div className="mt-6 border-t border-slate-800 pt-4">
+          <h3 className="text-sm font-semibold text-slate-300 mb-2">
+            Currently assigned units ({assignedSubjectIds.length})
+          </h3>
+          {assignedSubjectIds.length === 0 ? (
+            <p className="text-sm text-slate-500">No units assigned yet.</p>
+          ) : (
+            <ul className="max-h-48 space-y-1 overflow-y-auto pr-1">
+              {assignedSubjectIds.map((subjectId) => {
+                const subject = subjects.find((s) => s.id === subjectId);
+                return (
+                  <li
+                    key={subjectId}
+                    className="flex items-center justify-between rounded-lg border border-slate-700 bg-slate-800 px-3 py-2"
+                  >
+                    <span className="text-sm text-slate-200 truncate">{subject?.name ?? subjectId}</span>
+                    <button
+                      type="button"
+                      onClick={() => handleUnassign(subjectId)}
+                      disabled={removingSubjectId === subjectId}
+                      className="ml-3 shrink-0 text-xs font-medium text-red-400 hover:text-red-300 disabled:opacity-50"
+                    >
+                      {removingSubjectId === subjectId ? 'Removing...' : 'Remove'}
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </div>
       </div>
     </div>
   );

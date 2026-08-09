@@ -4,6 +4,7 @@ import uuid
 from flask import Blueprint
 from sqlalchemy import func, and_
 from ..extensions import db
+from ..services.scoping import average_percentage
 from ..models.student import Student
 from ..models.trainer import Trainer
 from ..models.score import Score
@@ -26,7 +27,7 @@ def system_report():
     scores = db.session.query(Score).filter(Score.deleted_at.is_(None)).all()
     total_scores = len(scores)
     passed = sum(1 for s in scores if s.is_passed is True)
-    avg_score = (sum(s.marks_obtained for s in scores) / sum(s.assessment.total_marks for s in scores if s.assessment) * 100) if scores else 0
+    avg_score = average_percentage(scores)
 
     log_view(user, "admin_reports.system", metadata={})
     return {
@@ -60,7 +61,7 @@ def trainer_report(trainer_id: str):
     scores = db.session.query(Score).filter(Score.subject_id.in_(subject_ids), Score.deleted_at.is_(None)).all() if subject_ids else []
     total = len(scores)
     passed = sum(1 for s in scores if s.is_passed is True)
-    avg_score = (sum(s.marks_obtained for s in scores) / sum(s.assessment.total_marks for s in scores if s.assessment) * 100) if scores else 0
+    avg_score = average_percentage(scores)
 
     log_view(user, "admin_reports.trainer", entity_id=str(trainer.id), metadata={})
     return {
@@ -95,7 +96,7 @@ def student_report(student_id: str):
 
     total = len(scores)
     passed = sum(1 for s in scores if s.is_passed is True)
-    avg_score = round((sum(s.marks_obtained for s in scores) / sum(s.assessment.total_marks for s in scores if s.assessment) * 100) if scores else 0, 2)
+    avg_score = average_percentage(scores)
 
     history = []
     for s in scores:

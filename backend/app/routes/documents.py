@@ -224,6 +224,11 @@ def upload_document():
 
 @bp.get("/files/<path:filename>")
 def serve_file(filename: str):
+    """
+    Serve a document inline by default so it can be read in a viewer without
+    being saved to disk first. `?download=1` asks for the attachment
+    disposition instead, which is the only case that should force a save.
+    """
     from flask import send_from_directory
     user, error, status = get_current_user()
     if error:
@@ -234,7 +239,20 @@ def serve_file(filename: str):
     ).first()
     if not doc or not _can_access_document(user, doc):
         return {"error": "File not found"}, 404
-    return send_from_directory(os.path.abspath(UPLOAD_FOLDER), filename)
+
+    as_attachment = (request.args.get("download") or "").lower() in {"1", "true", "yes"}
+    response = send_from_directory(
+        os.path.abspath(UPLOAD_FOLDER),
+        filename,
+        as_attachment=as_attachment,
+        download_name=doc.file_name or filename,
+    )
+    if not as_attachment:
+        # Browsers otherwise guess from the stored name, which carries a random
+        # prefix and can push a readable PDF into a download.
+        response.headers["Content-Disposition"] = f'inline; filename="{doc.file_name or filename}"'
+        response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 # ── List ──────────────────────────────────────────────────────────────────────

@@ -115,6 +115,29 @@ const autoRemark = (score: number | null) => {
   return 'Unsatisfactory - task not adequately completed.';
 };
 
+const splitLines = (value: string) => value.split('\n').map((line) => line.trim()).filter(Boolean);
+
+/**
+ * The single "Sub items / Rubrics / Assessor Guide" list.
+ *
+ * Reports authored before the two fields were merged still carry a separate
+ * rubric. Append it as one more line — unless it is already among the sub
+ * items, which happens for every report saved after the merge, since saving
+ * writes the same text to both fields.
+ */
+const mergeSubItemsAndRubric = (subItems: string[] | undefined, rubric: string | null | undefined): string => {
+  const lines = (subItems ?? []).map((line) => String(line).trim()).filter(Boolean);
+  const rubricLines = splitLines(rubric ?? '');
+  const seen = new Set(lines);
+  for (const line of rubricLines) {
+    if (!seen.has(line)) {
+      lines.push(line);
+      seen.add(line);
+    }
+  }
+  return lines.join('\n');
+};
+
 const hasItemContent = (item: SectionItemForm) => (
   item.prompt.trim() !== ''
   || item.expected_response.trim() !== ''
@@ -263,7 +286,10 @@ const reportSectionsToForm = (report: PracticalAssessmentReport): SectionForm[] 
             prompt: item?.prompt ?? '',
             expected_response: item?.expected_response ?? '',
             remark: item?.remark ?? '',
-            details: (item?.sub_items ?? []).join('\n'),
+            // Sub items and the rubric are edited as one list now. Reports
+            // saved before the merge kept them apart, so fold the rubric back
+            // in on load rather than leaving it stranded in a hidden field.
+            details: mergeSubItemsAndRubric(item?.sub_items, item?.expected_response),
             score: item?.score == null ? '' : String(item.score),
             max_score: item?.max_score == null ? (section.type === 'oral' ? '1' : '2') : String(item.max_score),
           })),
@@ -621,9 +647,12 @@ export default function TrainerPracticalAssessmentPage() {
           .map((item, itemIndex) => ({
             number: itemIndex + 1,
             prompt: item.prompt.trim() || null,
-            expected_response: item.expected_response.trim() || null,
+            // The merged list is written to both fields: `sub_items` drives the
+            // bulleted view, `expected_response` the rubric column, and older
+            // report renderers read one or the other.
+            expected_response: item.details.trim() || null,
             remark: item.remark.trim() || null,
-            sub_items: item.details.split('\n').map((value) => value.trim()).filter(Boolean),
+            sub_items: splitLines(item.details),
             score: toNumber(item.score),
             max_score: toNumber(item.max_score) ?? (section.type === 'oral' ? 1 : 2),
           })),
@@ -1706,12 +1735,19 @@ export default function TrainerPracticalAssessmentPage() {
                               </FormField>
                             </div>
 
-                            <div className="mt-4 grid gap-4 xl:grid-cols-2">
-                              <FormField label="Rubrics / Assessor Guide">
-                                <TextArea value={item.expected_response} onChange={(e) => updateItem(sectionIndex, itemIndex, 'expected_response', e.target.value)} rows={3} placeholder={section.type === 'oral' ? 'Expected answer, rubric, or key guide' : 'Rubric, expected standard, or assessor guide'} />
-                              </FormField>
-                              <FormField label={section.type === 'oral' ? 'Sub points / prompts' : 'Sub items'}>
-                                <TextArea value={item.details} onChange={(e) => updateItem(sectionIndex, itemIndex, 'details', e.target.value)} rows={3} placeholder="One bullet or sub-item per line" />
+                            {/* One field, not two: sub items and the rubric were
+                                being written into separate boxes that print
+                                next to each other anyway. */}
+                            <div className="mt-4">
+                              <FormField label="Sub items / Rubrics / Assessor Guide">
+                                <TextArea
+                                  value={item.details}
+                                  onChange={(e) => updateItem(sectionIndex, itemIndex, 'details', e.target.value)}
+                                  rows={5}
+                                  placeholder={section.type === 'oral'
+                                    ? 'One sub point, expected answer, or assessor guide note per line'
+                                    : 'One sub item, rubric point, or assessor guide note per line'}
+                                />
                               </FormField>
                             </div>
 
@@ -2262,7 +2298,7 @@ function AssessmentPreview({
                           <thead className="text-left text-[10px] uppercase tracking-wider text-slate-500">
                             <tr>
                               <th className="pb-3 pr-4">Item / question</th>
-                              <th className="pb-3 pr-4">Assessor guide</th>
+                              <th className="pb-3 pr-4">Sub items / Rubrics / Assessor guide</th>
                               <th className="pb-3 text-right">Score</th>
                             </tr>
                           </thead>
@@ -2271,13 +2307,17 @@ function AssessmentPreview({
                               <tr key={`${section.number}-${item.number}`}>
                                 <td className="py-3 pr-4 align-top font-medium text-slate-200">
                                   {item.prompt || `Item ${item.number}`}
-                                  {item.sub_items?.length ? (
-                                    <ul className="mt-2 list-disc space-y-1 pl-4 text-xs font-normal text-slate-500">
-                                      {item.sub_items.map((subItem, index) => <li key={`${subItem}-${index}`}>{subItem}</li>)}
-                                    </ul>
-                                  ) : null}
                                 </td>
-                                <td className="py-3 pr-4 align-top text-xs text-slate-500">{item.expected_response || item.remark || '—'}</td>
+                                <td className="py-3 pr-4 align-top text-xs text-slate-500">
+                                  {mergeSubItemsAndRubric(item.sub_items ?? undefined, item.expected_response)
+                                    ? (
+                                      <ul className="list-disc space-y-1 pl-4">
+                                        {splitLines(mergeSubItemsAndRubric(item.sub_items ?? undefined, item.expected_response))
+                                          .map((line, index) => <li key={`${line}-${index}`}>{line}</li>)}
+                                      </ul>
+                                    )
+                                    : (item.remark || '—')}
+                                </td>
                                 <td className="whitespace-nowrap py-3 text-right align-top font-bold text-slate-200">
                                   {item.score == null ? '—' : item.score} / {item.max_score ?? (section.type === 'oral' ? 1 : 2)}
                                 </td>

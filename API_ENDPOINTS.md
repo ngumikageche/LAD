@@ -199,3 +199,99 @@ await apiRequest(`/modules/${moduleId}/sync-subjects`, {
 - Scores must be 0-100
 - Term field is optional but recommended for filtering/tracking
 - Use `recorded_at` field for timeline/trend analysis
+
+## Data scope
+
+Permission keys say *what* a role may open. Data scope says *whose records* it
+sees once open. Both are enforced in SQL, in `backend/app/services/scoping.py`.
+
+By default every caller is confined to:
+
+- **their institution** — resolved through `Institution → Department → Course →
+  Module → Subject`, and through `User.institution_id` for people;
+- **their assigned subjects**, if they are a trainer — so `students.read` shows
+  a trainer the learners in the units they teach, not every learner on the
+  system;
+- **themselves**, if they are a learner — a student granted `students.read` still
+  only sees their own record.
+
+### `data.master`
+
+One key lifts both confinements: `data.master` ("View Master Data"), grantable
+per role from **Roles → Data Scope**. A role holding it reads across every
+institution and every trainer's teaching load. Admins hold it implicitly through
+the `*` wildcard. It is the only supported way to give a trainer or manager
+visibility beyond their own scope.
+
+```typescript
+// Scoped by default; identical call, different rows per caller.
+const institutions = await apiRequest('/institutions', { token });
+
+// Filter options for the Institutions screen, plus whether this caller is
+// reading across all institutions.
+const { types, locations, can_view_master_data } =
+  await apiRequest('/institutions/filters', { token });
+
+// Institutions list also accepts ?type=, ?location=, and ?search=
+const tvets = await apiRequest('/institutions?type=TVET&search=nairobi', { token });
+```
+
+## Trainer subject assignments
+
+```typescript
+// Assign
+await apiRequest('/trainer-subjects/assign-multiple', {
+  method: 'POST', token,
+  body: { trainer_id: trainerId, subject_ids: [subjectId] },
+});
+
+// Unassign one unit from a trainer (requires trainers.update)
+await apiRequest(`/trainer-subjects/${trainerId}/${subjectId}`, { method: 'DELETE', token });
+
+// The current trainer's units, with module and course attached
+const mine = await apiRequest('/trainer-subjects/me', { token });
+// mine.subjects, mine.total_subjects, mine.total_students
+```
+
+## Alerts
+
+Poor-performance and low-attendance alerts, scoped like everything else. Raising
+an alert notifies the learner and the trainers who teach them; recovery resolves
+it.
+
+```typescript
+// Open alerts in the caller's scope (alerts.read, or notifications.read for a learner)
+const { alerts, thresholds } = await apiRequest('/alerts', { token });
+
+// Re-evaluate both signals across the caller's scope (alerts.manage or reports.student.write)
+const summary = await apiRequest('/alerts/evaluate', { method: 'POST', token });
+// summary.raised, summary.resolved, summary.evaluated
+
+await apiRequest(`/alerts/${alertId}/resolve`, { method: 'POST', token });
+```
+
+Thresholds: performance below 50%, attendance below 75% over the last 90 days.
+
+## Marks arithmetic
+
+A score is turned into a percentage one of two ways, by `scoping.percentage`:
+
+- an assessment total is recorded → `(x / y) * 100`;
+- no total is recorded → the mark is already out of 100 → `(x / 100) * 100`.
+
+Averages are taken over percentages, never over raw marks, so a paper out of 40
+and one out of 100 are comparable.
+
+## Announcements
+
+Publishing delivers. `POST /announcements` (or `POST /announcements/<id>/publish`
+for a held one) creates a notification for every recipient — the learners on the
+targeted course, or everyone in the creating institution when no course is set —
+and returns `delivered_to`.
+
+## Documents
+
+`GET /documents/files/<name>` serves inline so a document can be read without
+being saved; add `?download=1` for the attachment disposition. The endpoint
+requires a bearer token, so a viewer must fetch the bytes and use an object URL
+rather than pointing an `<iframe src>` at the path directly.

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Upload, Trash2, Send, FileText, File, X, AlertCircle, CheckCircle2, Search, Users, Download, Eye } from 'lucide-react';
+import { apiRequest } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useTableControls } from '../hooks/useTableControls';
 import { TableFooter, SortableTh } from '../components/ui/TableControls';
@@ -45,12 +46,68 @@ function fileIcon(type: string | null) {
 
 // ── Preview Modal ────────────────────────────────────────────────────────────
 
+/**
+ * The file endpoint authenticates with a bearer token, which an `<iframe src>`
+ * or `<img src>` cannot send — pointing them straight at the URL always came
+ * back 401, which is why viewing a document used to mean downloading it first.
+ * Fetch the bytes with the token, hand the viewer a blob URL, and revoke it on
+ * close so the object does not outlive the modal.
+ */
+function useAuthenticatedFile(fileUrl: string, enabled: boolean) {
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(enabled);
+
+  useEffect(() => {
+    if (!enabled) { setIsLoading(false); return; }
+    let revoked = false;
+    let created: string | null = null;
+
+    setIsLoading(true);
+    setError(null);
+    apiRequest<Blob>(fileUrl, { responseType: 'blob' })
+      .then((blob) => {
+        if (revoked) return;
+        created = URL.createObjectURL(blob);
+        setObjectUrl(created);
+      })
+      .catch((err) => {
+        if (!revoked) setError(err instanceof Error ? err.message : 'Unable to open this document');
+      })
+      .finally(() => { if (!revoked) setIsLoading(false); });
+
+    return () => {
+      revoked = true;
+      if (created) URL.revokeObjectURL(created);
+    };
+  }, [fileUrl, enabled]);
+
+  return { objectUrl, error, isLoading };
+}
+
+/** Save a document to disk, authenticating the request the same way. */
+async function downloadDocument(doc: Doc) {
+  const blob = await apiRequest<Blob>(`${doc.file_url}?download=1`, { responseType: 'blob' });
+  const href = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = href;
+  link.download = doc.file_name;
+  link.click();
+  URL.revokeObjectURL(href);
+}
+
 function PreviewModal({ doc, onClose }: { doc: Doc; onClose: () => void }) {
-  const url = `${API}${doc.file_url}`;
   const t = (doc.file_type ?? '').toLowerCase();
   const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(t);
   const isPdf = t === 'pdf';
-  const canPreview = isImage || isPdf;
+  const isText = ['txt', 'csv'].includes(t);
+  const canPreview = isImage || isPdf || isText;
+  const { objectUrl, error, isLoading } = useAuthenticatedFile(doc.file_url, canPreview);
+
+  const handleDownload = () => {
+    // The preview pane already surfaces an access failure; nothing to add here.
+    downloadDocument(doc).catch(() => {});
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4">
@@ -63,13 +120,13 @@ function PreviewModal({ doc, onClose }: { doc: Doc; onClose: () => void }) {
             <span className="text-xs text-slate-500 shrink-0">{doc.file_name}</span>
           </div>
           <div className="flex items-center gap-2 shrink-0 ml-4">
-            <a
-              href={url}
-              download={doc.file_name}
+            <button
+              type="button"
+              onClick={handleDownload}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition"
             >
               <Download size={13} /> Download
-            </a>
+            </button>
             <button onClick={onClose} className="p-2 rounded-full hover:bg-slate-800">
               <X size={16} className="text-slate-400" />
             </button>
@@ -78,27 +135,40 @@ function PreviewModal({ doc, onClose }: { doc: Doc; onClose: () => void }) {
 
         {/* Preview area */}
         <div className="flex-1 overflow-auto bg-slate-950 flex items-center justify-center p-4">
-          {isPdf && (
+          {canPreview && isLoading && (
+            <div className="flex flex-col items-center gap-3 text-slate-400">
+              <div className="h-10 w-10 animate-spin rounded-full border-2 border-slate-700 border-t-indigo-400" />
+              <p className="text-sm">Opening {doc.file_name}...</p>
+            </div>
+          )}
+          {canPreview && error && (
+            <div className="text-center">
+              <AlertCircle size={40} className="mx-auto text-red-400 mb-3" />
+              <p className="text-slate-300 mb-1">{error}</p>
+              <p className="text-xs text-slate-500">You may not have access to this document.</p>
+            </div>
+          )}
+          {objectUrl && !error && (isPdf || isText) && (
             <iframe
-              src={url}
-              className="w-full h-full min-h-[60vh] rounded"
+              src={objectUrl}
+              className="w-full h-full min-h-[60vh] rounded bg-white"
               title={doc.title}
             />
           )}
-          {isImage && (
-            <img src={url} alt={doc.title} className="max-w-full max-h-[70vh] rounded object-contain" />
+          {objectUrl && !error && isImage && (
+            <img src={objectUrl} alt={doc.title} className="max-w-full max-h-[70vh] rounded object-contain" />
           )}
           {!canPreview && (
             <div className="text-center">
               <File size={48} className="mx-auto text-slate-600 mb-4" />
-              <p className="text-slate-400 mb-4">Preview not available for .{doc.file_type} files.</p>
-              <a
-                href={url}
-                download={doc.file_name}
+              <p className="text-slate-400 mb-4">In-browser viewing is not available for .{doc.file_type} files.</p>
+              <button
+                type="button"
+                onClick={handleDownload}
                 className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition"
               >
                 <Download size={16} /> Download File
-              </a>
+              </button>
             </div>
           )}
         </div>
@@ -814,18 +884,18 @@ export default function DocumentsPage() {
                         <button
                           onClick={() => setPreviewDoc(doc)}
                           className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-slate-300 bg-slate-700 rounded-lg hover:bg-slate-600 transition"
-                          title="Preview"
+                          title="View without downloading"
                         >
-                          <Eye size={12} /> Preview
+                          <Eye size={12} /> View
                         </button>
-                        <a
-                          href={`${API}${doc.file_url}`}
-                          download={doc.file_name}
+                        <button
+                          type="button"
+                          onClick={() => downloadDocument(doc)}
                           className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-indigo-300 bg-indigo-500/15 border border-indigo-500/30 rounded-lg hover:bg-indigo-500/25 transition"
                           title="Download"
                         >
                           <Download size={12} /> Download
-                        </a>
+                        </button>
                         {canCreate && (
                           <button onClick={() => setSendDoc(doc)}
                             className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-teal-300 bg-teal-500/15 border border-teal-500/30 rounded-lg hover:bg-teal-500/25 transition"

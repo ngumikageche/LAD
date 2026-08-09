@@ -33,6 +33,12 @@ from ..services.trainer_portal import (
     trainer_dashboard,
     trainer_subject_report,
 )
+from ..services.scoping import (
+    can_view_master_data,
+    scope_students,
+    scope_trainers,
+    trainer_subject_ids,
+)
 from .permissions import get_current_user, log_view, require_permission, trainer_required
 from ..services.bulk_people_import import (
     apply_if_present,
@@ -112,6 +118,10 @@ def _student_payload(student: Student) -> dict:
         },
         "created_at": student.created_at.isoformat() if student.created_at else None,
     }
+
+
+def _trainer_in_scope(user, trainer_uuid) -> Trainer | None:
+    return scope_trainers(db.session.query(Trainer), user).filter(Trainer.id == trainer_uuid).first()
 
 
 def _trainer_for_user(user_id: uuid.UUID) -> Trainer | None:
@@ -937,7 +947,7 @@ def list_trainers():
     if error:
         return error, status
 
-    query = db.session.query(Trainer).order_by(Trainer.created_at.desc())
+    query = scope_trainers(db.session.query(Trainer), user).order_by(Trainer.created_at.desc())
     department_id = request.args.get("department_id")
     if department_id:
         try:
@@ -947,7 +957,11 @@ def list_trainers():
         query = query.filter(Trainer.department_id == department_uuid)
 
     trainers = query.all()
-    log_view(user, "trainers", metadata={"scope": "list"})
+    log_view(
+        user,
+        "trainers",
+        metadata={"scope": "list", "master": can_view_master_data(user), "count": len(trainers)},
+    )
     return [_trainer_payload(trainer) for trainer in trainers], 200
 
 
@@ -961,7 +975,7 @@ def get_trainer(trainer_id: str):
     except ValueError as exc:
         return {"error": str(exc)}, 400
 
-    trainer = db.session.get(Trainer, trainer_uuid)
+    trainer = _trainer_in_scope(user, trainer_uuid)
     if not trainer:
         return {"error": "Trainer not found"}, 404
 
@@ -993,14 +1007,29 @@ def get_my_courses():
     if not trainer:
         return {"error": "Trainer profile not found"}, 404
 
-    courses = (
-        db.session.query(Course)
-        .filter(Course.department_id == trainer.department_id)
-        .order_by(Course.name.asc())
-        .all()
-    )
+    # Courses reachable through the subjects this trainer is actually assigned,
+    # rather than everything their department happens to run.
+    subject_ids = trainer_subject_ids(user)
+    if subject_ids is None:
+        courses = (
+            db.session.query(Course)
+            .filter(Course.department_id == trainer.department_id)
+            .order_by(Course.name.asc())
+            .all()
+        )
+    elif not subject_ids:
+        courses = []
+    else:
+        module_ids = db.session.query(Subject.module_id).filter(Subject.id.in_(subject_ids))
+        course_ids = db.session.query(Module.course_id).filter(Module.id.in_(module_ids))
+        courses = (
+            db.session.query(Course)
+            .filter(Course.id.in_(course_ids))
+            .order_by(Course.name.asc())
+            .all()
+        )
 
-    log_view(user, "courses", metadata={"scope": "trainer"})
+    log_view(user, "courses", metadata={"scope": "trainer", "count": len(courses)})
     return [_course_payload(course) for course in courses], 200
 
 
@@ -1014,26 +1043,19 @@ def get_my_students():
     if not trainer:
         return {"error": "Trainer profile not found"}, 404
 
-    course_ids = (
-        db.session.query(Course.id)
-        .filter(Course.department_id == trainer.department_id)
-        .subquery()
-    )
-
     students = (
-        db.session.query(Student)
-        .filter(Student.course_id.in_(course_ids))
+        scope_students(db.session.query(Student), user)
         .order_by(Student.created_at.desc())
         .all()
     )
 
-    log_view(user, "students", metadata={"scope": "trainer"})
+    log_view(user, "students", metadata={"scope": "trainer", "count": len(students)})
     return [_student_payload(student) for student in students], 200
 
 
 @bp.put("/<trainer_id>")
 def update_trainer(trainer_id: str):
-    _, error, status = require_permission("trainers.update")
+    user, error, status = require_permission("trainers.update")
     if error:
         return error, status
     try:
@@ -1041,7 +1063,7 @@ def update_trainer(trainer_id: str):
     except ValueError as exc:
         return {"error": str(exc)}, 400
 
-    trainer = db.session.get(Trainer, trainer_uuid)
+    trainer = _trainer_in_scope(user, trainer_uuid)
     if not trainer:
         return {"error": "Trainer not found"}, 404
 
@@ -1083,7 +1105,7 @@ def update_trainer(trainer_id: str):
 
 @bp.delete("/<trainer_id>")
 def delete_trainer(trainer_id: str):
-    _, error, status = require_permission("trainers.delete")
+    user, error, status = require_permission("trainers.delete")
     if error:
         return error, status
     try:
@@ -1091,7 +1113,7 @@ def delete_trainer(trainer_id: str):
     except ValueError as exc:
         return {"error": str(exc)}, 400
 
-    trainer = db.session.get(Trainer, trainer_uuid)
+    trainer = _trainer_in_scope(user, trainer_uuid)
     if not trainer:
         return {"error": "Trainer not found"}, 404
 

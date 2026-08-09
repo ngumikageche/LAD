@@ -5,7 +5,7 @@ from collections import defaultdict
 from datetime import datetime
 
 from flask import Blueprint, request
-from sqlalchemy import and_, func
+from sqlalchemy import and_, func, or_
 
 from ..extensions import db
 from ..models.attendance import Attendance
@@ -25,6 +25,7 @@ from ..models.trainer import Trainer
 from ..models.user import User
 from .permissions import get_current_user, log_view, _is_admin, _is_trainer, _is_student
 from ..services.report_permissions import check_report_permission
+from ..services.scoping import average_percentage, percentage
 from ..services import report_queries
 
 bp = Blueprint("reports", __name__, url_prefix="/reports")
@@ -129,14 +130,28 @@ def report_card(student_id: str):
     else:
         term = db.session.query(Term).filter(Term.is_active == True).first()
 
-    # Scores for this student, optionally filtered by term name
+    # A score reaches a student either directly or through their enrolment, and
+    # the bulk-marks and score-form paths do not agree on which they set. Match
+    # on both, or a report card silently omits marks that were in fact uploaded.
+    enrollment_ids = db.session.query(Enrollment.id).filter(Enrollment.student_id == sid)
     score_query = db.session.query(Score).filter(
-        Score.student_id == sid,
         Score.deleted_at.is_(None),
+        or_(Score.student_id == sid, Score.enrollment_id.in_(enrollment_ids)),
     )
-    if term:
-        score_query = score_query.filter(Score.term == term.name)
+
+    # Term is a free-text label on the score, so a term-scoped card would drop
+    # every score saved without one. Keep those rows and let the card show the
+    # full picture rather than an empty table.
     scores = score_query.all()
+    if term:
+        term_scores = [
+            score for score in scores
+            if score.term is None or (score.term or "").strip().lower() == (term.name or "").strip().lower()
+        ]
+        # Only narrow when the term actually matches something; otherwise a
+        # mislabelled term would blank the card.
+        if term_scores:
+            scores = term_scores
 
     # Build subject rows
     subject_rows = []
@@ -146,15 +161,19 @@ def report_card(student_id: str):
         total = assessment.total_marks if assessment else None
         subject_rows.append({
             "subject_id": str(score.subject_id) if score.subject_id else None,
-            "subject_name": subject.name if subject else "Unknown",
+            "subject_name": subject.name if subject else (assessment.name if assessment else "Unknown"),
             "assessment_name": assessment.name if assessment else None,
             "marks_obtained": score.marks_obtained,
             "total_marks": total,
-            "percentage": round(score.marks_obtained / total * 100, 1) if total else None,
+            # (x / y) * 100 when a total is recorded, (x / 100) * 100 otherwise.
+            "percentage": percentage(score.marks_obtained, total),
             "grade": score.grade,
             "is_passed": score.is_passed,
             "feedback": score.feedback,
         })
+
+    subject_rows.sort(key=lambda row: (row["subject_name"] or "", row["assessment_name"] or ""))
+    overall_percentage = average_percentage(scores)
 
     # Attendance summary for the term
     att_query = db.session.query(Attendance).filter(
@@ -194,7 +213,9 @@ def report_card(student_id: str):
             "end_date": term.end_date.isoformat() if term else None,
         },
         "subjects": subject_rows,
+        "overall_percentage": overall_percentage,
         "attendance": att_summary,
+        "attendance_rate": round(att_summary["present"] / att_summary["total"] * 100, 1) if att_summary["total"] else 0.0,
         "generated_at": datetime.utcnow().isoformat(),
     }, 200
 

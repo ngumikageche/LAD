@@ -54,6 +54,10 @@ export const PREDEFINED_ROLES: Array<{
       'announcements.read': true,
       'announcements.create': true,
       'notifications.read': true,
+      // Lets a trainer message the learners in a subject they teach. The API
+      // refuses the school-wide and by-role targets for a scoped trainer, so
+      // this grant cannot become a broadcast.
+      'notifications.create': true,
       'documents.read': true,
       'documents.create': true,
       'documents.delete': true,
@@ -62,6 +66,8 @@ export const PREDEFINED_ROLES: Array<{
       'attendance.write': true,
       'analytics.read': true,
       'trainer_subjects.read': true,
+      'alerts.read': true,
+      'alerts.manage': true,
       'reports.class.performance.view': true,
       'reports.class.performance.print': true,
       'reports.class.performance.export': true,
@@ -105,6 +111,8 @@ export const PREDEFINED_ROLES: Array<{
       'reports.class.at_risk.view': true,
       'reports.student.write': true,
       'feedback.trainer.view': true,
+      'alerts.read': true,
+      'alerts.manage': true,
       'admin.analytics.read': true,
       'attendance.report.view': true,
       'reports.practical.assessment': true,
@@ -119,6 +127,18 @@ export const PREDEFINED_ROLES: Array<{
 type PermDef = { key: string; label: string };
 
 const PERMISSION_TABS: Array<{ label: string; permissions: PermDef[] }> = [
+  {
+    // Every other key answers "what may this role open?". These answer "whose
+    // records does it see once it is open?". Without `data.master`, a role is
+    // held to its own institution, and a trainer to the subjects assigned to
+    // them; with it, the same screens show every institution's data.
+    label: 'Data Scope',
+    permissions: [
+      { key: 'data.master',   label: 'View Master Data — all institutions, all trainers’ subjects' },
+      { key: 'alerts.read',   label: 'Read Performance & Attendance Alerts' },
+      { key: 'alerts.manage', label: 'Run & Resolve Alerts' },
+    ],
+  },
   {
     // Each key here opens the matching admin destination — its sidebar entry,
     // its route, and its API — to whichever role is granted it. Grant these to

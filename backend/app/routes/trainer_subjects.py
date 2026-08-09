@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from .permissions import get_current_user, log_view, require_permission
 from ..models.trainer import Trainer
 from ..models.subject import Subject
+from ..models.student_subject import StudentSubject
 
 bp = Blueprint('trainer_subjects', __name__, url_prefix='/trainer-subjects')
 
@@ -15,6 +16,24 @@ def _parse_uuid(value, field):
         return uuid.UUID(str(value))
     except (TypeError, ValueError) as exc:
         raise ValueError(f"Invalid '{field}'") from exc
+
+
+def _subject_summary(subject: Subject) -> dict:
+    module = getattr(subject, "module", None)
+    course = getattr(module, "course", None)
+    return {
+        "id": str(subject.id),
+        "code": subject.code,
+        "name": subject.name,
+        "description": subject.description,
+        "module": {
+            "id": str(module.id),
+            "name": module.name,
+            "course_id": str(module.course_id) if module.course_id else None,
+        } if module else None,
+        "course_id": str(course.id) if course else None,
+        "course_name": course.name if course else None,
+    }
 
 
 @bp.post('/assign-multiple')
@@ -94,6 +113,63 @@ def assign_trainer_subject():
     except IntegrityError:
         db.session.rollback()
         return jsonify({'success': False, 'message': 'Assignment already exists'}), 409
+@bp.route('/<trainer_id>/<subject_id>', methods=['DELETE'])
+def unassign_trainer_subject(trainer_id, subject_id):
+    """
+    Remove one unit from a trainer's teaching load.
+
+    Assignments drive what a trainer can see, so an unassign has to be possible
+    without deleting and recreating the trainer. Returns 404 rather than 204 for
+    an assignment that was never there, so a mis-typed id is not silently
+    reported as a successful removal.
+    """
+    _, error, status = require_permission("trainers.update")
+    if error:
+        return error, status
+
+    try:
+        trainer_uuid = _parse_uuid(trainer_id, "trainer_id")
+        subject_uuid = _parse_uuid(subject_id, "subject_id")
+    except ValueError as exc:
+        return jsonify({'success': False, 'message': str(exc)}), 400
+
+    assignment = db.session.query(TrainerSubject).filter_by(
+        trainer_id=trainer_uuid, subject_id=subject_uuid
+    ).first()
+    if not assignment:
+        return jsonify({'success': False, 'message': 'Assignment not found'}), 404
+
+    db.session.delete(assignment)
+    db.session.commit()
+    return jsonify({
+        'success': True,
+        'trainer_id': str(trainer_uuid),
+        'subject_id': str(subject_uuid),
+        'message': 'Unit removed from trainer',
+    }), 200
+
+
+@bp.route('/<assignment_id>', methods=['DELETE'])
+def delete_trainer_subject_assignment(assignment_id):
+    """Remove an assignment by its own id, for callers holding the row id."""
+    _, error, status = require_permission("trainers.update")
+    if error:
+        return error, status
+
+    try:
+        assignment_uuid = _parse_uuid(assignment_id, "assignment_id")
+    except ValueError as exc:
+        return jsonify({'success': False, 'message': str(exc)}), 400
+
+    assignment = db.session.get(TrainerSubject, assignment_uuid)
+    if not assignment:
+        return jsonify({'success': False, 'message': 'Assignment not found'}), 404
+
+    db.session.delete(assignment)
+    db.session.commit()
+    return jsonify({'success': True, 'message': 'Unit removed from trainer'}), 200
+
+
 @bp.route('/<trainer_id>', methods=['GET'])
 def get_trainer_subjects(trainer_id):
     # Handle the special "me" alias to allow callers to request the current trainer's subjects.
@@ -108,9 +184,29 @@ def get_trainer_subjects(trainer_id):
                 return jsonify({'success': False, 'message': 'Trainer record not found'}), 404
 
             tsubs = db.session.query(TrainerSubject).filter_by(trainer_id=trainer.id).all()
-            subjects_info = [str(s.subject_id) for s in tsubs]
-            log_view(user, 'trainer_subjects.me', entity_id=str(trainer.id), metadata={'count': len(subjects_info)})
-            return jsonify({'success': True, 'trainer_id': str(trainer.id), 'data': subjects_info, 'message': ''}), 200
+            subject_ids = [s.subject_id for s in tsubs]
+            subjects = [_subject_summary(s.subject) for s in tsubs if s.subject]
+            student_total = (
+                db.session.query(StudentSubject.student_id)
+                .filter(StudentSubject.subject_id.in_(subject_ids))
+                .distinct()
+                .count()
+                if subject_ids
+                else 0
+            )
+            log_view(user, 'trainer_subjects.me', entity_id=str(trainer.id), metadata={'count': len(subjects)})
+            # `data` stays a bare id list for existing callers; `subjects` carries
+            # the module and course each unit belongs to, which is what the
+            # trainer dashboard and subject picker need to render a real row.
+            return jsonify({
+                'success': True,
+                'trainer_id': str(trainer.id),
+                'data': [str(item) for item in subject_ids],
+                'subjects': subjects,
+                'total_subjects': len(subjects),
+                'total_students': student_total,
+                'message': '',
+            }), 200
 
         _, error, status = require_permission("trainers.read")
         if error:

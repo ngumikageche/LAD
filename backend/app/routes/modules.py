@@ -13,6 +13,7 @@ from ..models.competency import Competency
 from ..models.dashboard_metric import DashboardMetric
 from ..models.enrollment import Enrollment
 from ..models.student_subject import StudentSubject
+from ..services.scoping import scope_courses, scope_modules
 from .permissions import log_view, require_permission
 
 bp = Blueprint("modules", __name__, url_prefix="/modules")
@@ -50,9 +51,13 @@ def _module_payload(module: Module) -> dict:
         "created_at": module.created_at.isoformat() if module.created_at else None,
     }
 
+def _module_in_scope(user, module_uuid) -> Module | None:
+    return scope_modules(db.session.query(Module), user).filter(Module.id == module_uuid).first()
+
+
 @bp.post("")
 def create_module():
-    _, error, status = require_permission("modules.create")
+    user, error, status = require_permission("modules.create")
     if error:
         return error, status
     payload = request.get_json(silent=True) or {}
@@ -69,7 +74,7 @@ def create_module():
         course_uuid = _parse_uuid(course_id, "course_id")
     except ValueError as exc:
         return {"error": str(exc)}, 400
-    if not db.session.get(Course, course_uuid):
+    if not scope_courses(db.session.query(Course), user).filter(Course.id == course_uuid).first():
         return {"error": "Invalid 'course_id'"}, 400
 
     module = Module(
@@ -90,7 +95,7 @@ def list_modules():
     user, error, status = require_permission("modules.read")
     if error:
         return error, status
-    query = db.session.query(Module).order_by(Module.name.asc())
+    query = scope_modules(db.session.query(Module), user).order_by(Module.name.asc())
     course_id = request.args.get("course_id")
     if course_id:
         try:
@@ -111,7 +116,7 @@ def get_module(module_id: str):
         module_uuid = _parse_uuid(module_id, "module_id")
     except ValueError as exc:
         return {"error": str(exc)}, 400
-    module = db.session.get(Module, module_uuid)
+    module = _module_in_scope(user, module_uuid)
     if not module:
         return {"error": "Module not found"}, 404
     log_view(user, "modules", entity_id=module_id, metadata={"scope": "detail"})
@@ -127,7 +132,8 @@ def get_module_competencies(module_id: str):
         module_uuid = _parse_uuid(module_id, "module_id")
     except ValueError as exc:
         return {"error": str(exc)}, 400
-    # Query competencies for this module
+    if not _module_in_scope(user, module_uuid):
+        return {"error": "Module not found"}, 404
     competencies = db.session.query(Competency).filter(Competency.module_id == module_uuid).order_by(Competency.name.asc()).all()
     result = [{"id": str(c.id), "name": c.name, "description": c.description} for c in competencies]
     log_view(user, "modules.competencies", entity_id=module_id, metadata={"count": len(result)})
@@ -135,14 +141,14 @@ def get_module_competencies(module_id: str):
 
 @bp.put("/<module_id>")
 def update_module(module_id: str):
-    _, error, status = require_permission("modules.update")
+    user, error, status = require_permission("modules.update")
     if error:
         return error, status
     try:
         module_uuid = _parse_uuid(module_id, "module_id")
     except ValueError as exc:
         return {"error": str(exc)}, 400
-    module = db.session.get(Module, module_uuid)
+    module = _module_in_scope(user, module_uuid)
     if not module:
         return {"error": "Module not found"}, 404
     payload = request.get_json(silent=True) or {}
@@ -165,14 +171,14 @@ def update_module(module_id: str):
 
 @bp.delete("/<module_id>")
 def delete_module(module_id: str):
-    _, error, status = require_permission("modules.delete")
+    user, error, status = require_permission("modules.delete")
     if error:
         return error, status
     try:
         module_uuid = _parse_uuid(module_id, "module_id")
     except ValueError as exc:
         return {"error": str(exc)}, 400
-    module = db.session.get(Module, module_uuid)
+    module = _module_in_scope(user, module_uuid)
     if not module:
         return {"error": "Module not found"}, 404
     # Subjects and dashboard metrics require a module; SQLAlchemy would otherwise
@@ -197,14 +203,14 @@ def delete_module(module_id: str):
 
 @bp.post("/<module_id>/sync-subjects")
 def sync_subjects_to_students(module_id: str):
-    _, error, status = require_permission("modules.update")
+    user, error, status = require_permission("modules.update")
     if error:
         return error, status
     try:
         module_uuid = _parse_uuid(module_id, "module_id")
     except ValueError as exc:
         return {"error": str(exc)}, 400
-    module = db.session.get(Module, module_uuid)
+    module = _module_in_scope(user, module_uuid)
     if not module:
         return {"error": "Module not found"}, 404
 

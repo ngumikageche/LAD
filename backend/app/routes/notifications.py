@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 
 from flask import Blueprint, request
-from sqlalchemy import distinct, func
+from sqlalchemy import distinct, false, func, or_
 from sqlalchemy.exc import IntegrityError
 
 from ..extensions import db
@@ -16,6 +16,11 @@ from ..models.student_subject import StudentSubject
 from ..services.communications import send_email, send_sms
 from ..models.subject import Subject
 from ..models.user import User
+from ..services.scoping import (
+    institution_course_ids,
+    can_view_master_data,
+    trainer_subject_ids,
+)
 from .permissions import _is_admin, log_view, require_permission
 
 
@@ -100,9 +105,35 @@ def _normalize_delivery_channels(payload: dict) -> list[str]:
 
 def _bulk_recipient_query(filters: dict, actor: User):
     target = filters.get("target", "all")
-    query = db.session.query(User).filter(User.deleted_at.is_(None))
-    if actor.institution_id is not None:
-        query = query.filter(User.institution_id == actor.institution_id)
+    # Student is outer-joined once up front: the institution filter needs it to
+    # reach a learner's course, and the learner-targeting branches below need it
+    # too. Joining it twice would be an error.
+    query = (
+        db.session.query(User)
+        .outerjoin(Student, Student.user_id == User.id)
+        .filter(User.deleted_at.is_(None))
+    )
+
+    # A trainer messages the learners they teach. That is narrower than the
+    # institution filter below, and it is why "students in subject" is open to
+    # them at all — the wide targets stay closed.
+    taught_subject_ids = trainer_subject_ids(actor)
+    is_scoped_trainer = taught_subject_ids is not None
+
+    if not can_view_master_data(actor) and actor.institution_id is not None:
+        # Learners are attached to a course rather than always carrying an
+        # institution, so match on either — filtering on institution alone
+        # silently dropped whole classes from the recipient list.
+        course_ids = institution_course_ids(actor.institution_id)
+        query = query.filter(
+            or_(
+                User.institution_id == actor.institution_id,
+                Student.course_id.in_(course_ids),
+            )
+        )
+
+    if is_scoped_trainer and target in {"all", "role"}:
+        raise ValueError("Select a course, module, or subject you teach")
 
     if target == "all":
         return query
@@ -114,12 +145,15 @@ def _bulk_recipient_query(filters: dict, actor: User):
         return query.join(RolePermission).filter(RolePermission.role_name == role_name.strip())
 
     if target in {"course", "module", "subject", "year"}:
-        query = query.join(Student, Student.user_id == User.id)
+        # Only accounts that are learners can be targeted these ways.
+        query = query.filter(Student.id.isnot(None))
 
     if target == "course":
         course_id = _parse_uuid(filters.get("course_id"), "course_id")
         if not db.session.get(Course, course_id):
             raise ValueError("Invalid 'course_id'")
+        if is_scoped_trainer:
+            query = query.filter(Student.id.in_(_students_of_subjects(taught_subject_ids)))
         return query.filter(Student.course_id == course_id)
 
     if target == "module":
@@ -128,12 +162,16 @@ def _bulk_recipient_query(filters: dict, actor: User):
             raise ValueError("Invalid 'module_id'")
         subject_ids = db.session.query(Subject.id).filter(Subject.module_id == module_id)
         student_ids = db.session.query(distinct(StudentSubject.student_id)).filter(StudentSubject.subject_id.in_(subject_ids))
+        if is_scoped_trainer:
+            query = query.filter(Student.id.in_(_students_of_subjects(taught_subject_ids)))
         return query.filter(Student.id.in_(student_ids))
 
     if target == "subject":
         subject_id = _parse_uuid(filters.get("subject_id"), "subject_id")
         if not db.session.get(Subject, subject_id):
             raise ValueError("Invalid 'subject_id'")
+        if is_scoped_trainer and subject_id not in taught_subject_ids:
+            raise ValueError("You are not assigned to that subject")
         student_ids = db.session.query(distinct(StudentSubject.student_id)).filter(StudentSubject.subject_id == subject_id)
         return query.filter(Student.id.in_(student_ids))
 
@@ -142,9 +180,20 @@ def _bulk_recipient_query(filters: dict, actor: User):
             year = int(filters.get("enrollment_year"))
         except (TypeError, ValueError) as exc:
             raise ValueError("'enrollment_year' must be a valid year") from exc
+        if is_scoped_trainer:
+            query = query.filter(Student.id.in_(_students_of_subjects(taught_subject_ids)))
         return query.filter(Student.enrollment_year == year)
 
     raise ValueError("Invalid 'target'")
+
+
+def _students_of_subjects(subject_ids):
+    """Learner ids enrolled in any of these subjects — empty set means nobody."""
+    if not subject_ids:
+        return db.session.query(Student.id).filter(false())
+    return db.session.query(distinct(StudentSubject.student_id)).filter(
+        StudentSubject.subject_id.in_(subject_ids)
+    )
 
 
 @bp.post("")

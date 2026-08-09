@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from datetime import datetime
 
 from ..extensions import db
+from ..services.scoping import average_percentage, score_percentage
 from ..models.user import User
 from ..models.trainer import Trainer
 from ..models.student import Student
@@ -135,10 +136,7 @@ def trainer_performance(trainer_id: str):
     ).all()
 
     if scores:
-        percentages = [
-            (s.marks_obtained / s.assessment.total_marks * 100) if s.assessment and s.assessment.total_marks else s.marks_obtained
-            for s in scores
-        ]
+        percentages = [value for value in (score_percentage(s) for s in scores) if value is not None]
         avg_student_score = sum(percentages) / len(percentages) if percentages else 0
         student_pass_rate = (sum(1 for s in scores if s.is_passed is True) / len(scores) * 100) if scores else 0
     else:
@@ -345,7 +343,7 @@ def student_admin_view(student_id: str):
     failed = 0
 
     if scores:
-        overall_avg = (sum(s.marks_obtained for s in scores) / sum(s.assessment.total_marks for s in scores if s.assessment) * 100) if scores else 0
+        overall_avg = average_percentage(scores)
         passed = sum(1 for s in scores if s.is_passed is True)
         failed = sum(1 for s in scores if s.is_passed is False)
 
@@ -354,7 +352,7 @@ def student_admin_view(student_id: str):
     for enrollment in enrollments:
         course_scores = [s for s in scores if s.enrollment_id == enrollment.id]
         if course_scores:
-            course_avg = (sum(s.marks_obtained for s in course_scores) / sum(s.assessment.total_marks for s in course_scores if s.assessment) * 100) if course_scores else 0
+            course_avg = average_percentage(course_scores)
             course_stats.append({
                 "course_id": str(enrollment.course_id),
                 "course_name": enrollment.course.name,
@@ -418,18 +416,25 @@ def override_score(score_id: str):
         return {"error": "'new_marks' must be a number"}, 400
 
     # Validate marks
-    if new_marks < 0 or new_marks > score.assessment.total_marks:
-        return {"error": f"Marks must be between 0 and {score.assessment.total_marks}"}, 400
+    # A score with no assessment is recorded out of 100.
+    score_total = score.assessment.total_marks if score.assessment and score.assessment.total_marks else 100
+    if new_marks < 0 or new_marks > score_total:
+        return {"error": f"Marks must be between 0 and {score_total}"}, 400
 
     # Store old value for audit
     old_marks = score.marks_obtained
 
     # Update score
     score.marks_obtained = new_marks
-    score.is_passed = new_marks >= score.assessment.pass_marks
+    pass_marks = (
+        score.assessment.pass_marks
+        if score.assessment and score.assessment.pass_marks is not None
+        else score_total * 0.5
+    )
+    score.is_passed = new_marks >= pass_marks
 
     # Grade calculation
-    percentage = (new_marks / score.assessment.total_marks * 100) if score.assessment.total_marks > 0 else 0
+    percentage = round(new_marks / score_total * 100, 2) if score_total > 0 else 0
     if percentage >= 90:
         score.grade = "A"
     elif percentage >= 80:
@@ -635,7 +640,7 @@ def verify_data_integrity():
     ).all()
 
     for score in inconsistent:
-        percentage = (score.marks_obtained / score.assessment.total_marks * 100) if score.assessment.total_marks > 0 else 0
+        percentage = score_percentage(score) or 0
         expected_grade = "A" if percentage >= 90 else "B" if percentage >= 80 else "C" if percentage >= 70 else "D" if percentage >= 60 else "F"
 
         if score.grade != expected_grade:

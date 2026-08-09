@@ -17,6 +17,7 @@ from ..models.subject import Subject
 from ..models.trainer_subject import TrainerSubject
 from ..models.user import User
 from .learning_analytics import build_role_dashboard
+from .scoping import score_percentage
 
 
 def pagination_meta(page: int, per_page: int, total: int) -> dict:
@@ -129,6 +130,11 @@ def score_payload(score: Score, by_id: dict[uuid.UUID, Subject], by_module_id: d
             "name": subject.name,
         } if subject else None,
         "score": score.marks_obtained,
+        "total_marks": score.assessment.total_marks if score.assessment else None,
+        # (x / y) * 100 when the assessment records a total, (x / 100) * 100 when
+        # it does not. Averaging raw marks would put a 40/50 alongside an 85/100
+        # and report the mean as a percentage.
+        "percentage": score_percentage(score),
         "grade": score.grade,
         "term": term_name,
         "feedback": score.feedback,
@@ -193,14 +199,15 @@ def performance_payload(student: Student) -> dict:
     raw_scores = _student_scores_query(student).all()
     scores = [score_payload(score, by_id, by_module_id) for score in raw_scores]
 
-    average_score = round(sum(item["score"] for item in scores) / len(scores), 2) if scores else 0.0
+    graded = [item for item in scores if item["percentage"] is not None]
+    average_score = round(sum(item["percentage"] for item in graded) / len(graded), 2) if graded else 0.0
     subject_buckets: dict[str, list[float]] = defaultdict(list)
     term_buckets: dict[str, list[float]] = defaultdict(list)
-    for item in scores:
+    for item in graded:
         if item["subject"]:
-            subject_buckets[item["subject"]["name"]].append(item["score"])
+            subject_buckets[item["subject"]["name"]].append(item["percentage"])
         if item["term"]:
-            term_buckets[item["term"]].append(item["score"])
+            term_buckets[item["term"]].append(item["percentage"])
 
     return {
         "average_score": average_score,

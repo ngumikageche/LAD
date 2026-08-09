@@ -18,6 +18,7 @@ from ..models.trainer import Trainer
 from ..models.trainer_subject import TrainerSubject
 from ..models.user import User
 from .learning_analytics import build_role_dashboard
+from .scoping import average_percentage, percentage
 from .subject_enrollment import link_student_to_subject
 
 PASS_MARK = 50.0
@@ -151,11 +152,14 @@ def score_payload(score: Score) -> dict:
 
 
 def subject_payload(subject: Subject) -> dict:
-    avg_score = (
-        db.session.query(func.avg(Score.marks_obtained))
-        .filter(Score.subject_id == subject.id)
-        .scalar()
+    # Averaged as percentages, not raw marks: a subject marked out of 40 and one
+    # marked out of 100 are otherwise added together as if they were comparable.
+    subject_scores = (
+        db.session.query(Score)
+        .filter(Score.subject_id == subject.id, Score.deleted_at.is_(None))
+        .all()
     )
+    avg_score = average_percentage(subject_scores)
     student_count = (
         db.session.query(func.count(StudentSubject.id))
         .filter(StudentSubject.subject_id == subject.id)
@@ -183,7 +187,7 @@ def subject_payload(subject: Subject) -> dict:
         "department_id": str(department.id) if department else None,
         "department_name": department.name if department else None,
         "students_count": student_count,
-        "average_score": round(float(avg_score or 0), 2),
+        "average_score": avg_score,
         "recent_scores_count": recent_score_count,
         "created_at": subject.created_at.isoformat() if subject.created_at else None,
     }
@@ -327,11 +331,14 @@ def trainer_dashboard(trainer: Trainer, subject_id: uuid.UUID | None = None) -> 
     pass_count = 0
     fail_count = 0
     if scoped_subject_ids:
+        # Scoped by subject, not by author. Marks entered by an admin, imported
+        # in bulk, or recorded by a co-trainer still belong to this class, and
+        # excluding them was what left the class average sitting at zero.
         recent_scores = (
             db.session.query(Score)
             .filter(
                 Score.subject_id.in_(scoped_subject_ids),
-                Score.trainer_id == trainer.id,
+                Score.deleted_at.is_(None),
             )
             .order_by(Score.created_at.desc())
             .limit(10)
@@ -341,15 +348,16 @@ def trainer_dashboard(trainer: Trainer, subject_id: uuid.UUID | None = None) -> 
             db.session.query(Score)
             .filter(
                 Score.subject_id.in_(scoped_subject_ids),
-                Score.trainer_id == trainer.id,
                 Score.deleted_at.is_(None),
             )
             .all()
         )
         if all_scores:
-            marks = [s.marks_obtained for s in all_scores]
-            avg_score = round(sum(marks) / len(marks), 2)
-            pass_count = sum(1 for s in all_scores if s.is_passed is True or s.marks_obtained >= PASS_MARK)
+            avg_score = average_percentage(all_scores)
+            pass_count = sum(
+                1 for s in all_scores
+                if s.is_passed is True or (percentage(s.marks_obtained, s.assessment.total_marks if s.assessment else None) or 0) >= PASS_MARK
+            )
             fail_count = len(all_scores) - pass_count
             pass_rate = round(pass_count / len(all_scores) * 100, 2)
 
@@ -421,9 +429,13 @@ def trainer_subject_report(trainer: Trainer, subject_id: uuid.UUID, term: str | 
         .scalar()
     ) or 0
 
-    average_score = round(sum(score.marks_obtained for score in scores) / len(scores), 2) if scores else 0.0
-    pass_count = sum(1 for score in scores if (score.is_passed is True or score.marks_obtained >= PASS_MARK))
-    fail_count = sum(1 for score in scores if (score.is_passed is False or score.marks_obtained < PASS_MARK))
+    average_score = average_percentage(scores)
+    pass_count = sum(
+        1 for score in scores
+        if score.is_passed is True
+        or (percentage(score.marks_obtained, score.assessment.total_marks if score.assessment else None) or 0) >= PASS_MARK
+    )
+    fail_count = len(scores) - pass_count
     pass_rate = round((pass_count / len(scores)) * 100, 2) if scores else 0.0
 
     return {
