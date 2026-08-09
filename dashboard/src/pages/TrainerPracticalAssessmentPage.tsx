@@ -2237,9 +2237,8 @@ function AssessmentPreview({
             <div className="border-b border-slate-800 bg-[#0b1720] p-6 sm:p-8">
               <div className="flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <p className="text-xs font-bold uppercase tracking-[0.25em] text-teal-300">{report.awarding_body || 'TVET CDACC'}</p>
                   {report.institution_name ? (
-                    <p className="mt-2 text-sm font-bold uppercase tracking-[0.15em] text-slate-200">
+                    <p className="text-sm font-bold uppercase tracking-[0.15em] text-slate-200">
                       {report.institution_name}
                       {report.institution_location ? <span className="font-medium text-slate-500"> · {report.institution_location}</span> : null}
                     </p>
