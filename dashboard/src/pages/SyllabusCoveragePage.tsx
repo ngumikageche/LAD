@@ -71,8 +71,17 @@ export default function SyllabusCoveragePage() {
   useEffect(() => {
     trainerSubjectsAPI.getAssignedSubjects()
       .then(s => setSubjects(Array.isArray(s) ? s : []))
-      .catch(() => {});
+      // Swallowing this left the subject pickers silently empty, which reads as
+      // "adding a topic does nothing". Say so instead.
+      .catch(err => setError(err instanceof Error ? err.message : 'Failed to load your assigned subjects'));
   }, []);
+
+  // The form gets its own subject field, but defaulting it to whichever subject
+  // is already being viewed saves picking the same one twice — and stops a
+  // submit failing for a field the user never noticed.
+  useEffect(() => {
+    if (selectedSubjectId) setNewTopic(current => ({ ...current, subject_id: selectedSubjectId }));
+  }, [selectedSubjectId]);
 
   const toggleCovered = async (planId: string, covered: boolean) => {
     if (!trainerId) return;
@@ -89,16 +98,27 @@ export default function SyllabusCoveragePage() {
   };
 
   const addTopic = async () => {
-    if (!trainerId || !newTopic.topic.trim() || !newTopic.subject_id.trim()) return;
+    if (!trainerId) return;
+    // Returning silently here was the whole bug: the form looked accepted and
+    // nothing happened, with no clue which field was at fault.
+    if (!newTopic.topic.trim()) {
+      setError('Enter a topic name.');
+      return;
+    }
+    if (!newTopic.subject_id.trim()) {
+      setError('Choose the subject this topic belongs to.');
+      return;
+    }
     try {
       setSaving(true);
+      setError(null);
       await trainerReportCardsAPI.addSyllabusTopic(trainerId, {
         topic: newTopic.topic,
         subject_id: newTopic.subject_id,
         planned_date: newTopic.planned_date || undefined,
         description: newTopic.description || undefined,
       });
-      setNewTopic({ topic: '', subject_id: '', planned_date: '', description: '' });
+      setNewTopic({ topic: '', subject_id: selectedSubjectId, planned_date: '', description: '' });
       setShowAdd(false);
       await load();
     } catch (err) {

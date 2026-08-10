@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from flask import Blueprint, request
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.exc import IntegrityError
 from ..extensions import db
 from ..models.subject import Subject
@@ -241,17 +241,26 @@ def get_subject_marks(subject_id: str):
     # assessment on the subject's module (the older enrolment-based path).
     # Inner-joining both tables dropped every directly-linked score, which is
     # why marks that had clearly been uploaded came back as an empty list.
+    #
+    # The module route is only unambiguous when this subject is the module's
+    # only one — otherwise a sibling subject's marks would appear here.
+    module_subject_count = db.session.query(func.count(Subject.id)).filter(
+        Subject.module_id == subject.module_id,
+        Subject.deleted_at.is_(None),
+    ).scalar() or 0
+
+    subject_match = Score.subject_id == subject.id
+    if module_subject_count == 1:
+        subject_match = or_(
+            subject_match,
+            and_(Score.subject_id.is_(None), Assessment.module_id == subject.module_id),
+        )
+
     query = (
         db.session.query(Score)
         .outerjoin(Assessment, Score.assessment_id == Assessment.id)
         .outerjoin(Enrollment, Score.enrollment_id == Enrollment.id)
-        .filter(
-            Score.deleted_at.is_(None),
-            or_(
-                Score.subject_id == subject.id,
-                and_(Score.subject_id.is_(None), Assessment.module_id == subject.module_id),
-            ),
-        )
+        .filter(Score.deleted_at.is_(None), subject_match)
     )
 
     if student_view:

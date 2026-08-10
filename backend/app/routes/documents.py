@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess
+import tempfile
 import uuid
 from datetime import datetime
+from pathlib import Path
 
 from flask import Blueprint, current_app, g, request
 from sqlalchemy import and_
@@ -38,6 +42,66 @@ UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "..", "..", "uploads")
 
 def _allowed(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+# Types a browser renders natively, and types we can turn into one that it does.
+NATIVELY_VIEWABLE = {"pdf", "png", "jpg", "jpeg", "gif", "txt", "csv"}
+CONVERTIBLE_TO_PDF = {"doc", "docx", "odt", "xls", "xlsx", "ppt", "pptx", "rtf"}
+PREVIEW_CACHE_FOLDER = os.path.join(UPLOAD_FOLDER, "_previews")
+CONVERT_TIMEOUT_SECONDS = 60
+
+
+def _soffice() -> str | None:
+    """LibreOffice, if this host has it. Preview degrades gracefully without it."""
+    return shutil.which("soffice") or shutil.which("libreoffice")
+
+
+def _render_pdf_preview(stored_name: str) -> str | None:
+    """
+    A PDF rendition of an office document, cached beside the upload.
+
+    Returns the cached file name, or None when the host cannot convert. A
+    trainer should be able to read a Word handout in the browser rather than
+    downloading it, and the only reliable way to do that across formats is to
+    render it to PDF first.
+    """
+    source = os.path.join(os.path.abspath(UPLOAD_FOLDER), stored_name)
+    if not os.path.exists(source):
+        return None
+
+    cached_name = f"{os.path.splitext(stored_name)[0]}.pdf"
+    cached_path = os.path.join(PREVIEW_CACHE_FOLDER, cached_name)
+    if os.path.exists(cached_path) and os.path.getmtime(cached_path) >= os.path.getmtime(source):
+        return cached_name
+
+    binary = _soffice()
+    if not binary:
+        return None
+
+    os.makedirs(PREVIEW_CACHE_FOLDER, exist_ok=True)
+    # LibreOffice refuses to run twice against one user profile, so two people
+    # previewing at the same moment would abort each other. Give each run its
+    # own throwaway profile.
+    profile_dir = tempfile.mkdtemp(prefix="lad-soffice-")
+    try:
+        subprocess.run(
+            [
+                binary,
+                f"-env:UserInstallation={Path(profile_dir).as_uri()}",
+                "--headless", "--norestore", "--nolockcheck", "--nodefault",
+                "--convert-to", "pdf", "--outdir", PREVIEW_CACHE_FOLDER, source,
+            ],
+            check=True,
+            capture_output=True,
+            timeout=CONVERT_TIMEOUT_SECONDS,
+        )
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError):
+        current_app.logger.exception("Could not render a preview for %s", stored_name)
+        return None
+    finally:
+        shutil.rmtree(profile_dir, ignore_errors=True)
+
+    return cached_name if os.path.exists(cached_path) else None
 
 
 def _payload(doc: Document) -> dict:
@@ -253,6 +317,59 @@ def serve_file(filename: str):
         response.headers["Content-Disposition"] = f'inline; filename="{doc.file_name or filename}"'
         response.headers["X-Content-Type-Options"] = "nosniff"
     return response
+
+
+@bp.get("/<doc_id>/preview")
+def preview_document(doc_id: str):
+    """
+    A viewable rendition of a document.
+
+    Natively viewable types stream as they are; office formats are rendered to
+    PDF so they can be read in the browser instead of being downloaded first.
+    Answers 415 when this host cannot render the format, which is the signal the
+    dashboard uses to fall back to a download button.
+    """
+    from flask import send_from_directory
+
+    user, error, status = get_current_user()
+    if error:
+        return error, status
+
+    try:
+        uid = uuid.UUID(doc_id)
+    except ValueError:
+        return {"error": "Invalid document id"}, 400
+
+    doc = db.session.get(Document, uid)
+    if not doc or doc.deleted_at or not _can_access_document(user, doc):
+        return {"error": "Document not found"}, 404
+
+    stored_name = (doc.file_url or "").rsplit("/", 1)[-1]
+    if not stored_name or secure_filename(stored_name) != stored_name:
+        return {"error": "Document not found"}, 404
+
+    file_type = (doc.file_type or "").lower()
+
+    if file_type in NATIVELY_VIEWABLE:
+        response = send_from_directory(os.path.abspath(UPLOAD_FOLDER), stored_name)
+        response.headers["Content-Disposition"] = f'inline; filename="{doc.file_name or stored_name}"'
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        return response
+
+    if file_type in CONVERTIBLE_TO_PDF:
+        rendered = _render_pdf_preview(stored_name)
+        if not rendered:
+            return {
+                "error": "This document cannot be previewed on this server",
+                "reason": "conversion_unavailable",
+            }, 415
+        response = send_from_directory(PREVIEW_CACHE_FOLDER, rendered)
+        response.headers["Content-Type"] = "application/pdf"
+        preview_name = f"{os.path.splitext(doc.file_name or stored_name)[0]}.pdf"
+        response.headers["Content-Disposition"] = f'inline; filename="{preview_name}"'
+        return response
+
+    return {"error": "This file type cannot be previewed", "reason": "unsupported_type"}, 415
 
 
 # ── List ──────────────────────────────────────────────────────────────────────

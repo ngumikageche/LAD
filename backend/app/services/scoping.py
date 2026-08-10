@@ -21,13 +21,15 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import false, or_
+from sqlalchemy import and_, false, or_
 
 from ..extensions import db
+from ..models.assessment import Assessment
 from ..models.course import Course
 from ..models.department import Department
 from ..models.institution import Institution
 from ..models.module import Module
+from ..models.score import Score
 from ..models.student import Student
 from ..models.student_subject import StudentSubject
 from ..models.subject import Subject
@@ -161,6 +163,14 @@ def _institution_subject_ids(institution_id: uuid.UUID):
 
 # ── Trainer axis ─────────────────────────────────────────────────────────────
 
+def _trainer_assignment_ids(trainer_id: uuid.UUID) -> set[uuid.UUID]:
+    """The raw assignment lookup, kept separate so the rules above it are testable."""
+    rows = db.session.query(TrainerSubject.subject_id).filter(
+        TrainerSubject.trainer_id == trainer_id
+    ).all()
+    return {row[0] for row in rows}
+
+
 def trainer_subject_ids(user: User | None) -> set[uuid.UUID] | None:
     """
     Subject ids a trainer is assigned to, or None when no trainer restriction
@@ -174,10 +184,7 @@ def trainer_subject_ids(user: User | None) -> set[uuid.UUID] | None:
     trainer = user.trainer or db.session.query(Trainer).filter(Trainer.user_id == user.id).first()
     if not trainer:
         return set()
-    rows = db.session.query(TrainerSubject.subject_id).filter(
-        TrainerSubject.trainer_id == trainer.id
-    ).all()
-    return {row[0] for row in rows}
+    return _trainer_assignment_ids(trainer.id)
 
 
 def trainer_student_ids(user: User | None) -> set[uuid.UUID] | None:
@@ -234,7 +241,9 @@ def scope_students(query, user: User | None):
 
     # A learner who was handed `students.read` still only sees themselves.
     if is_student(user) and not is_trainer(user) and not can_view_master_data(user):
-        query = query.filter(Student.id == (user.student.id if user.student else None))
+        if not user.student:
+            return query.filter(false())
+        query = query.filter(Student.id == user.student.id)
 
     return query
 
@@ -256,6 +265,59 @@ def scope_trainers(query, user: User | None):
             Trainer.user_id.in_(institution_user_ids),
         )
     )
+
+
+def scope_scores(query, user: User | None):
+    """
+    Marks the caller may see.
+
+    A trainer is held to the subjects assigned to them — not to the marks they
+    personally entered, because a co-trainer's or an admin's upload on their
+    subject is still their class. Scores predating the `subject_id` column are
+    matched through their assessment's module so they are not silently dropped.
+    """
+    institution_id = visible_institution_id(user)
+    if institution_id is not None:
+        institution_subject_ids = _institution_subject_ids(institution_id)
+        course_ids = institution_course_ids(institution_id)
+        query = query.filter(
+            or_(
+                Score.subject_id.in_(institution_subject_ids),
+                Score.student.has(Student.course_id.in_(course_ids)),
+            )
+        )
+
+    subject_ids = trainer_subject_ids(user)
+    if subject_ids is not None:
+        if not subject_ids:
+            return query.filter(false())
+        taught_module_ids = db.session.query(Subject.module_id).filter(Subject.id.in_(subject_ids))
+        query = query.filter(
+            or_(
+                Score.subject_id.in_(subject_ids),
+                and_(
+                    Score.subject_id.is_(None),
+                    Score.assessment.has(Assessment.module_id.in_(taught_module_ids)),
+                ),
+            )
+        )
+
+    if is_student(user) and not is_trainer(user) and not can_view_master_data(user):
+        # A student-role account with no learner profile matches nothing rather
+        # than every score whose `student_id` happens to be null.
+        if not user.student:
+            return query.filter(false())
+        query = query.filter(Score.student_id == user.student.id)
+
+    return query
+
+
+def can_access_score(user: User | None, score_id: uuid.UUID | None) -> bool:
+    if score_id is None:
+        return True
+    return db.session.query(
+        scope_scores(db.session.query(Score.id), user).filter(Score.id == score_id).exists()
+    ).scalar()
 
 
 # ── Single-record guards ─────────────────────────────────────────────────────

@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from datetime import datetime
 
 from ..extensions import db
-from ..services.scoping import average_percentage, score_percentage
+from ..services.scoping import average_percentage, can_access_score, score_percentage
 from ..models.user import User
 from ..models.trainer import Trainer
 from ..models.student import Student
@@ -400,7 +400,7 @@ def override_score(score_id: str):
         return {"error": str(exc)}, 400
 
     score = db.session.get(Score, score_uuid)
-    if not score:
+    if not score or not can_access_score(user, score.id):
         return {"error": "Score not found"}, 404
 
     payload = request.get_json(silent=True) or {}

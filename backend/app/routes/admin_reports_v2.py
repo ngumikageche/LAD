@@ -5,7 +5,7 @@ from datetime import datetime
 import uuid
 
 from flask import Blueprint, request
-from sqlalchemy import and_, func, or_
+from sqlalchemy import and_, false, func, or_
 
 from ..extensions import cache, db
 from ..models.assessment import Assessment
@@ -18,6 +18,7 @@ from ..models.student import Student
 from ..models.subject import Subject
 from ..models.term import Term
 from ..models.user import User
+from ..services.scoping import scope_scores, trainer_subject_ids
 from .permissions import get_current_user, log_view, _has_permission, _is_admin, _is_student
 
 bp = Blueprint("admin_reports_v2", __name__, url_prefix="/reports/admin")
@@ -115,6 +116,9 @@ def exam_results():
     subject, filter_error = _valid_filter(Subject, subject_id, "Subject")
     if filter_error:
         return filter_error
+    taught_subject_ids = trainer_subject_ids(user)
+    if subject and taught_subject_ids is not None and subject.id not in taught_subject_ids:
+        return {"error": "Subject is outside your assigned subjects"}, 403
     if department and course and course.department_id != department.id:
         return {"error": "Selected course does not belong to the selected department"}, 400
     if course and subject and subject.module and subject.module.course_id != course.id:
@@ -146,6 +150,12 @@ def exam_results():
 
     if term:
         score_q = score_q.filter(Score.term == term.name)
+
+    # A trainer holding this report reads their own teaching load, not the whole
+    # institution. `scope_scores` is a no-op for admins and for anyone holding
+    # `data.master`, so school-wide oversight is unaffected.
+    score_q = scope_scores(score_q, user)
+
     permitted_course_ids = None
     if user.institution_id:
         permitted_course_ids = [
@@ -192,7 +202,10 @@ def exam_results():
 
     by_course = []
     for cid, scores in course_scores.items():
-        course = course_map.get(cid)
+        # Deliberately not named `course` — that is the requested course filter,
+        # and rebinding it here silently changed which course the previous-term
+        # trend baseline was measured against.
+        row_course = course_map.get(cid)
         marks = [s.marks_obtained for s in scores]
         passed = sum(1 for s in scores if (s.is_passed is True or s.marks_obtained >= PASS_MARK))
         avg = round(sum(marks) / len(marks), 1) if marks else 0
@@ -207,7 +220,7 @@ def exam_results():
 
         by_course.append({
             "course_id": cid,
-            "course_name": course.name if course else cid,
+            "course_name": row_course.name if row_course else cid,
             "student_count": len({
                 str(score_student.id)
                 for score in scores
@@ -227,7 +240,14 @@ def exam_results():
         if s.subject_id:
             subject_scores[str(s.subject_id)].append(s)
 
-    subjects = db.session.query(Subject).filter(Subject.deleted_at.is_(None)).all()
+    subjects_query = db.session.query(Subject).filter(Subject.deleted_at.is_(None))
+    if taught_subject_ids is not None:
+        subjects_query = (
+            subjects_query.filter(Subject.id.in_(taught_subject_ids))
+            if taught_subject_ids
+            else subjects_query.filter(false())
+        )
+    subjects = subjects_query.all()
     subject_map = {str(s.id): s for s in subjects}
 
     by_subject = []
@@ -260,8 +280,11 @@ def exam_results():
     if term:
         prev = _prev_term(term)
         if prev:
-            prev_query = db.session.query(Score).filter(
-                Score.term == prev.name, Score.deleted_at.is_(None)
+            prev_query = scope_scores(
+                db.session.query(Score).filter(
+                    Score.term == prev.name, Score.deleted_at.is_(None)
+                ),
+                user,
             )
             if permitted_course_ids is not None:
                 prev_query = prev_query.filter(_student_course_clause(permitted_course_ids))

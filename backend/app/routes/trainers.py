@@ -5,7 +5,7 @@ import re
 import secrets
 
 from flask import Blueprint, current_app, request, send_file
-from sqlalchemy import func, or_
+from sqlalchemy import false, func, or_
 from sqlalchemy.exc import IntegrityError
 from werkzeug.security import generate_password_hash
 
@@ -34,6 +34,7 @@ from ..services.trainer_portal import (
     trainer_subject_report,
 )
 from ..services.scoping import (
+    average_percentage,
     can_view_master_data,
     scope_students,
     scope_trainers,
@@ -608,7 +609,7 @@ def list_trainer_students():
             .filter(Score.student_id == student.id, Score.subject_id.in_(subject_ids))
             .all()
         )
-        overall_avg = round(sum(item.marks_obtained for item in related_scores) / len(related_scores), 2) if related_scores else 0.0
+        overall_avg = average_percentage(related_scores)
         response.append(
             {
                 "id": str(student.id),
@@ -661,28 +662,40 @@ def trainer_student_profile(student_id: str):
         .all()
     )
 
-    # Group scores by subject and calculate averages
-    subject_averages = {}
-    subjects_data = []
-    by_subject = {}
-    
+    by_subject: dict[uuid.UUID, list[Score]] = {}
     for score in related_scores:
-        if score.subject_id not in by_subject:
-            by_subject[score.subject_id] = []
-        by_subject[score.subject_id].append(score)
-    
-    # Get subject details and build response
-    for subject_id, scores in by_subject.items():
-        subject = db.session.get(Subject, subject_id)
-        if subject:
-            avg = round(sum(s.marks_obtained for s in scores) / len(scores), 2) if scores else 0.0
-            subject_averages[str(subject_id)] = avg
-            subjects_data.append({
-                "id": str(subject.id),
-                "name": subject.name,
-                "average": avg,
-                "assessments_count": len(scores),
-            })
+        by_subject.setdefault(score.subject_id, []).append(score)
+
+    # Every subject this learner shares with the trainer, including ones with no
+    # marks yet — a subject the learner is enrolled on does not stop existing
+    # because nothing has been assessed in it, and omitting it made the profile
+    # disagree with the roster about how many subjects they take.
+    shared_subjects = (
+        db.session.query(Subject)
+        .join(StudentSubject, StudentSubject.subject_id == Subject.id)
+        .filter(
+            StudentSubject.student_id == student.id,
+            Subject.id.in_(subject_ids) if subject_ids else false(),
+            Subject.deleted_at.is_(None),
+        )
+        .order_by(Subject.name.asc())
+        .all()
+    )
+
+    subject_averages: dict[str, float] = {}
+    subjects_data = []
+    for subject in shared_subjects:
+        scores = by_subject.get(subject.id, [])
+        # Averaged as percentages: these are rendered with a % sign and charted
+        # on a percentage axis, so a raw mark out of 40 cannot go here.
+        average = average_percentage(scores)
+        subject_averages[str(subject.id)] = average
+        subjects_data.append({
+            "id": str(subject.id),
+            "name": subject.name,
+            "average": average,
+            "assessments_count": len(scores),
+        })
 
     return {
         "id": str(student.id),
@@ -691,7 +704,7 @@ def trainer_student_profile(student_id: str):
         "student_id": student.registration_number,
         "enrollment_status": "active",
         "subjects": subjects_data,
-        "overall_avg": round(sum(item.marks_obtained for item in related_scores) / len(related_scores), 2) if related_scores else 0.0,
+        "overall_avg": average_percentage(related_scores),
         "assessments_taken": len(related_scores),
         "subject_averages": subject_averages,
     }, 200

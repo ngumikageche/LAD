@@ -10,6 +10,7 @@ from ..models.enrollment import Enrollment
 from ..models.assessment import Assessment
 from ..models.student import Student
 from ..models.subject import Subject
+from ..services.scoping import can_access_score, can_view_master_data, scope_scores
 from .permissions import require_permission, log_view
 
 
@@ -59,7 +60,10 @@ def list_scores():
     if error:
         return error, status
 
-    q = db.session.query(Score).filter(Score.deleted_at.is_(None))
+    # Score Management is an administrative screen, but the rows it lists are
+    # still the caller's own: a trainer sees marks on the subjects assigned to
+    # them, not every mark in the institution.
+    q = scope_scores(db.session.query(Score), user).filter(Score.deleted_at.is_(None))
 
     student_id = request.args.get("student_id")
     subject_id = request.args.get("subject_id")
@@ -94,7 +98,14 @@ def list_scores():
 
     total = q.count()
     items = q.order_by(Score.created_at.desc()).offset((page - 1) * per_page).limit(per_page).all()
-    return {"total": total, "page": page, "per_page": per_page, "items": [_payload(s) for s in items]}, 200
+    log_view(user, "admin.scores", metadata={"scope": "list", "master": can_view_master_data(user), "count": total})
+    return {
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "items": [_payload(s) for s in items],
+        "scope": "all" if can_view_master_data(user) else "assigned",
+    }, 200
 
 
 @bp.put("/<score_id>")
@@ -109,7 +120,7 @@ def update_score(score_id: str):
         return {"error": str(exc)}, 400
 
     score = db.session.get(Score, sid)
-    if not score or score.deleted_at:
+    if not score or score.deleted_at or not can_access_score(user, score.id):
         return {"error": "Score not found"}, 404
 
     payload = request.get_json(silent=True) or {}
@@ -151,7 +162,7 @@ def delete_score(score_id: str):
         return {"error": str(exc)}, 400
 
     score = db.session.get(Score, sid)
-    if not score:
+    if not score or not can_access_score(user, score.id):
         return {"error": "Score not found"}, 404
 
     # soft delete

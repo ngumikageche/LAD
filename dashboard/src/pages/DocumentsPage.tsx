@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Upload, Trash2, Send, FileText, File, X, AlertCircle, CheckCircle2, Search, Users, Download, Eye } from 'lucide-react';
-import { apiRequest } from '../api/client';
+import { ApiRequestError, apiRequest } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useTableControls } from '../hooks/useTableControls';
 import { TableFooter, SortableTh } from '../components/ui/TableControls';
@@ -53,9 +53,11 @@ function fileIcon(type: string | null) {
  * Fetch the bytes with the token, hand the viewer a blob URL, and revoke it on
  * close so the object does not outlive the modal.
  */
+type PreviewFailure = { message: string; kind: 'unrenderable' | 'denied' | 'other' };
+
 function useAuthenticatedFile(fileUrl: string, enabled: boolean) {
   const [objectUrl, setObjectUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<PreviewFailure | null>(null);
   const [isLoading, setIsLoading] = useState(enabled);
 
   useEffect(() => {
@@ -72,7 +74,15 @@ function useAuthenticatedFile(fileUrl: string, enabled: boolean) {
         setObjectUrl(created);
       })
       .catch((err) => {
-        if (!revoked) setError(err instanceof Error ? err.message : 'Unable to open this document');
+        if (revoked) return;
+        // 415 means the server understood the request and cannot render this
+        // format; anything else is an access or network problem, and telling
+        // the two apart decides whether "download instead" is useful advice.
+        const status = err instanceof ApiRequestError ? err.status : 0;
+        setError({
+          kind: status === 415 ? 'unrenderable' : status === 403 || status === 404 ? 'denied' : 'other',
+          message: err instanceof Error ? err.message : 'Unable to open this document',
+        });
       })
       .finally(() => { if (!revoked) setIsLoading(false); });
 
@@ -96,17 +106,28 @@ async function downloadDocument(doc: Doc) {
   URL.revokeObjectURL(href);
 }
 
+// Office formats are rendered to PDF by the server so they can be read in the
+// browser; anything else is streamed as-is. `zip` is the only upload type with
+// nothing sensible to show.
+const NEVER_VIEWABLE = ['zip'];
+
 function PreviewModal({ doc, onClose }: { doc: Doc; onClose: () => void }) {
   const t = (doc.file_type ?? '').toLowerCase();
   const isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp'].includes(t);
-  const isPdf = t === 'pdf';
-  const isText = ['txt', 'csv'].includes(t);
-  const canPreview = isImage || isPdf || isText;
-  const { objectUrl, error, isLoading } = useAuthenticatedFile(doc.file_url, canPreview);
+  const canPreview = !NEVER_VIEWABLE.includes(t);
+  // Everything the server can render arrives as a PDF or an image, so the
+  // frame handles both without needing to know the original format.
+  const { objectUrl, error, isLoading } = useAuthenticatedFile(`/documents/${doc.id}/preview`, canPreview);
 
-  const handleDownload = () => {
-    // The preview pane already surfaces an access failure; nothing to add here.
-    downloadDocument(doc).catch(() => {});
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  const handleDownload = async () => {
+    setDownloadError(null);
+    try {
+      await downloadDocument(doc);
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : 'Download failed');
+    }
   };
 
   return (
@@ -133,6 +154,12 @@ function PreviewModal({ doc, onClose }: { doc: Doc; onClose: () => void }) {
           </div>
         </div>
 
+        {downloadError && (
+          <p className="shrink-0 border-b border-red-500/30 bg-red-500/10 px-5 py-2 text-xs text-red-300">
+            {downloadError}
+          </p>
+        )}
+
         {/* Preview area */}
         <div className="flex-1 overflow-auto bg-slate-950 flex items-center justify-center p-4">
           {canPreview && isLoading && (
@@ -143,12 +170,33 @@ function PreviewModal({ doc, onClose }: { doc: Doc; onClose: () => void }) {
           )}
           {canPreview && error && (
             <div className="text-center">
-              <AlertCircle size={40} className="mx-auto text-red-400 mb-3" />
-              <p className="text-slate-300 mb-1">{error}</p>
-              <p className="text-xs text-slate-500">You may not have access to this document.</p>
+              {error.kind === 'denied' ? (
+                <>
+                  <AlertCircle size={44} className="mx-auto mb-3 text-amber-400" />
+                  <p className="mb-1 text-slate-300">{error.message}</p>
+                  <p className="text-xs text-slate-500">You may not have access to this document.</p>
+                </>
+              ) : (
+                <>
+                  <File size={48} className="mx-auto mb-3 text-slate-600" />
+                  <p className="mb-1 text-slate-300">
+                    {error.kind === 'unrenderable'
+                      ? `This server cannot display .${doc.file_type} files in the browser.`
+                      : error.message}
+                  </p>
+                  <p className="mb-4 text-xs text-slate-500">You can still download it.</p>
+                  <button
+                    type="button"
+                    onClick={handleDownload}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white bg-indigo-600 rounded-lg hover:bg-indigo-700 transition"
+                  >
+                    <Download size={16} /> Download File
+                  </button>
+                </>
+              )}
             </div>
           )}
-          {objectUrl && !error && (isPdf || isText) && (
+          {objectUrl && !error && !isImage && (
             <iframe
               src={objectUrl}
               className="w-full h-full min-h-[60vh] rounded bg-white"
@@ -890,7 +938,11 @@ export default function DocumentsPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => downloadDocument(doc)}
+                          onClick={() => {
+                            downloadDocument(doc).catch((err) =>
+                              setError(err instanceof Error ? err.message : 'Download failed'),
+                            );
+                          }}
                           className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-medium text-indigo-300 bg-indigo-500/15 border border-indigo-500/30 rounded-lg hover:bg-indigo-500/25 transition"
                           title="Download"
                         >

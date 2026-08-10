@@ -16,6 +16,7 @@ export interface TrainerSubject {
   avg_score: number;
 }
 
+/** A row on the trainer's roster. `subjects` here is a list of subject names. */
 export interface TrainerStudent {
   id: string;
   name: string;
@@ -26,6 +27,22 @@ export interface TrainerStudent {
   overall_avg: number;
   assessments_taken: number;
   subject_averages: Record<string, number>;
+}
+
+export interface TrainerStudentSubjectResult {
+  id: string;
+  name: string;
+  average: number;
+  assessments_count: number;
+}
+
+/**
+ * One learner in full. The profile endpoint returns a row per subject with its
+ * own average, unlike the roster's plain names — a difference that used to be
+ * hidden behind a single shared type.
+ */
+export interface TrainerStudentProfile extends Omit<TrainerStudent, 'subjects'> {
+  subjects: TrainerStudentSubjectResult[];
 }
 
 export interface StudentPerformance {
@@ -278,7 +295,7 @@ export const trainerStudentsAPI = {
     return response.data;
   },
 
-  async getStudentProfile(studentId: string): Promise<TrainerStudent> {
+  async getStudentProfile(studentId: string): Promise<TrainerStudentProfile> {
     const response = await apiClient.get(`/trainers/students/${studentId}`);
     return response.data;
   },

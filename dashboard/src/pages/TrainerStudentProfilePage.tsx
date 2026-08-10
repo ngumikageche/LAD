@@ -3,7 +3,13 @@ import { AlertCircle, BookOpen, Download, Mail, MessageSquare, TrendingUp, User 
 import { Bar, BarChart, CartesianGrid, Label, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { trainerStudentsAPI } from '../api/trainer';
 
-interface StudentProfile {
+/**
+ * The two endpoints do not agree on `subjects`: the roster returns subject
+ * names, the profile returns a row per subject with its own average. Modelling
+ * them as one type made the page render an object as text, which throws and
+ * blanks the screen — hence the two shapes below.
+ */
+interface StudentListItem {
   id: string;
   name: string;
   email: string;
@@ -14,11 +20,39 @@ interface StudentProfile {
   assessments_taken: number;
 }
 
+interface SubjectResult {
+  id: string;
+  name: string;
+  average: number;
+  assessments_count: number;
+}
+
+interface StudentProfile {
+  id: string;
+  name: string;
+  email: string;
+  student_id: string;
+  enrollment_status: string;
+  subjects: SubjectResult[];
+  overall_avg: number;
+  assessments_taken: number;
+}
+
+/** Tolerates either shape, so a stale cache or an older API cannot crash the page. */
+const toSubjectResults = (subjects: StudentProfile['subjects'] | string[] | undefined): SubjectResult[] => {
+  if (!Array.isArray(subjects)) return [];
+  return subjects.map((entry, index) =>
+    typeof entry === 'string'
+      ? { id: `${entry}-${index}`, name: entry, average: 0, assessments_count: 0 }
+      : entry,
+  );
+};
+
 type DeliveryChannel = 'system' | 'email' | 'sms';
 type ComposerMode = 'message' | 'feedback';
 
 const TrainerStudentProfilePage = () => {
-  const [students, setStudents] = useState<StudentProfile[]>([]);
+  const [students, setStudents] = useState<StudentListItem[]>([]);
   const [selectedStudentId, setSelectedStudentId] = useState('');
   const [student, setStudent] = useState<StudentProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -90,17 +124,14 @@ const TrainerStudentProfilePage = () => {
     ];
   }, [student]);
 
-  const subjectPerformanceData = useMemo(() => {
-    const subjects = student?.subjects ?? [];
-    if (subjects.length === 0) {
-      return [];
-    }
+  // Real per-subject averages from the profile, rather than the overall figure
+  // stepped down by position — which only looked like a breakdown.
+  const subjectResults = useMemo(() => toSubjectResults(student?.subjects), [student]);
 
-    return subjects.map((subjectName, index) => ({
-      subject: subjectName,
-      score: Math.max((student?.overall_avg ?? 0) - index * 3, 0),
-    }));
-  }, [student]);
+  const subjectPerformanceData = useMemo(
+    () => subjectResults.map((entry) => ({ subject: entry.name, score: entry.average })),
+    [subjectResults],
+  );
 
   const openComposer = (mode: ComposerMode) => {
     setComposerMode(mode);
@@ -235,7 +266,7 @@ const TrainerStudentProfilePage = () => {
             <div>
               <p className="text-sm text-slate-400">Subjects Enrolled</p>
               <p className="mt-2 font-medium text-slate-100">
-                {student.subjects.length} subject{student.subjects.length !== 1 ? 's' : ''}
+                {subjectResults.length} subject{subjectResults.length !== 1 ? 's' : ''}
               </p>
             </div>
           </div>
@@ -307,14 +338,14 @@ const TrainerStudentProfilePage = () => {
         <div className="mb-6 rounded-lg bg-slate-900 border border-slate-800 p-6 shadow">
           <h2 className="mb-4 text-lg font-bold text-slate-100">Enrolled Subjects</h2>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            {student.subjects && student.subjects.length > 0 ? (
-              student.subjects.map((subject) => (
-                <div key={subject} className="rounded-lg border border-slate-700 p-4 transition hover:bg-slate-800">
-                  <p className="font-semibold text-slate-100">{subject}</p>
+            {subjectResults.length > 0 ? (
+              subjectResults.map((subject) => (
+                <div key={subject.id} className="rounded-lg border border-slate-700 p-4 transition hover:bg-slate-800">
+                  <p className="font-semibold text-slate-100">{subject.name}</p>
                   <div className="mt-2 flex gap-4 text-sm text-slate-400">
-                    <span>Overall avg: {student.overall_avg.toFixed(1)}%</span>
+                    <span>Average: {subject.average.toFixed(1)}%</span>
                     <span>•</span>
-                    <span>Assessments: {student.assessments_taken}</span>
+                    <span>Assessments: {subject.assessments_count}</span>
                   </div>
                 </div>
               ))

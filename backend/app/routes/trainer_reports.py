@@ -5,9 +5,10 @@ from collections import defaultdict
 from datetime import datetime
 
 from flask import Blueprint, g, request
-from sqlalchemy import and_, func
+from sqlalchemy import and_, func, or_
 
 from ..extensions import db
+from ..models.assessment import Assessment
 from ..models.lesson_plan import LessonPlan
 from ..models.score import Score
 from ..models.staff_attendance import StaffAttendance
@@ -18,6 +19,7 @@ from ..models.term import Term
 from ..models.trainer_subject import TrainerSubject
 from ..models.user import User
 from .permissions import get_current_user, log_view, _is_admin, _is_trainer
+from ..services.scoping import percentage
 from ..services.trainer_portal import (
     ensure_subject_access,
     get_trainer_subject_ids,
@@ -97,19 +99,47 @@ def class_performance(subject_id: str):
         .all()
     )
 
-    # Scores for this subject, optionally filtered by term
-    score_q = db.session.query(Score).filter(
-        Score.subject_id == sub_uuid,
-        Score.deleted_at.is_(None),
-    )
-    if term:
-        score_q = score_q.filter(Score.term == term.name)
+    # Marks reach a subject two ways: directly via `Score.subject_id`, or — for
+    # a bulk upload that named only an assessment — through that assessment's
+    # module. Matching only the first made a completed upload look like it had
+    # never happened on this report.
+    #
+    # The module fallback is only safe when the module owns this subject alone;
+    # otherwise a sibling subject's marks would be counted into this class's
+    # rank, average, and pass rate. That is the same rule the upload applies
+    # when it decides whether it can attribute a subject-less row.
+    module_subject_count = db.session.query(func.count(Subject.id)).filter(
+        Subject.module_id == subject.module_id,
+        Subject.deleted_at.is_(None),
+    ).scalar() or 0
+
+    subject_match = Score.subject_id == sub_uuid
+    if module_subject_count == 1:
+        subject_match = or_(
+            subject_match,
+            and_(Score.subject_id.is_(None), Assessment.module_id == subject.module_id),
+        )
+
+    score_q = db.session.query(Score).outerjoin(
+        Assessment, Assessment.id == Score.assessment_id
+    ).filter(Score.deleted_at.is_(None), subject_match)
     scores = score_q.all()
+
+    # Term is a free-text label, so a score saved without one is counted in
+    # whichever term is being viewed rather than vanishing. A term that genuinely
+    # has no marks stays empty — showing another term's marks under this term's
+    # heading would be worse than showing none.
+    if term:
+        scores = [
+            s for s in scores
+            if s.term is None or (s.term or "").strip().lower() == (term.name or "").strip().lower()
+        ]
 
     scores_by_student: dict[uuid.UUID, list[Score]] = defaultdict(list)
     for s in scores:
-        if s.student_id:
-            scores_by_student[s.student_id].append(s)
+        student_id = s.student_id or (s.enrollment.student_id if s.enrollment else None)
+        if student_id:
+            scores_by_student[student_id].append(s)
 
     # Build ranked rows
     rows = []
@@ -148,9 +178,15 @@ def class_performance(subject_id: str):
         r["rank"] = None
     ranked = scored + unscored
 
-    # Summary stats
+    # Summary stats. The class average is a percentage, so it is computed from
+    # each learner's percentage rather than from raw marks — otherwise a paper
+    # out of 40 drags the figure down against one out of 100.
     mark_values = [r["marks"] for r in scored]
-    class_avg = round(sum(mark_values) / len(mark_values), 1) if mark_values else 0
+    class_percentages = [
+        value for value in (percentage(r["marks"], r["total_marks"]) for r in scored)
+        if value is not None
+    ]
+    class_avg = round(sum(class_percentages) / len(class_percentages), 1) if class_percentages else 0
     pass_count = sum(1 for r in scored if r["is_passed"])
     pass_rate = round(pass_count / len(scored) * 100, 1) if scored else 0
     top_mark = max(mark_values) if mark_values else 0

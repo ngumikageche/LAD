@@ -119,6 +119,27 @@ def _read_marks_upload(upload) -> tuple[list[str], list[tuple[int, dict[str, str
     raise ValueError("Upload a CSV or XLSX file")
 
 
+def _sole_subject_of_module(module_id, cache: dict) -> "uuid.UUID | None":
+    """
+    The module's only subject, or None when it has none or more than one.
+
+    Attributing a subject-less mark is only safe when there is a single
+    candidate; with two subjects in a module the guess would put one class's
+    marks on another class's report.
+    """
+    if module_id in cache:
+        return cache[module_id]
+    subject_ids = [
+        row[0] for row in db.session.query(Subject.id).filter(
+            Subject.module_id == module_id,
+            Subject.deleted_at.is_(None),
+        ).limit(2).all()
+    ]
+    resolved = subject_ids[0] if len(subject_ids) == 1 else None
+    cache[module_id] = resolved
+    return resolved
+
+
 def _grade(marks: float, total: float) -> str:
     pct = (marks / total * 100) if total else 0
     if pct >= 80: return "A"
@@ -709,6 +730,9 @@ def commit_bulk():
     conflicts: list[dict] = []
     assessment_ids = set()
     subject_ids = set()
+    # One lookup per module, not per row — a large upload is otherwise a query
+    # per learner for a fact that cannot change during the batch.
+    sole_subject_cache: dict[uuid.UUID, uuid.UUID | None] = {}
 
     for row in rows:
         # Never trust preview-only flags or calculated values from the client.
@@ -784,6 +808,14 @@ def commit_bulk():
             subject_id = row_subject.id
         elif batch_subject:
             subject_id = batch_subject.id
+        if not subject_id and assessment.module_id:
+            # Neither the row nor the batch named a subject. Every report that
+            # groups marks by class keys on `Score.subject_id`, so leaving it
+            # null makes an upload land in the database and vanish from the
+            # reports. When the assessment's module owns exactly one subject
+            # there is no ambiguity — attribute it.
+            subject_id = _sole_subject_of_module(assessment.module_id, sole_subject_cache)
+
         if subject_id:
             subject_ids.add(subject_id)
             row_subject = db.session.get(Subject, subject_id)

@@ -139,19 +139,16 @@ def report_card(student_id: str):
         or_(Score.student_id == sid, Score.enrollment_id.in_(enrollment_ids)),
     )
 
-    # Term is a free-text label on the score, so a term-scoped card would drop
-    # every score saved without one. Keep those rows and let the card show the
-    # full picture rather than an empty table.
+    # Term is a free-text label on the score, so a score saved without one is
+    # counted in whichever term is being viewed rather than disappearing. A term
+    # that genuinely holds no marks stays empty — printing another term's marks
+    # under this term's heading would be worse than printing none.
     scores = score_query.all()
     if term:
-        term_scores = [
+        scores = [
             score for score in scores
             if score.term is None or (score.term or "").strip().lower() == (term.name or "").strip().lower()
         ]
-        # Only narrow when the term actually matches something; otherwise a
-        # mislabelled term would blank the card.
-        if term_scores:
-            scores = term_scores
 
     # Build subject rows
     subject_rows = []

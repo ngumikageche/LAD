@@ -106,15 +106,18 @@ export default function AdminNotificationsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [filterRead, setFilterRead] = useState<'all' | 'read' | 'unread'>('all');
   const [composeMode, setComposeMode] = useState<ComposeMode>('single');
+  // A scoped trainer cannot use the school-wide or by-role targets, so their
+  // form starts — and resets — on the narrowest one they can. Sending used to
+  // reset the target back to "all", which is not an option they are offered:
+  // the sub-field for picking a class disappeared and every further send was
+  // rejected, leaving the composer looking broken after the first message.
+  const defaultTarget: BulkTarget = isScopedTrainer ? 'subject' : 'all';
   const [bulkFilters, setBulkFilters] = useState<BulkFilters>(emptyFilters);
 
-  // `user` arrives after the first render, so the default "all users" target
-  // can be selected before we know the sender is a scoped trainer. Move them to
-  // the narrowest target they can actually use.
+  // `user` arrives after the first render, so correct the target once it does.
   useEffect(() => {
-    if (!isScopedTrainer) return;
     setBulkFilters((current) => (
-      current.target === 'all' || current.target === 'role'
+      isScopedTrainer && (current.target === 'all' || current.target === 'role')
         ? { ...emptyFilters, target: 'subject' }
         : current
     ));
@@ -275,7 +278,7 @@ export default function AdminNotificationsPage() {
 
   const resetForm = () => {
     setFormData(emptyForm);
-    setBulkFilters(emptyFilters);
+    setBulkFilters({ ...emptyFilters, target: defaultTarget });
     setComposeMode('single');
     setDeliveryChannels({ system: true, email: false, sms: false });
     setShowForm(false);
