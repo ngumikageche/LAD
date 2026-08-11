@@ -6,7 +6,7 @@ import {
   BookOpen, UserCheck, ChevronDown, ChevronRight, LayoutDashboard,
   QrCode, ScanLine, PenLine, HeartPulse,
   X,
-  Scale, Star, Inbox,
+  Scale, Star, Inbox, CalendarRange,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useAuth } from '../../auth/AuthContext';
@@ -98,6 +98,7 @@ const adminGroups: NavGroup[] = [
       { name: 'Courses',           icon: Book,            path: '/courses',                    color: 'text-amber-400', permission: 'courses.read'  },
       { name: 'Modules',           icon: Book,            path: '/modules',                    color: 'text-blue-300', permission: 'modules.read' },
       { name: 'Subjects',          icon: Book,            path: '/subjects',                   color: 'text-amber-400', permission: 'subjects.read'  },
+      { name: 'Terms',             icon: CalendarRange,   path: '/terms',                      color: 'text-cyan-300', permission: 'terms.read' },
     ],
   },
   {
@@ -170,6 +171,7 @@ const trainerGroups: NavGroup[] = [
       { name: 'My Courses',        icon: Book,            path: '/courses',                   color: 'text-amber-400', permission: 'courses.read' },
       { name: 'My Modules',        icon: Book,            path: '/modules',                   color: 'text-blue-300', permission: 'modules.read' },
       { name: 'My Subjects',       icon: Book,            path: '/subjects',                  color: 'text-amber-400', permission: 'subjects.read' },
+      { name: 'Terms',             icon: CalendarRange,   path: '/terms',                     color: 'text-cyan-300', permission: 'terms.read' },
       { name: 'Score Management',  icon: FileText,        path: '/admin/scores',              color: 'text-red-400', permission: 'admin.scores.read' },
       { name: 'Bulk Upload Marks', icon: Upload,          path: '/scores/bulk-upload',        color: 'text-amber-400', permission: 'scores.create' },
       { name: 'Practical Assess.', icon: FileText,        path: '/trainer/practical-assessments', color: 'text-teal-300' },

@@ -46,6 +46,7 @@ from .online_exams import bp as online_exams_bp
 from .practical_assessments import bp as practical_assessments_bp
 from .assessment_reports import bp as assessment_reports_bp
 from .alerts import bp as alerts_bp
+from .terms import bp as terms_bp
 from .permissions import trainer_or_admin_required  # re-exported for convenience
 
 __all__ = [
@@ -95,4 +96,5 @@ __all__ = [
 	"practical_assessments_bp",
 	"assessment_reports_bp",
 	"alerts_bp",
+	"terms_bp",
 ]

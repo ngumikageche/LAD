@@ -295,3 +295,52 @@ and returns `delivered_to`.
 being saved; add `?download=1` for the attachment disposition. The endpoint
 requires a bearer token, so a viewer must fetch the bytes and use an object URL
 rather than pointing an `<iframe src>` at the path directly.
+
+## Academic terms
+
+Terms already existed in the database and drove every dated report, but there
+was no way to see or manage them — they appeared only as a dropdown inside one
+report's filter options. A trainer told "no marks were recorded for this term"
+had nowhere to look up which term does hold their marks.
+
+`/terms` reads and writes the existing `terms` table. No new tables.
+
+```typescript
+// Every term, newest first, each with the number of marks in YOUR scope —
+// a trainer sees counts for their assigned subjects, an admin sees all.
+const { terms, active_term_id, scope } = await apiRequest('/terms', { token });
+// terms[n].scores_in_scope tells you which term to actually look at
+// ?with_counts=0 skips the counting when only names are needed
+
+await apiRequest('/terms', { method: 'POST', token,
+  body: { name: 'Term 1 2026', start_date: '2026-01-06', end_date: '2026-04-10' } });
+
+await apiRequest(`/terms/${id}`, { method: 'PUT', token, body: { name: 'Term 1' } });
+
+// Make this the current term. Exactly one term is active at a time — reports
+// resolve "the current term" by taking the first active row, so two would make
+// that choice arbitrary.
+await apiRequest(`/terms/${id}/activate`, { method: 'POST', token });
+
+// Refused with 409 and a `dependents` breakdown if assessments, enrolments,
+// lesson plans, or staff attendance still point at the term.
+await apiRequest(`/terms/${id}`, { method: 'DELETE', token });
+```
+
+| Key | Grants |
+| --- | --- |
+| `terms.read` | Open Academic Terms and see per-term mark counts |
+| `terms.create` | Add a term |
+| `terms.update` | Edit a term and set the current one |
+| `terms.delete` | Remove an unused term |
+
+`terms.read` is in the Trainer baseline; Managers also get `terms.update`.
+
+### How a score belongs to a term
+
+`Score.term` is a free-text label, not a foreign key, and a great many scores
+carry none — bulk uploads whose sheet had no term column, or marks entered
+before terms were in use. `scoping.term_match_clause()` is the single rule every
+report uses: a score with **no** term counts in whichever term is being viewed,
+one naming a **different** term does not, and matching ignores case and
+surrounding whitespace.

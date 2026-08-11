@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { Printer, AlertCircle, TrendingUp, TrendingDown, Download, Filter, Search, RotateCcw } from 'lucide-react';
 import { adminReportsV2API } from '../api/admin';
 import { exportExcel, exportCSV } from '../utils/exportUtils';
@@ -53,7 +54,7 @@ const EMPTY_REASONS: Record<string, string> = {
   no_assigned_subjects:
     'No subjects are assigned to you yet, so there are no marks in your scope. Ask an administrator to assign your units, or to grant the "View Master Data" right for school-wide results.',
   no_scores_in_term:
-    'No marks have been recorded for this term in your scope. Try another term, or widen the filters above.',
+    'No marks have been recorded for this term in your scope. Academic Terms shows which term does hold your marks.',
   learners_not_on_a_course:
     'Marks exist in your scope, but the learners they belong to are not attached to a course, so they cannot be grouped into a class. Check those learners\u2019 enrolment.',
 };
@@ -68,6 +69,11 @@ function ScopeNotice({ scope }: { scope: ExamReport['scope'] }) {
           Showing results for the {scope.assigned_subject_count} subject
           {scope.assigned_subject_count === 1 ? '' : 's'} assigned to you.
         </span>
+      ) : null}
+      {scope.empty_reason === 'no_scores_in_term' ? (
+        <Link to="/terms" className="mt-2 inline-block text-xs font-semibold underline underline-offset-2">
+          Open Academic Terms
+        </Link>
       ) : null}
     </ReportNotice>
   );

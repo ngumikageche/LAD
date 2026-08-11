@@ -87,6 +87,7 @@ def create_app() -> Flask:
         practical_assessments_bp,
         assessment_reports_bp,
         alerts_bp,
+        terms_bp,
     )
 
     # Register blueprints
@@ -140,6 +141,7 @@ def create_app() -> Flask:
     app.register_blueprint(practical_assessments_bp)
     app.register_blueprint(assessment_reports_bp)
     app.register_blueprint(alerts_bp)
+    app.register_blueprint(terms_bp)
     
     # Attendance system
     app.register_blueprint(attendance_bp)

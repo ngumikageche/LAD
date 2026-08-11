@@ -54,6 +54,7 @@ const StudentTrainerFeedbackPage = lazy(() => import('./pages/StudentTrainerFeed
 const TrainerFeedbackInboxPage = lazy(() => import('./pages/TrainerFeedbackInboxPage'));
 const PracticalAssessmentReportsPage = lazy(() => import('./pages/PracticalAssessmentReportsPage'));
 const ExamResultsAnalysisPage = lazy(() => import('./pages/ExamResultsAnalysisPage'));
+const TermsPage = lazy(() => import('./pages/TermsPage'));
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import ProtectedRoute, { UserTypeRoute, PermissionRoute, hasPermission } from './auth/ProtectedRoute';
 
@@ -224,6 +225,9 @@ function App() {
               </Route>
               <Route element={<PermissionRoute permissionKey="roles.read" />}>
                 <Route path="/roles" element={<RolesPage />} />
+              </Route>
+              <Route element={<PermissionRoute permissionKey="terms.read" deniedTypes={['student']} />}>
+                <Route path="/terms" element={<TermsPage />} />
               </Route>
               <Route element={<PermissionRoute permissionKey="institutions.read" />}>
                 <Route path="/institutions" element={<InstitutionsPage />} />
