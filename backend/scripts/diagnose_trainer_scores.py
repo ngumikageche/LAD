@@ -174,6 +174,11 @@ def main() -> int:
     parser.add_argument("--email", help="Trainer's login email")
     parser.add_argument("--trainer-id", help="Trainer UUID")
     parser.add_argument("--list", action="store_true", help="List trainers and exit")
+    parser.add_argument(
+        "--brief",
+        action="store_true",
+        help="Only the funnel — skips the per-subject and duplicate tables, which are long",
+    )
     args = parser.parse_args()
 
     app = create_app()
@@ -205,6 +210,11 @@ def main() -> int:
         if not assigned:
             print("  (none — this alone explains an empty screen)")
         print()
+
+        _funnel(trainer, assigned)
+
+        if args.brief:
+            return 0
 
         # Every subject that actually holds marks.
         rows = (
@@ -267,8 +277,6 @@ def main() -> int:
                     )
         else:
             print("No two subjects share a name.")
-
-        _funnel(trainer, assigned)
 
         print(
             "\nRemedy: assign the trainer the subject id that holds the marks "
