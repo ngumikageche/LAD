@@ -32,6 +32,13 @@ interface ExamReport {
   trend: Trend | null;
   by_course: CourseRow[];
   by_subject: SubjectRow[];
+  scope?: {
+    mode: 'all' | 'assigned';
+    assigned_subject_count: number | null;
+    scores_in_scope: number;
+    scores_reported: number;
+    empty_reason: 'no_assigned_subjects' | 'no_scores_in_term' | 'learners_not_on_a_course' | null;
+  };
   filter_options: {
     terms: Array<{ id: string; name: string }>;
     departments: Array<{ id: string; name: string }>;
@@ -40,6 +47,30 @@ interface ExamReport {
   };
   generated_at: string;
   generated_by: string;
+}
+
+const EMPTY_REASONS: Record<string, string> = {
+  no_assigned_subjects:
+    'No subjects are assigned to you yet, so there are no marks in your scope. Ask an administrator to assign your units, or to grant the "View Master Data" right for school-wide results.',
+  no_scores_in_term:
+    'No marks have been recorded for this term in your scope. Try another term, or widen the filters above.',
+  learners_not_on_a_course:
+    'Marks exist in your scope, but the learners they belong to are not attached to a course, so they cannot be grouped into a class. Check those learners\u2019 enrolment.',
+};
+
+function ScopeNotice({ scope }: { scope: ExamReport['scope'] }) {
+  if (!scope?.empty_reason) return null;
+  return (
+    <ReportNotice icon={AlertCircle} tone="warning">
+      {EMPTY_REASONS[scope.empty_reason] ?? 'No results matched this report.'}
+      {scope.mode === 'assigned' && scope.assigned_subject_count !== null ? (
+        <span className="mt-1 block text-xs opacity-80">
+          Showing results for the {scope.assigned_subject_count} subject
+          {scope.assigned_subject_count === 1 ? '' : 's'} assigned to you.
+        </span>
+      ) : null}
+    </ReportNotice>
+  );
 }
 
 function TrendBadge({ delta }: { delta: number }) {
@@ -167,6 +198,8 @@ export default function AdminExamResultsPage() {
           CSV
         </ReportActionButton>
       </ReportToolbar>
+
+      <ScopeNotice scope={data.scope} />
 
       <ReportSurface maxWidth="max-w-6xl">
         <div className="border-b border-white/10 pb-6 text-center">

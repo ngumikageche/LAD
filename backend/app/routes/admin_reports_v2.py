@@ -18,7 +18,7 @@ from ..models.student import Student
 from ..models.subject import Subject
 from ..models.term import Term
 from ..models.user import User
-from ..services.scoping import scope_scores, trainer_subject_ids
+from ..services.scoping import scope_scores, term_match_clause, trainer_subject_ids
 from .permissions import get_current_user, log_view, _has_permission, _is_admin, _is_student
 
 bp = Blueprint("admin_reports_v2", __name__, url_prefix="/reports/admin")
@@ -149,12 +149,17 @@ def exam_results():
         return score.student or (score.enrollment.student if score.enrollment else None)
 
     if term:
-        score_q = score_q.filter(Score.term == term.name)
+        score_q = score_q.filter(term_match_clause(term))
 
     # A trainer holding this report reads their own teaching load, not the whole
     # institution. `scope_scores` is a no-op for admins and for anyone holding
     # `data.master`, so school-wide oversight is unaffected.
     score_q = scope_scores(score_q, user)
+
+    # Counted before the course-membership filter below, so an empty report can
+    # say whether the caller teaches nothing, nothing was marked this term, or
+    # the marks exist but their learners are not attached to a course.
+    scoped_score_count = score_q.count()
 
     permitted_course_ids = None
     if user.institution_id:
@@ -282,7 +287,7 @@ def exam_results():
         if prev:
             prev_query = scope_scores(
                 db.session.query(Score).filter(
-                    Score.term == prev.name, Score.deleted_at.is_(None)
+                    term_match_clause(prev), Score.deleted_at.is_(None)
                 ),
                 user,
             )
@@ -349,6 +354,22 @@ def exam_results():
                 for item in subjects
                 if item.module and (permitted_course_ids is None or item.module.course_id in permitted_course_ids)
             ],
+        },
+        # Why the report is empty, when it is. Without this the screen shows
+        # "No data for this term" whether the caller teaches nothing, nothing
+        # has been marked, or the marks exist but their learners sit outside
+        # any course — three very different things to act on.
+        "scope": {
+            "mode": "all" if taught_subject_ids is None else "assigned",
+            "assigned_subject_count": None if taught_subject_ids is None else len(taught_subject_ids),
+            "scores_in_scope": scoped_score_count,
+            "scores_reported": len(all_scores),
+            "empty_reason": (
+                None if all_scores
+                else "no_assigned_subjects" if taught_subject_ids is not None and not taught_subject_ids
+                else "no_scores_in_term" if scoped_score_count == 0
+                else "learners_not_on_a_course"
+            ),
         },
         "applied_filters": {
             "term_id": str(term.id) if term else None,

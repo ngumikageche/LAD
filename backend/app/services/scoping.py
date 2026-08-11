@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Float, and_, case, cast, false, func, or_
+from sqlalchemy import Float, and_, case, cast, false, func, or_, true
 
 from ..extensions import db
 from ..models.assessment import Assessment
@@ -373,6 +373,31 @@ def percentage(marks_obtained: float | int | None, total_marks: float | int | No
     if total > 0:
         return round(marks / total * 100, 1)
     return round(marks, 1)
+
+
+def term_match_clause(term):
+    """
+    Scores belonging to a term, as a SQL condition.
+
+    `Score.term` is a free-text label, and a great many scores carry none at all
+    — a bulk upload whose sheet had no term column, or a mark entered before
+    terms were in use. Reports resolve the active term by default, so a strict
+    `Score.term == term.name` silently emptied whole pages of marks that were
+    plainly in the database.
+
+    A score with no term is counted in whichever term is being viewed; one that
+    names a different term is not. Matching is case- and whitespace-insensitive,
+    because these labels are typed by hand.
+    """
+    if term is None:
+        return true()
+    name = (getattr(term, "name", None) or "").strip().lower()
+    if not name:
+        return true()
+    return or_(
+        Score.term.is_(None),
+        func.lower(func.trim(Score.term)) == name,
+    )
 
 
 def score_percentage_expr():

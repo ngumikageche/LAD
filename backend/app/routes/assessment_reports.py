@@ -23,6 +23,7 @@ import uuid
 from flask import Blueprint, request
 
 from ..extensions import db
+from ..services.scoping import term_match_clause
 from ..models.assessment import Assessment
 from ..models.course import Course
 from ..models.department import Department
@@ -542,7 +543,7 @@ def _exam_query(user: User, scope_trainer: Trainer | None):
     if term_id:
         term = db.session.get(Term, term_id)
         if term:
-            query = query.filter(Score.term == term.name)
+            query = query.filter(term_match_clause(term))
 
     course_id = _parse_uuid_arg(request.args.get("course_id"))
     if course_id:

@@ -7,6 +7,7 @@ import uuid
 from sqlalchemy import func
 
 from ..extensions import db
+from .scoping import term_match_clause
 from ..models.attendance import Attendance
 from ..models.course import Course
 from ..models.enrollment import Enrollment
@@ -60,7 +61,7 @@ def student_term_report(user: User, student_id: str, term_id: str | None = None)
 
     q = db.session.query(Score).filter(Score.student_id == sid, Score.deleted_at.is_(None))
     if term:
-        q = q.filter(Score.term == term.name)
+        q = q.filter(term_match_clause(term))
     scores = q.all()
 
     subjects = []
@@ -213,7 +214,7 @@ def class_performance_report(
     student_ids = [s.id for s in students]
     score_q = db.session.query(Score).filter(Score.student_id.in_(student_ids), Score.deleted_at.is_(None))
     if term:
-        score_q = score_q.filter(Score.term == term.name)
+        score_q = score_q.filter(term_match_clause(term))
     scores = score_q.all()
     scores_by_student: dict[uuid.UUID, list[Score]] = defaultdict(list)
     for score in scores:
@@ -298,7 +299,7 @@ def school_pass_rate_report(user: User, term_id: str | None = None):
     term = _resolve_term(term_id)
     q = db.session.query(Score).filter(Score.deleted_at.is_(None))
     if term:
-        q = q.filter(Score.term == term.name)
+        q = q.filter(term_match_clause(term))
     scores = q.all()
     def score_passed(score: Score) -> bool:
         if score.is_passed is not None:
