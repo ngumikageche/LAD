@@ -7,6 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from datetime import datetime
 
 from ..extensions import db
+from ..models.assessment import Assessment
 from ..services.scoping import average_percentage, can_access_score, score_percentage
 from ..models.user import User
 from ..models.trainer import Trainer

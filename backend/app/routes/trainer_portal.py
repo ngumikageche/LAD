@@ -24,6 +24,7 @@ from ..services.trainer_portal import (
     score_payload,
     student_payload,
     subject_payload,
+    subject_statistics,
     trainer_dashboard,
     trainer_subject_report,
 )

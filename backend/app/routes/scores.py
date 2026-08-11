@@ -11,6 +11,7 @@ from ..models.score import Score
 from ..models.assessment import Assessment
 from ..models.enrollment import Enrollment
 from ..models.student import Student
+from ..models.student_subject import StudentSubject
 from ..models.trainer import Trainer
 from ..models.course import Course
 from ..models.notification import Notification
@@ -411,7 +412,6 @@ def get_my_subject_scores(subject_id: str):
         return {"error": "Student record not found"}, 404
     
     # Verify student is enrolled in this subject
-    from ..models.student_subject import StudentSubject
     enrollment = db.session.query(StudentSubject).filter(
         and_(
             StudentSubject.student_id == student.id,
