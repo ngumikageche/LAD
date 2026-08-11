@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 from flask import Blueprint, request
 from sqlalchemy import and_, func, or_
+from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError
 from ..extensions import db
 from ..models.subject import Subject
@@ -13,6 +14,7 @@ from ..models.student_subject import StudentSubject
 from ..models.student import Student
 from ..models.user import User
 from flask_cors import cross_origin
+from ..models.course import Course
 from ..models.module import Module
 from ..services.scoping import (
     can_view_master_data,
@@ -112,7 +114,13 @@ def list_subjects():
     if error:
         return error, status
 
-    query = scope_subjects(db.session.query(Subject), user).order_by(Subject.name.asc())
+    # The payload walks subject → module → course → department for every row,
+    # so without this each subject costs three extra queries.
+    query = (
+        scope_subjects(db.session.query(Subject), user)
+        .options(selectinload(Subject.module).selectinload(Module.course).selectinload(Course.department))
+        .order_by(Subject.name.asc())
+    )
 
     module_id = request.args.get("module_id")
     if module_id:

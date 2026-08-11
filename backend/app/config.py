@@ -34,6 +34,18 @@ class Config:
     MAX_CONTENT_LENGTH = int(
         os.getenv("MAX_CONTENT_LENGTH", str(25 * 1024 * 1024))
     )
+
+    # Analytics results are memoized for a minute. The default in-process cache
+    # is per-worker, so with N workers a given result is still recomputed up to
+    # N times and every deploy starts cold. Point REDIS_URL at a Redis instance
+    # to share one cache across workers; without it the behaviour is unchanged.
+    CACHE_TYPE = os.getenv("CACHE_TYPE") or ("RedisCache" if os.getenv("REDIS_URL") else "SimpleCache")
+    CACHE_REDIS_URL = os.getenv("REDIS_URL")
+    CACHE_DEFAULT_TIMEOUT = int(os.getenv("CACHE_DEFAULT_TIMEOUT", "60"))
+    # Bounds the in-process fallback so a long-running worker cannot grow
+    # without limit.
+    CACHE_THRESHOLD = int(os.getenv("CACHE_THRESHOLD", "1000"))
+    CACHE_KEY_PREFIX = os.getenv("CACHE_KEY_PREFIX", "lad:")
     SMTP_HOST = os.getenv("SMTP_HOST")
     SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
     SMTP_USERNAME = os.getenv("SMTP_USERNAME")

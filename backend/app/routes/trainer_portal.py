@@ -210,7 +210,8 @@ def list_subjects():
         query = query.filter(Subject.id == subject_uuid)
 
     subjects = query.order_by(Subject.name.asc()).all()
-    return [subject_payload(subject) for subject in subjects], 200
+    subject_stats = subject_statistics([subject.id for subject in subjects])
+    return [subject_payload(subject, subject_stats.get(subject.id)) for subject in subjects], 200
 
 
 @bp.get("/subjects/<subject_id>")

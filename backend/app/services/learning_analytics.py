@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import math
 import uuid
+
+from flask import g
 from collections import defaultdict
 from datetime import datetime
 
@@ -41,7 +43,42 @@ def _uuid_or_none(value: str | None) -> uuid.UUID | None:
     return uuid.UUID(str(value))
 
 
+def _request_memo(key: tuple, build):
+    """
+    Memoize a scope lookup for the life of one request.
+
+    A single dashboard calls six analytics functions, and each independently
+    resolves the same subject and student id lists — twelve identical
+    multi-join queries for one page. Request scope is used rather than the
+    shared cache so the result cannot outlive the data it was derived from.
+    """
+    try:
+        store = g.setdefault("_analytics_scope_memo", {})
+    except RuntimeError:
+        # No application context (a script or a test) — resolve without memoizing.
+        return build()
+    if key not in store:
+        store[key] = build()
+    return store[key]
+
+
 def _resolve_subject_ids(
+    department_id: str | None = None,
+    course_id: str | None = None,
+    module_id: str | None = None,
+    subject_id: str | None = None,
+    trainer_id: str | None = None,
+    student_id: str | None = None,
+) -> list[uuid.UUID] | None:
+    return _request_memo(
+        ("subjects", department_id, course_id, module_id, subject_id, trainer_id, student_id),
+        lambda: _resolve_subject_ids_uncached(
+            department_id, course_id, module_id, subject_id, trainer_id, student_id
+        ),
+    )
+
+
+def _resolve_subject_ids_uncached(
     department_id: str | None = None,
     course_id: str | None = None,
     module_id: str | None = None,
@@ -76,6 +113,22 @@ def _resolve_subject_ids(
 
 
 def _resolve_student_ids(
+    department_id: str | None = None,
+    course_id: str | None = None,
+    module_id: str | None = None,
+    subject_id: str | None = None,
+    trainer_id: str | None = None,
+    student_id: str | None = None,
+) -> list[uuid.UUID] | None:
+    return _request_memo(
+        ("students", department_id, course_id, module_id, subject_id, trainer_id, student_id),
+        lambda: _resolve_student_ids_uncached(
+            department_id, course_id, module_id, subject_id, trainer_id, student_id
+        ),
+    )
+
+
+def _resolve_student_ids_uncached(
     department_id: str | None = None,
     course_id: str | None = None,
     module_id: str | None = None,

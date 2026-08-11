@@ -6,6 +6,7 @@ import secrets
 
 from flask import Blueprint, current_app, request, send_file
 from sqlalchemy import false, func, or_
+from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import IntegrityError
 from werkzeug.security import generate_password_hash
 
@@ -23,6 +24,7 @@ from ..models.trainer_subject import TrainerSubject
 from ..models.user import User
 from ..services.trainer_portal import (
     at_risk_students,
+    subject_statistics,
     ensure_subject_access,
     get_trainer_subject_ids,
     pagination_meta,
@@ -64,13 +66,29 @@ def _parse_uuid(value: str | None, field: str) -> uuid.UUID:
         raise ValueError(f"Invalid '{field}'") from exc
 
 
-def _trainer_payload(trainer: Trainer) -> dict:
-    subject_ids = [
-        str(row.subject_id)
-        for row in db.session.query(TrainerSubject.subject_id)
-        .filter(TrainerSubject.trainer_id == trainer.id)
-        .all()
-    ]
+def _subject_ids_by_trainer(trainer_ids: list) -> dict:
+    """Assignments for a whole list of trainers in one grouped query."""
+    if not trainer_ids:
+        return {}
+    grouped: dict = {}
+    rows = db.session.query(TrainerSubject.trainer_id, TrainerSubject.subject_id).filter(
+        TrainerSubject.trainer_id.in_(trainer_ids)
+    ).all()
+    for trainer_id, subject_id in rows:
+        grouped.setdefault(trainer_id, []).append(str(subject_id))
+    return grouped
+
+
+def _trainer_payload(trainer: Trainer, subject_ids_by_trainer: dict | None = None) -> dict:
+    if subject_ids_by_trainer is not None:
+        subject_ids = subject_ids_by_trainer.get(trainer.id, [])
+    else:
+        subject_ids = [
+            str(row.subject_id)
+            for row in db.session.query(TrainerSubject.subject_id)
+            .filter(TrainerSubject.trainer_id == trainer.id)
+            .all()
+        ]
     return {
         "id": str(trainer.id),
         "code": trainer.code,
@@ -519,6 +537,7 @@ def list_trainer_subjects():
         .order_by(Subject.name.asc())
         .all()
     )
+    subject_stats = subject_statistics([subject.id for subject in subjects])
     return [
         {
             "id": item["id"],
@@ -534,7 +553,10 @@ def list_trainer_subjects():
             "total_assessments": item["recent_scores_count"],
             "avg_score": item["average_score"],
         }
-        for item in (subject_payload(subject) for subject in subjects)
+        for item in (
+            subject_payload(subject, subject_stats.get(subject.id))
+            for subject in subjects
+        )
     ], 200
 
 
@@ -960,7 +982,12 @@ def list_trainers():
     if error:
         return error, status
 
-    query = scope_trainers(db.session.query(Trainer), user).order_by(Trainer.created_at.desc())
+    # Without the eager load the payload lazy-loads `trainer.user` per row.
+    query = (
+        scope_trainers(db.session.query(Trainer), user)
+        .options(selectinload(Trainer.user))
+        .order_by(Trainer.created_at.desc())
+    )
     department_id = request.args.get("department_id")
     if department_id:
         try:
@@ -970,12 +997,13 @@ def list_trainers():
         query = query.filter(Trainer.department_id == department_uuid)
 
     trainers = query.all()
+    subject_ids_by_trainer = _subject_ids_by_trainer([trainer.id for trainer in trainers])
     log_view(
         user,
         "trainers",
         metadata={"scope": "list", "master": can_view_master_data(user), "count": len(trainers)},
     )
-    return [_trainer_payload(trainer) for trainer in trainers], 200
+    return [_trainer_payload(trainer, subject_ids_by_trainer) for trainer in trainers], 200
 
 
 @bp.get("/<trainer_id>")

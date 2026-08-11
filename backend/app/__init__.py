@@ -20,7 +20,18 @@ def create_app() -> Flask:
     app.config.setdefault('CACHE_TYPE', 'SimpleCache')
     app.config.setdefault('CACHE_DEFAULT_TIMEOUT', 600)
     from .extensions import cache
-    cache.init_app(app)
+    try:
+        cache.init_app(app)
+    except Exception:
+        # A caching backend is an optimisation, never a reason for the API to
+        # refuse to start — an unreachable Redis or a missing client library
+        # falls back to the in-process cache instead of taking the app down.
+        app.logger.exception(
+            "Could not start the %s cache backend; falling back to SimpleCache",
+            app.config.get("CACHE_TYPE"),
+        )
+        app.config["CACHE_TYPE"] = "SimpleCache"
+        cache.init_app(app)
 
   
     from . import models # Ensure models are registered before migrations
@@ -132,6 +143,16 @@ def create_app() -> Flask:
     
     # Attendance system
     app.register_blueprint(attendance_bp)
+
+    @app.after_request
+    def _write_audit_events(response):
+        # Audit events are queued during the request and written here as one
+        # insert, so a handler that logs several times does not pay a separate
+        # connection and transaction for each before it can respond.
+        from .routes.permissions import flush_audit_events
+
+        flush_audit_events()
+        return response
 
     @app.get("/")
     def health_check():

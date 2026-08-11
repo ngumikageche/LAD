@@ -77,31 +77,25 @@ export default function AdminDashboard() {
   useEffect(() => {
     const loadOptions = async () => {
       try {
-        const [departments, courses, modules, subjects, trainers, students] = await Promise.all([
-          apiRequest<any[]>('/departments'),
-          apiRequest<any[]>('/courses'),
-          apiRequest<any[]>('/modules'),
-          apiRequest<any[]>('/subjects'),
-          apiRequest<any[]>('/trainers'),
-          apiRequest<any[]>('/students'),
-        ]);
+        // One lean request instead of six full list endpoints. Those returned
+        // every student and trainer row in the institution — each lazy-loading
+        // its user record server-side — when all the dropdowns keep is an id,
+        // a name, and a parent id.
+        const options = await apiRequest<{
+          departments: { id: string; name: string }[];
+          courses: { id: string; name: string; department_id: string | null }[];
+          modules: { id: string; name: string; course_id: string | null }[];
+          subjects: { id: string; name: string; module_id: string | null; course_id: string | null }[];
+          trainers: { id: string; name: string; department_id: string | null; subject_ids: string[] }[];
+          students: { id: string; name: string; course_id: string | null; subject_ids: string[] }[];
+        }>('/admin/dashboard/filter-options');
 
-        setDepartmentOptions((Array.isArray(departments) ? departments : []).map((item) => ({ id: String(item.id), name: item.name ?? 'Unnamed department' })));
-        setCourseOptions((Array.isArray(courses) ? courses : []).map((item) => ({ id: String(item.id), name: item.name ?? 'Unnamed course', department_id: item.department_id ? String(item.department_id) : null })));
-        setModuleOptions((Array.isArray(modules) ? modules : []).map((item) => ({ id: String(item.id), name: item.name ?? 'Unnamed module', course_id: item.course_id ?? null })));
-        setSubjectOptions((Array.isArray(subjects) ? subjects : []).map((item) => ({ id: String(item.id), name: item.name ?? 'Unnamed subject', module_id: item.module_id ?? null, course_id: item.course_id ?? null })));
-        setTrainerOptions((Array.isArray(trainers) ? trainers : []).map((item) => ({
-          id: String(item.id),
-          name: item.user?.name ?? item.name ?? 'Unnamed trainer',
-          department_id: item.department_id ? String(item.department_id) : null,
-          subject_ids: Array.isArray(item.subject_ids) ? item.subject_ids.map(String) : [],
-        })));
-        setStudentOptions((Array.isArray(students) ? students : []).map((item) => ({
-          id: String(item.id),
-          name: item.user?.name ?? item.name ?? 'Unnamed student',
-          course_id: item.course_id ? String(item.course_id) : null,
-          subject_ids: Array.isArray(item.subject_ids) ? item.subject_ids.map(String) : [],
-        })));
+        setDepartmentOptions(options.departments ?? []);
+        setCourseOptions(options.courses ?? []);
+        setModuleOptions(options.modules ?? []);
+        setSubjectOptions(options.subjects ?? []);
+        setTrainerOptions(options.trainers ?? []);
+        setStudentOptions(options.students ?? []);
       } catch (err) {
         setDepartmentOptions([]);
         setCourseOptions([]);

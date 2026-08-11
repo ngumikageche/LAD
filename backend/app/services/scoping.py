@@ -21,7 +21,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import and_, false, or_
+from sqlalchemy import Float, and_, case, cast, false, func, or_
 
 from ..extensions import db
 from ..models.assessment import Assessment
@@ -373,6 +373,22 @@ def percentage(marks_obtained: float | int | None, total_marks: float | int | No
     if total > 0:
         return round(marks / total * 100, 1)
     return round(marks, 1)
+
+
+def score_percentage_expr():
+    """
+    `percentage()` as a SQL expression, for averaging in the database.
+
+    Must stay in step with the Python version above: a recorded total gives
+    `(x / y) * 100`, and a missing or zero total means the mark is already out
+    of 100 and is used as-is. Anything that quietly drops the second case
+    reports a different average from the rest of the application.
+    """
+    total = func.coalesce(cast(Assessment.total_marks, Float), 0.0)
+    return case(
+        (total > 0, Score.marks_obtained * 100.0 / total),
+        else_=Score.marks_obtained,
+    )
 
 
 def score_percentage(score) -> float | None:

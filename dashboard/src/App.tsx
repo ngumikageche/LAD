@@ -1,60 +1,71 @@
+import { Suspense, lazy } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import DashboardLayout from './components/layout/DashboardLayout';
 import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
-import StudentsPage from './pages/StudentsPage';
-import SubjectsPage from './pages/SubjectsPage';
-import ProgressPage from './pages/ProgressPage';
-import ReportsPage from './pages/ReportsPage';
-import ModulesPage from './pages/ModulesPage';
-import UsersPage from './pages/UsersPage';
-import RolesPage from './pages/RolesPage';
-import InstitutionsPage from './pages/InstitutionsPage';
-import DepartmentsPage from './pages/DepartmentsPage';
-import CoursesPage from './pages/CoursesPage';
-import TrainersPage from './pages/TrainersPage';
-import DataImportPage from './pages/DataImportPage';
-import TrainerDashboardPage from './pages/TrainerDashboardPage';
-import TrainerReportsPage from './pages/TrainerReportsPage';
-import ProvideFeedbackPage from './pages/ProvideFeedbackPage';
-import TrainerStudentProfilePage from './pages/TrainerStudentProfilePage';
-import StudentDashboardPage from './pages/StudentDashboardPage';
-import StudentMarksPage from './pages/StudentMarksPage';
-import StudentSubjectsPage from './pages/StudentSubjectsPage';
-import StudentProfilePage from './pages/StudentProfilePage';
-import StudentNotificationsPage from './pages/StudentNotificationsPage';
-import AdminDashboard from './pages/AdminDashboard';
-import AdminSystemAnalyticsPage from './pages/AdminSystemAnalyticsPage';
-import AdminScoreManagementPage from './pages/AdminScoreManagementPage';
-import DocumentsPage from './pages/DocumentsPage';
-import BulkMarksUploadPage from './pages/BulkMarksUploadPage';
-import AdminNotificationsPage from './pages/AdminNotificationsPage';
-import ReportCardPage from './pages/ReportCardPage';
-import StudentPracticalAssessmentPage from './pages/StudentPracticalAssessmentPage';
-import AttendanceReportPage from './pages/AttendanceReportPage';
-import ClassPerformancePage from './pages/ClassPerformancePage';
-import SyllabusCoveragePage from './pages/SyllabusCoveragePage';
-import TrainerAttendancePage from './pages/TrainerAttendancePage';
-import TrainerManualAttendancePage from './pages/TrainerManualAttendancePage';
-import AdminExamResultsPage from './pages/AdminExamResultsPage';
-import AdminEnrolmentPage from './pages/AdminEnrolmentPage';
-import AdminAttendancePage from './pages/AdminAttendancePage';
-import DisciplinaryRecordsPage from './pages/DisciplinaryRecordsPage';
-import TrainerAttendanceSessionPage from './pages/TrainerAttendanceSessionPage';
-import StudentAttendanceCheckInPage from './pages/StudentAttendanceCheckInPage';
-import OnlineExamDesignerPage from './pages/OnlineExamDesignerPage';
-import StudentOnlineExamsPage from './pages/StudentOnlineExamsPage';
-import TrainerPracticalAssessmentPage from './pages/TrainerPracticalAssessmentPage';
-import TrainerEnrollmentPage from './pages/TrainerEnrollmentPage';
-import AdminCompliancePage from './pages/AdminCompliancePage';
-import StudentFeedbackPage from './pages/StudentFeedbackPage';
-import StudentDisciplinaryRecordsPage from './pages/StudentDisciplinaryRecordsPage';
-import StudentTrainerFeedbackPage from './pages/StudentTrainerFeedbackPage';
-import TrainerFeedbackInboxPage from './pages/TrainerFeedbackInboxPage';
-import PracticalAssessmentReportsPage from './pages/PracticalAssessmentReportsPage';
-import ExamResultsAnalysisPage from './pages/ExamResultsAnalysisPage';
+const RegisterPage = lazy(() => import('./pages/RegisterPage'));
+const StudentsPage = lazy(() => import('./pages/StudentsPage'));
+const SubjectsPage = lazy(() => import('./pages/SubjectsPage'));
+const ProgressPage = lazy(() => import('./pages/ProgressPage'));
+const ReportsPage = lazy(() => import('./pages/ReportsPage'));
+const ModulesPage = lazy(() => import('./pages/ModulesPage'));
+const UsersPage = lazy(() => import('./pages/UsersPage'));
+const RolesPage = lazy(() => import('./pages/RolesPage'));
+const InstitutionsPage = lazy(() => import('./pages/InstitutionsPage'));
+const DepartmentsPage = lazy(() => import('./pages/DepartmentsPage'));
+const CoursesPage = lazy(() => import('./pages/CoursesPage'));
+const TrainersPage = lazy(() => import('./pages/TrainersPage'));
+const DataImportPage = lazy(() => import('./pages/DataImportPage'));
+const TrainerDashboardPage = lazy(() => import('./pages/TrainerDashboardPage'));
+const TrainerReportsPage = lazy(() => import('./pages/TrainerReportsPage'));
+const ProvideFeedbackPage = lazy(() => import('./pages/ProvideFeedbackPage'));
+const TrainerStudentProfilePage = lazy(() => import('./pages/TrainerStudentProfilePage'));
+const StudentDashboardPage = lazy(() => import('./pages/StudentDashboardPage'));
+const StudentMarksPage = lazy(() => import('./pages/StudentMarksPage'));
+const StudentSubjectsPage = lazy(() => import('./pages/StudentSubjectsPage'));
+const StudentProfilePage = lazy(() => import('./pages/StudentProfilePage'));
+const StudentNotificationsPage = lazy(() => import('./pages/StudentNotificationsPage'));
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const AdminSystemAnalyticsPage = lazy(() => import('./pages/AdminSystemAnalyticsPage'));
+const AdminScoreManagementPage = lazy(() => import('./pages/AdminScoreManagementPage'));
+const DocumentsPage = lazy(() => import('./pages/DocumentsPage'));
+const BulkMarksUploadPage = lazy(() => import('./pages/BulkMarksUploadPage'));
+const AdminNotificationsPage = lazy(() => import('./pages/AdminNotificationsPage'));
+const ReportCardPage = lazy(() => import('./pages/ReportCardPage'));
+const StudentPracticalAssessmentPage = lazy(() => import('./pages/StudentPracticalAssessmentPage'));
+const AttendanceReportPage = lazy(() => import('./pages/AttendanceReportPage'));
+const ClassPerformancePage = lazy(() => import('./pages/ClassPerformancePage'));
+const SyllabusCoveragePage = lazy(() => import('./pages/SyllabusCoveragePage'));
+const TrainerAttendancePage = lazy(() => import('./pages/TrainerAttendancePage'));
+const TrainerManualAttendancePage = lazy(() => import('./pages/TrainerManualAttendancePage'));
+const AdminExamResultsPage = lazy(() => import('./pages/AdminExamResultsPage'));
+const AdminEnrolmentPage = lazy(() => import('./pages/AdminEnrolmentPage'));
+const AdminAttendancePage = lazy(() => import('./pages/AdminAttendancePage'));
+const DisciplinaryRecordsPage = lazy(() => import('./pages/DisciplinaryRecordsPage'));
+const TrainerAttendanceSessionPage = lazy(() => import('./pages/TrainerAttendanceSessionPage'));
+const StudentAttendanceCheckInPage = lazy(() => import('./pages/StudentAttendanceCheckInPage'));
+const OnlineExamDesignerPage = lazy(() => import('./pages/OnlineExamDesignerPage'));
+const StudentOnlineExamsPage = lazy(() => import('./pages/StudentOnlineExamsPage'));
+const TrainerPracticalAssessmentPage = lazy(() => import('./pages/TrainerPracticalAssessmentPage'));
+const TrainerEnrollmentPage = lazy(() => import('./pages/TrainerEnrollmentPage'));
+const AdminCompliancePage = lazy(() => import('./pages/AdminCompliancePage'));
+const StudentFeedbackPage = lazy(() => import('./pages/StudentFeedbackPage'));
+const StudentDisciplinaryRecordsPage = lazy(() => import('./pages/StudentDisciplinaryRecordsPage'));
+const StudentTrainerFeedbackPage = lazy(() => import('./pages/StudentTrainerFeedbackPage'));
+const TrainerFeedbackInboxPage = lazy(() => import('./pages/TrainerFeedbackInboxPage'));
+const PracticalAssessmentReportsPage = lazy(() => import('./pages/PracticalAssessmentReportsPage'));
+const ExamResultsAnalysisPage = lazy(() => import('./pages/ExamResultsAnalysisPage'));
 import { AuthProvider, useAuth } from './auth/AuthContext';
 import ProtectedRoute, { UserTypeRoute, PermissionRoute, hasPermission } from './auth/ProtectedRoute';
+
+/**
+ * Shown while a route's chunk downloads. Deliberately quiet — a route chunk is
+ * small enough that a spinner would usually flash and vanish.
+ */
+const RouteFallback = () => (
+  <div className="flex min-h-[60vh] items-center justify-center" role="status" aria-label="Loading page">
+    <div className="h-10 w-10 animate-spin rounded-full border-2 border-slate-700 border-t-cyan-400" />
+  </div>
+);
 
 const DashboardRedirect = () => {
   const { user } = useAuth();
@@ -79,6 +90,7 @@ function App() {
   return (
     <AuthProvider>
       <Router>
+        <Suspense fallback={<RouteFallback />}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route element={<ProtectedRoute />}>
@@ -222,6 +234,7 @@ function App() {
             </Route>
           </Route>
         </Routes>
+        </Suspense>
       </Router>
     </AuthProvider>
   );

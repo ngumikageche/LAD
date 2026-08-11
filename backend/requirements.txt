@@ -10,3 +10,7 @@ pytest>=8.2
 qrcode[pil]==7.4.2
 geopy==2.3.0
 openpyxl==3.1.5
+
+# Optional: set REDIS_URL to share the analytics cache across workers.
+# Without it the app falls back to an in-process cache automatically.
+redis>=5.0

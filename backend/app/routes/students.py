@@ -8,6 +8,7 @@ from datetime import date, datetime
 from flask import Blueprint, current_app, request, send_file
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import and_, func, or_
+from sqlalchemy.orm import selectinload
 from werkzeug.security import generate_password_hash
 from ..extensions import db
 from ..models.course import Course
@@ -166,13 +167,34 @@ def _generate_registration_number(enrollment_year: int) -> str:
     raise RuntimeError("Unable to generate unique registration number")
 
 
-def _student_payload(student: Student) -> dict:
-    subject_ids = [
-        str(row.subject_id)
-        for row in db.session.query(StudentSubject.subject_id)
-        .filter(StudentSubject.student_id == student.id)
-        .all()
-    ]
+def _subject_ids_by_student(student_ids: list) -> dict:
+    """
+    Subject assignments for a whole page of learners in one grouped query.
+
+    Built once by the list endpoint and handed to each payload; on its own,
+    `_student_payload` issues this query per learner, which is a query per row.
+    """
+    if not student_ids:
+        return {}
+    grouped: dict = {}
+    rows = db.session.query(StudentSubject.student_id, StudentSubject.subject_id).filter(
+        StudentSubject.student_id.in_(student_ids)
+    ).all()
+    for student_id, subject_id in rows:
+        grouped.setdefault(student_id, []).append(str(subject_id))
+    return grouped
+
+
+def _student_payload(student: Student, subject_ids_by_student: dict | None = None) -> dict:
+    if subject_ids_by_student is not None:
+        subject_ids = subject_ids_by_student.get(student.id, [])
+    else:
+        subject_ids = [
+            str(row.subject_id)
+            for row in db.session.query(StudentSubject.subject_id)
+            .filter(StudentSubject.student_id == student.id)
+            .all()
+        ]
     return {
         "id": str(student.id),
         "code": student.code,
@@ -733,7 +755,14 @@ def list_students():
     if error:
         return error, status
 
-    query = scope_students(db.session.query(Student), user).order_by(Student.created_at.desc())
+    # `selectinload` on the user, or every row lazy-loads its own — the payload
+    # reads `student.user.name` and friends, so a 500-learner list was 500
+    # extra round trips.
+    query = (
+        scope_students(db.session.query(Student), user)
+        .options(selectinload(Student.user))
+        .order_by(Student.created_at.desc())
+    )
     course_id = request.args.get("course_id")
     if course_id:
         try:
@@ -743,12 +772,13 @@ def list_students():
         query = query.filter(Student.course_id == course_uuid)
 
     students = query.all()
+    subject_ids_by_student = _subject_ids_by_student([student.id for student in students])
     log_view(
         user,
         "students",
         metadata={"scope": "list", "master": can_view_master_data(user), "count": len(students)},
     )
-    return [_student_payload(student) for student in students], 200
+    return [_student_payload(student, subject_ids_by_student) for student in students], 200
 
 
 @bp.get('/me')

@@ -18,7 +18,7 @@ from ..models.trainer import Trainer
 from ..models.trainer_subject import TrainerSubject
 from ..models.user import User
 from .learning_analytics import build_role_dashboard
-from .scoping import average_percentage, percentage
+from .scoping import average_percentage, percentage, score_percentage_expr
 from .subject_enrollment import link_student_to_subject
 
 PASS_MARK = 50.0
@@ -151,25 +151,56 @@ def score_payload(score: Score) -> dict:
     }
 
 
-def subject_payload(subject: Subject) -> dict:
-    # Averaged as percentages, not raw marks: a subject marked out of 40 and one
-    # marked out of 100 are otherwise added together as if they were comparable.
-    subject_scores = (
-        db.session.query(Score)
-        .filter(Score.subject_id == subject.id, Score.deleted_at.is_(None))
+def subject_statistics(subject_ids: list[uuid.UUID]) -> dict[uuid.UUID, dict]:
+    """
+    Learner counts and percentage averages for many subjects in two queries.
+
+    Computing these per subject meant loading every score row for every subject
+    into Python — on a trainer dashboard that is one full scan per unit taught.
+    The average is still a mean of percentages, so a paper out of 40 and one out
+    of 100 stay comparable; `COALESCE` treats a score with no assessment as
+    being out of 100, matching `scoping.percentage`.
+    """
+    stats: dict[uuid.UUID, dict] = {
+        subject_id: {"students_count": 0, "average_score": 0.0, "recent_scores_count": 0}
+        for subject_id in subject_ids
+    }
+    if not subject_ids:
+        return stats
+
+    for subject_id, count in (
+        db.session.query(StudentSubject.subject_id, func.count(StudentSubject.id))
+        .filter(StudentSubject.subject_id.in_(subject_ids))
+        .group_by(StudentSubject.subject_id)
         .all()
-    )
-    avg_score = average_percentage(subject_scores)
-    student_count = (
-        db.session.query(func.count(StudentSubject.id))
-        .filter(StudentSubject.subject_id == subject.id)
-        .scalar()
-    ) or 0
-    recent_score_count = (
-        db.session.query(func.count(Score.id))
-        .filter(Score.subject_id == subject.id)
-        .scalar()
-    ) or 0
+    ):
+        stats[subject_id]["students_count"] = int(count or 0)
+
+    for subject_id, average, count in (
+        db.session.query(
+            Score.subject_id,
+            func.avg(score_percentage_expr()),
+            func.count(Score.id),
+        )
+        .outerjoin(Assessment, Assessment.id == Score.assessment_id)
+        .filter(Score.subject_id.in_(subject_ids), Score.deleted_at.is_(None))
+        .group_by(Score.subject_id)
+        .all()
+    ):
+        stats[subject_id]["average_score"] = round(float(average or 0), 1)
+        stats[subject_id]["recent_scores_count"] = int(count or 0)
+
+    return stats
+
+
+def subject_payload(subject: Subject, stats: dict | None = None) -> dict:
+    # `stats` comes from `subject_statistics` when a caller is rendering more
+    # than one subject; on its own this falls back to a single-subject lookup.
+    if stats is None:
+        stats = subject_statistics([subject.id]).get(subject.id, {})
+    avg_score = stats.get("average_score", 0.0)
+    student_count = stats.get("students_count", 0)
+    recent_score_count = stats.get("recent_scores_count", 0)
 
     module = subject.module
     course = module.course if module else None
@@ -367,9 +398,11 @@ def trainer_dashboard(trainer: Trainer, subject_id: uuid.UUID | None = None) -> 
         subject_id=str(subject_id) if subject_id else None,
     )
 
+    subject_stats = subject_statistics([subject.id for subject in subjects])
+
     return {
         "subjects_assigned": subject_count,
-        "subjects": [subject_payload(subject) for subject in subjects],
+        "subjects": [subject_payload(subject, subject_stats.get(subject.id)) for subject in subjects],
         "total_students": total_students,
         "average_score": avg_score,
         "pass_rate": pass_rate,

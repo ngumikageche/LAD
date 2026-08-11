@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import logging
 from functools import wraps
 from typing import Any
 
-from flask import current_app, g
+from flask import current_app, g, has_request_context
 
 from ..extensions import db
 from ..models.system_log import SystemLog
@@ -186,25 +187,61 @@ def student_required(permission_key: str | None = None):
     return decorator
 
 
+AUDIT_QUEUE_KEY = "_pending_audit_events"
+
+
 def log_view(user: User | None, entity: str, entity_id: str | None = None, metadata: dict[str, Any] | None = None) -> None:
-    """Write an audit event without committing or poisoning the caller's session."""
+    """
+    Queue an audit event to be written once, after the response is built.
+
+    This used to open its own engine connection and commit a transaction inline,
+    on every read — a second connection checkout and round trip that the caller
+    waited for before their list could be returned. Events are now batched into
+    a single insert in an `after_request` hook, so a handler that logs three
+    times still costs one write, and it happens off the response path.
+
+    The separate connection is kept (rather than the request's session) so an
+    audit write can never commit or poison the caller's own transaction.
+    """
     if user is None:
         current_app.logger.warning("Skipped audit event %s because no user was supplied", entity)
         return
-    payload = {
-        "entity": entity,
-        "entity_id": entity_id,
-        "metadata": metadata or {},
-    }
+
     action = str((metadata or {}).get("action") or "read")
+    event = {
+        "action": f"{entity}.{action}",
+        "user_id": user.id,
+        "meta_data": {
+            "entity": entity,
+            "entity_id": entity_id,
+            "metadata": metadata or {},
+        },
+    }
+
+    # Only a request has an `after_request` hook to flush the queue. `g` also
+    # exists in a bare application context (a script, a shell, a job), where
+    # queueing would mean the event is never written at all — so those write
+    # straight through.
+    if has_request_context():
+        g.setdefault(AUDIT_QUEUE_KEY, []).append(event)
+    else:
+        flush_audit_events([event])
+
+
+def flush_audit_events(events: list[dict] | None = None) -> None:
+    """Write queued audit events as one insert. Never raises into the caller."""
+    if events is None:
+        events = g.pop(AUDIT_QUEUE_KEY, None) if has_request_context() else None
+    if not events:
+        return
     try:
         with db.engine.begin() as connection:
-            connection.execute(
-                SystemLog.__table__.insert().values(
-                    action=f"{entity}.{action}",
-                    user_id=user.id,
-                    meta_data=payload,
-                )
-            )
+            connection.execute(SystemLog.__table__.insert(), events)
     except Exception:
-        current_app.logger.exception("Unable to write audit event for %s", entity)
+        # An audit write must never surface as a failed request, and this can
+        # run without an application context (a management script), where
+        # `current_app` is itself unavailable.
+        try:
+            current_app.logger.exception("Unable to write %d audit event(s)", len(events))
+        except RuntimeError:
+            logging.getLogger(__name__).exception("Unable to write %d audit event(s)", len(events))
