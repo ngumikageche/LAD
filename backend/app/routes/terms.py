@@ -94,6 +94,37 @@ def _score_counts_by_term(user, terms: list[Term]) -> dict[uuid.UUID, int]:
     return counts
 
 
+def _unmatched_term_labels(user, terms: list[Term]) -> list[dict]:
+    """
+    Term labels on marks that match no term at all.
+
+    `Score.term` is free text. A label that matches no term name is not counted
+    in any term, so every term-scoped report — report cards, class performance,
+    exam results — silently omits those marks while an unfiltered screen shows
+    them. This is the single hardest failure in the system to diagnose from the
+    UI, so it is reported rather than left to be discovered.
+    """
+    known = {(term.name or "").strip().lower() for term in terms}
+    rows = (
+        scope_scores(
+            db.session.query(Score.term, func.count(Score.id).label("marks")),
+            user,
+        )
+        .filter(Score.deleted_at.is_(None), Score.term.isnot(None))
+        .group_by(Score.term)
+        .all()
+    )
+    return sorted(
+        (
+            {"label": label, "marks": int(marks)}
+            for label, marks in rows
+            if (label or "").strip().lower() not in known
+        ),
+        key=lambda item: item["marks"],
+        reverse=True,
+    )
+
+
 @bp.get("")
 def list_terms():
     """
@@ -125,6 +156,7 @@ def list_terms():
         "active_term_id": next((str(term.id) for term in terms if term.is_active), None),
         "scope": "all" if can_view_master_data(user) else "assigned",
         "assigned_subject_count": None if assigned is None else len(assigned),
+        "unmatched_term_labels": _unmatched_term_labels(user, terms) if wants_counts else [],
     }, 200
 
 

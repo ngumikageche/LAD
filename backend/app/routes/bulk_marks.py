@@ -8,6 +8,7 @@ import uuid
 from flask import Blueprint, request, send_file, send_from_directory
 from openpyxl import Workbook, load_workbook
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.datavalidation import DataValidation
 
 from ..extensions import db
 from ..models.assessment import Assessment
@@ -21,6 +22,7 @@ from ..models.subject import Subject
 from ..models.enrollment import Enrollment
 from ..models.module import Module
 from ..models.trainer import Trainer
+from ..models.term import Term
 from ..models.trainer_subject import TrainerSubject
 from .permissions import _is_admin
 from ..services.bulk_people_import import conflict_response, resolve_conflict_mode
@@ -138,6 +140,47 @@ def _sole_subject_of_module(module_id, cache: dict) -> "uuid.UUID | None":
     resolved = subject_ids[0] if len(subject_ids) == 1 else None
     cache[module_id] = resolved
     return resolved
+
+
+def _normalise_term(
+    raw: str | None,
+    assessment: Assessment | None,
+    lookup: dict[str, str],
+    row_number,
+    errors: list[str],
+) -> str | None:
+    """
+    The canonical term name for an uploaded row.
+
+    Returns the matching term's own spelling when the label is recognised, so
+    "term 1 2026" and "TERM 1 2026 " both become "Term 1 2026". An unrecognised
+    label is replaced by the assessment's term and reported as a warning — the
+    marks are still saved, but under a term the reports can actually find.
+    """
+    label = (raw or "").strip()
+    assessment_term = assessment.term.name if assessment and assessment.term else None
+
+    if not label:
+        return assessment_term
+
+    matched = lookup.get(label.lower())
+    if matched:
+        return matched
+
+    if assessment_term:
+        errors.append(
+            f"Row {row_number}: term '{label}' matches no term, so it was saved "
+            f"as '{assessment_term}'. Marks under an unknown term are hidden "
+            f"from every report."
+        )
+        return assessment_term
+
+    errors.append(
+        f"Row {row_number}: term '{label}' matches no term on the system. "
+        f"Create it under Academic Terms, or these marks will not appear on "
+        f"any term-scoped report."
+    )
+    return label
 
 
 def _grade(marks: float, total: float) -> str:
@@ -733,6 +776,11 @@ def commit_bulk():
     # One lookup per module, not per row — a large upload is otherwise a query
     # per learner for a fact that cannot change during the batch.
     sole_subject_cache: dict[uuid.UUID, uuid.UUID | None] = {}
+    # Built once: {normalised name -> canonical name}, so a row's label can be
+    # matched without a query per row.
+    term_lookup = {
+        (name or "").strip().lower(): name for name in _known_term_names()
+    }
 
     for row in rows:
         # Never trust preview-only flags or calculated values from the client.
@@ -791,7 +839,18 @@ def commit_bulk():
             continue
         grade = _grade(marks, assessment.total_marks)
         is_passed = marks >= (assessment.pass_marks or assessment.total_marks * 0.5)
-        term = row.get("term") or (assessment.term.name if assessment.term else None)
+        # Snap the uploaded label onto a real term. A label that matches no
+        # term is not merely cosmetic: every report filters by term, so those
+        # marks land in the database and appear in none of them. Matching is
+        # case- and whitespace-insensitive, and an unrecognised label falls back
+        # to the assessment's own term rather than being stored as typed.
+        term = _normalise_term(
+            row.get("term"),
+            assessment,
+            term_lookup,
+            row.get("row"),
+            errors,
+        )
         feedback = row.get("feedback") or None
 
         # Resolve subject_id (may be a UUID string or a code from preview output).
@@ -975,6 +1034,73 @@ CAT_FORMULA_TEMPLATE_HEADER = [
 ]
 
 
+def _known_term_names() -> list[str]:
+    """Every term name, newest first — the only values the term column accepts."""
+    return [
+        row[0]
+        for row in db.session.query(Term.name)
+        .filter(Term.deleted_at.is_(None))
+        .order_by(Term.start_date.desc())
+        .all()
+        if row[0]
+    ]
+
+
+def _template_term(assessment: Assessment | None) -> str:
+    """
+    The term to prefill.
+
+    A blank term column is where the whole problem starts: the uploader types
+    their own label, it matches no term, and every term-scoped report silently
+    omits the marks. Prefer the assessment's own term, fall back to the current
+    one, so the column is never empty for someone to fill in freehand.
+    """
+    if assessment and assessment.term and assessment.term.name:
+        return assessment.term.name
+    active = (
+        db.session.query(Term)
+        .filter(Term.is_active.is_(True), Term.deleted_at.is_(None))
+        .first()
+    )
+    if active and active.name:
+        return active.name
+    names = _known_term_names()
+    return names[0] if names else ""
+
+
+def _restrict_term_column(worksheet, header: list[str], row_count: int) -> None:
+    """
+    Turn the term column into a dropdown of real terms.
+
+    Prefilling stops the common case; this stops the rest, because a value
+    typed over the prefill is exactly as invisible as a blank one was.
+    """
+    names = _known_term_names()
+    if not names or "term" not in header:
+        return
+    column = get_column_letter(header.index("term") + 1)
+    # Excel caps an inline list at 255 characters; beyond that the sheet still
+    # opens but the dropdown is dropped, so only apply it when it fits.
+    formula = ",".join(name.replace('"', "'") for name in names)
+    if len(formula) > 250:
+        return
+    validation = DataValidation(
+        type="list",
+        formula1=f'"{formula}"',
+        allow_blank=False,
+        showDropDown=False,
+    )
+    validation.error = (
+        "Pick a term from the list. A term typed by hand that does not match "
+        "one of these hides the marks from every report."
+    )
+    validation.errorTitle = "Unknown term"
+    validation.prompt = "Choose the term these marks belong to."
+    validation.promptTitle = "Term"
+    worksheet.add_data_validation(validation)
+    validation.add(f"{column}2:{column}{max(row_count + 1, 200)}")
+
+
 def _template_roster(user, assessment: Assessment, subject: Subject | None) -> list[Student]:
     """
     Learners who may legitimately receive marks for this assessment.
@@ -1153,11 +1279,12 @@ def download_template():
     workbook = Workbook()
     marks_sheet = workbook.active
     marks_sheet.title = "Marks Upload"
-    marks_sheet.append(CAT_FORMULA_TEMPLATE_HEADER if cat_formula else TEMPLATE_HEADER)
+    template_header = CAT_FORMULA_TEMPLATE_HEADER if cat_formula else TEMPLATE_HEADER
+    marks_sheet.append(template_header)
+    term = _template_term(assessment)
 
     learner_rows = 0
     if assessment:
-        term = assessment.term.name if assessment.term else ""
         subject_code = batch_subject.code if batch_subject else ""
         module = batch_subject.module if batch_subject else assessment.module
         module_code = module.code if module else ""
@@ -1194,10 +1321,24 @@ def download_template():
         filename = f"marks_template_{assessment.code or 'assessment'}.xlsx"
     else:
         # A generic template must not contain made-up identifiers that look
-        # uploadable. Select an assessment to receive a populated class list.
-        marks_sheet.append(["" for _ in (CAT_FORMULA_TEMPLATE_HEADER if cat_formula else TEMPLATE_HEADER)])
+        # uploadable, but the term is a real value and the one most often typed
+        # wrong, so it is filled in even here.
+        blank_row = ["" for _ in template_header]
+        blank_row[template_header.index("term")] = term
+        marks_sheet.append(blank_row)
         filename = "marks_upload_template.xlsx"
+
+    _restrict_term_column(marks_sheet, template_header, learner_rows)
     _format_template_sheet(marks_sheet)
+
+    term_sheet = workbook.create_sheet("Terms")
+    term_sheet.append(["term", "status"])
+    active_name = _template_term(assessment)
+    for name in _known_term_names():
+        term_sheet.append([name, "current" if name == active_name else ""])
+    if not _known_term_names():
+        term_sheet.append(["(no terms defined — create one under Academic Terms)", ""])
+    _format_template_sheet(term_sheet)
 
     module_sheet = workbook.create_sheet("Modules")
     module_sheet.append([

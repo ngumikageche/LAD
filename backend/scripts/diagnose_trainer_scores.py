@@ -168,6 +168,44 @@ def _funnel(trainer: Trainer, assigned: set) -> None:
         )
     print(f"\n  Trainer's institution: {user.institution_id if user else None}")
 
+    # The label each mark carries, against the terms that exist. A label that
+    # matches no term hides the mark from every term-scoped report at once —
+    # which is exactly what a stage 3 -> stage 4 collapse means.
+    known = {
+        (row[0] or "").strip().lower(): row[0]
+        for row in db.session.query(Term.name).filter(Term.deleted_at.is_(None)).all()
+    }
+    print("\n  Term label on the marks (this is what stage 4 matches against):")
+    rows = (
+        db.session.query(Score.term, func.count(Score.id))
+        .filter(Score.subject_id.in_(assigned), Score.deleted_at.is_(None))
+        .group_by(Score.term)
+        .order_by(func.count(Score.id).desc())
+        .all()
+    )
+    for label, count in rows:
+        if label is None:
+            verdict = "no label - counted in every term"
+        elif (label or "").strip().lower() in known:
+            verdict = f"matches '{known[(label or '').strip().lower()]}'"
+        else:
+            verdict = "MATCHES NO TERM -> invisible in every term-scoped report"
+        print(f"    {repr(label):28s} marks={count:<5d} {verdict}")
+
+    print("\n  Terms that exist: " + ", ".join(repr(v) for v in known.values()))
+
+    orphaned = (
+        db.session.query(Score.term, func.count(Score.id))
+        .filter(Score.deleted_at.is_(None), Score.term.isnot(None))
+        .group_by(Score.term)
+        .all()
+    )
+    stray = [(label, count) for label, count in orphaned if (label or "").strip().lower() not in known]
+    if stray:
+        print("\n  Across the whole system, labels matching no term:")
+        for label, count in sorted(stray, key=lambda item: -item[1]):
+            print(f"    {repr(label):28s} {count} mark(s)")
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)

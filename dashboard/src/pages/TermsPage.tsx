@@ -20,6 +20,8 @@ type TermsResponse = {
   scope: 'all' | 'assigned';
   /** null for an unscoped account; a count for a trainer. */
   assigned_subject_count: number | null;
+  /** Labels on marks that match no term, so those marks appear in none. */
+  unmatched_term_labels: { label: string; marks: number }[];
 };
 
 type TermForm = { id?: string; name: string; start_date: string; end_date: string };
@@ -39,6 +41,7 @@ export default function TermsPage() {
   const [terms, setTerms] = useState<Term[]>([]);
   const [scope, setScope] = useState<'all' | 'assigned'>('all');
   const [assignedSubjects, setAssignedSubjects] = useState<number | null>(null);
+  const [unmatched, setUnmatched] = useState<{ label: string; marks: number }[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -60,6 +63,7 @@ export default function TermsPage() {
       setTerms(data.terms ?? []);
       setScope(data.scope ?? 'all');
       setAssignedSubjects(data.assigned_subject_count ?? null);
+      setUnmatched(data.unmatched_term_labels ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load terms');
     } finally {
@@ -71,7 +75,7 @@ export default function TermsPage() {
 
   const withMarks = useMemo(() => terms.filter((t) => (t.scores_in_scope ?? 0) > 0), [terms]);
 
-  const openCreate = () => { setFormState(emptyForm); setIsModalOpen(true); };
+  const openCreate = (name = '') => { setFormState({ ...emptyForm, name }); setIsModalOpen(true); };
   const openEdit = (term: Term) => {
     setFormState({
       id: term.id,
@@ -153,7 +157,7 @@ export default function TermsPage() {
         </div>
         {canCreate && (
           <button
-            onClick={openCreate}
+            onClick={() => openCreate()}
             className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-bold text-white transition-colors hover:bg-indigo-700"
           >
             <Plus size={16} /> Add Term
@@ -192,6 +196,36 @@ export default function TermsPage() {
           </>
         )}
       </div>
+
+      {unmatched.length > 0 && (
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+          <p className="text-sm font-semibold text-amber-300">
+            Marks labelled with a term that does not exist
+          </p>
+          <p className="mt-1 text-xs text-amber-200/80">
+            Every report filters by term, so these marks appear in <strong>no</strong> term at all —
+            they are in the database but invisible on report cards, class performance, and exam results.
+            Create a term with the exact label, or correct the label on the marks.
+          </p>
+          <ul className="mt-3 space-y-1.5">
+            {unmatched.map((item) => (
+              <li key={item.label} className="flex flex-wrap items-center gap-2 text-sm">
+                <code className="rounded bg-slate-800 px-2 py-0.5 text-amber-200">{item.label}</code>
+                <span className="text-slate-400">{item.marks} mark{item.marks === 1 ? '' : 's'}</span>
+                {canCreate && (
+                  <button
+                    type="button"
+                    onClick={() => openCreate(item.label)}
+                    className="text-xs font-semibold text-cyan-300 underline underline-offset-2 hover:text-cyan-200"
+                  >
+                    Create a term named “{item.label}”
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       {notice && (
         <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-4 py-2 text-sm text-emerald-300">
