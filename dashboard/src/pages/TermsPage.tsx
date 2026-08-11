@@ -18,6 +18,8 @@ type TermsResponse = {
   total: number;
   active_term_id: string | null;
   scope: 'all' | 'assigned';
+  /** null for an unscoped account; a count for a trainer. */
+  assigned_subject_count: number | null;
 };
 
 type TermForm = { id?: string; name: string; start_date: string; end_date: string };
@@ -36,6 +38,7 @@ export default function TermsPage() {
   const { token, user } = useAuth();
   const [terms, setTerms] = useState<Term[]>([]);
   const [scope, setScope] = useState<'all' | 'assigned'>('all');
+  const [assignedSubjects, setAssignedSubjects] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -56,6 +59,7 @@ export default function TermsPage() {
       const data = await apiRequest<TermsResponse>('/terms', { token });
       setTerms(data.terms ?? []);
       setScope(data.scope ?? 'all');
+      setAssignedSubjects(data.assigned_subject_count ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load terms');
     } finally {
@@ -163,7 +167,21 @@ export default function TermsPage() {
         {isLoading ? (
           'Checking which terms hold your marks…'
         ) : withMarks.length === 0 ? (
-          <>No marks have been recorded against any term{scope === 'assigned' ? ' in your scope' : ''} yet.</>
+          // Zero everywhere has two very different causes, and the trainer can
+          // act on one of them.
+          assignedSubjects === 0 ? (
+            <>
+              No subjects are assigned to you yet, so no marks fall in your scope in any term.
+              Ask an administrator to assign your units under <strong>Trainers → Assign Subjects</strong>.
+            </>
+          ) : (
+            <>
+              No marks are recorded against
+              {assignedSubjects !== null ? <> the {assignedSubjects} subject{assignedSubjects === 1 ? '' : 's'} assigned to you</> : ' any term'}
+              , in any term. If marks have been uploaded, they may sit on a different subject record —
+              an administrator can confirm with the <strong>Trainer visibility check</strong> on Score Management.
+            </>
+          )
         ) : (
           <>
             Marks {scope === 'assigned' ? 'in your scope ' : ''}appear in{' '}

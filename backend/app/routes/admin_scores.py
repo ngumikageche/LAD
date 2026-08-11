@@ -10,6 +10,9 @@ from ..models.enrollment import Enrollment
 from ..models.assessment import Assessment
 from ..models.student import Student
 from ..models.subject import Subject
+from ..models.trainer import Trainer
+from ..models.trainer_subject import TrainerSubject
+from ..models.user import User
 from ..services.scoping import can_access_score, can_view_master_data, scope_scores
 from .permissions import require_permission, log_view
 
@@ -170,3 +173,125 @@ def delete_score(score_id: str):
     db.session.commit()
     log_view(user, "admin.scores", entity_id=str(score.id), metadata={"action": "deleted"})
     return {"message": "Score deleted"}, 200
+
+
+@bp.get("/visibility")
+def score_visibility():
+    """
+    Why a trainer cannot see marks that an administrator can.
+
+    Marks are attached to a subject by id, and a trainer sees a mark only if
+    that exact subject id is assigned to them. Two subjects may carry the same
+    name — `subjects.name` has no uniqueness constraint — so marks uploaded
+    against "Solar PV Systems" can sit on a different id from the one the
+    trainer was assigned, and the screens then disagree while both are correct.
+
+    Pass `?trainer_id=` to analyse one trainer; without it the whole institution
+    is summarised.
+    """
+    user, error, status = require_permission("admin.scores.read")
+    if error:
+        return error, status
+
+    trainer_id = request.args.get("trainer_id")
+    trainer = None
+    assigned_subject_ids: set = set()
+    if trainer_id:
+        try:
+            trainer_uuid = _parse_uuid(trainer_id, "trainer_id")
+        except ValueError as exc:
+            return {"error": str(exc)}, 400
+        trainer = db.session.get(Trainer, trainer_uuid)
+        if not trainer or trainer.deleted_at:
+            return {"error": "Trainer not found"}, 404
+        assigned_subject_ids = {
+            row[0] for row in db.session.query(TrainerSubject.subject_id)
+            .filter(TrainerSubject.trainer_id == trainer_uuid).all()
+        }
+
+    # Marks per subject, within whatever the caller may already see.
+    rows = (
+        scope_scores(
+            db.session.query(
+                Score.subject_id,
+                func.count(Score.id).label("marks"),
+            ),
+            user,
+        )
+        .filter(Score.deleted_at.is_(None))
+        .group_by(Score.subject_id)
+        .all()
+    )
+
+    subject_ids = [row.subject_id for row in rows if row.subject_id]
+    subjects = {
+        subject.id: subject
+        for subject in db.session.query(Subject).filter(Subject.id.in_(subject_ids)).all()
+    } if subject_ids else {}
+
+    # Which trainers hold each of those subjects, in one grouped query.
+    holders: dict = {}
+    if subject_ids:
+        for subject_id, name in (
+            db.session.query(TrainerSubject.subject_id, User.name)
+            .join(Trainer, Trainer.id == TrainerSubject.trainer_id)
+            .outerjoin(User, User.id == Trainer.user_id)
+            .filter(TrainerSubject.subject_id.in_(subject_ids))
+            .all()
+        ):
+            holders.setdefault(subject_id, []).append(name or "Unnamed trainer")
+
+    def _describe(subject_id, marks):
+        subject = subjects.get(subject_id)
+        module = getattr(subject, "module", None)
+        course = getattr(module, "course", None)
+        return {
+            "subject_id": str(subject_id) if subject_id else None,
+            "subject_name": subject.name if subject else "(no subject recorded on the mark)",
+            "subject_code": subject.code if subject else None,
+            "module_name": module.name if module else None,
+            "course_name": course.name if course else None,
+            "marks": int(marks),
+            "assigned_trainers": sorted(holders.get(subject_id, [])),
+            "visible_to_trainer": subject_id in assigned_subject_ids if trainer else None,
+        }
+
+    breakdown = sorted(
+        (_describe(row.subject_id, row.marks) for row in rows),
+        key=lambda item: item["marks"],
+        reverse=True,
+    )
+
+    # Same name, different id — the case that makes the two screens disagree.
+    by_name: dict = {}
+    for entry in breakdown:
+        if entry["subject_id"]:
+            by_name.setdefault(entry["subject_name"].strip().lower(), []).append(entry)
+    duplicates = [
+        {"subject_name": entries[0]["subject_name"], "variants": entries}
+        for entries in by_name.values()
+        if len(entries) > 1
+    ]
+
+    visible = [entry for entry in breakdown if entry["visible_to_trainer"]] if trainer else []
+    hidden = [entry for entry in breakdown if entry["visible_to_trainer"] is False] if trainer else []
+
+    return {
+        "trainer": {
+            "id": str(trainer.id),
+            "name": trainer.user.name if trainer.user else None,
+            "assigned_subject_count": len(assigned_subject_ids),
+        } if trainer else None,
+        "totals": {
+            "marks_in_view": sum(entry["marks"] for entry in breakdown),
+            "marks_visible_to_trainer": sum(entry["marks"] for entry in visible) if trainer else None,
+            "marks_hidden_from_trainer": sum(entry["marks"] for entry in hidden) if trainer else None,
+            "subjects_with_marks": len(breakdown),
+        },
+        "by_subject": breakdown,
+        "hidden_from_trainer": hidden,
+        "duplicate_subject_names": duplicates,
+        "unattributed_marks": next(
+            (entry["marks"] for entry in breakdown if entry["subject_id"] is None), 0
+        ),
+    }, 200

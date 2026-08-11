@@ -24,7 +24,12 @@ from ..models.lesson_plan import LessonPlan
 from ..models.score import Score
 from ..models.staff_attendance import StaffAttendance
 from ..models.term import Term
-from ..services.scoping import can_view_master_data, scope_scores, term_match_clause
+from ..services.scoping import (
+    can_view_master_data,
+    scope_scores,
+    term_match_clause,
+    trainer_subject_ids,
+)
 from .permissions import log_view, require_permission
 
 
@@ -109,12 +114,17 @@ def list_terms():
     wants_counts = (request.args.get("with_counts") or "1").lower() not in {"0", "false", "no"}
     counts = _score_counts_by_term(user, terms) if wants_counts else {}
 
+    # A trainer seeing zero everywhere needs to know whether that is because
+    # nothing has been marked, or because no units are assigned to them.
+    assigned = trainer_subject_ids(user)
+
     log_view(user, "terms", metadata={"scope": "list", "count": len(terms)})
     return {
         "terms": [_payload(term, counts.get(term.id) if wants_counts else None) for term in terms],
         "total": len(terms),
         "active_term_id": next((str(term.id) for term in terms if term.is_active), None),
         "scope": "all" if can_view_master_data(user) else "assigned",
+        "assigned_subject_count": None if assigned is None else len(assigned),
     }, 200
 
 

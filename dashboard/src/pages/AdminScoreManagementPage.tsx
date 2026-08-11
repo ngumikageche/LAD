@@ -6,6 +6,7 @@ import { useAuth } from '../auth/AuthContext';
 import { useTableControls } from '../hooks/useTableControls';
 import { TableFooter, SortableTh } from '../components/ui/TableControls';
 import { exportCSV, exportExcel, exportPDF } from '../utils/exportUtils';
+import TrainerScoreVisibilityPanel from '../components/admin/TrainerScoreVisibilityPanel';
 
 interface Score {
   id: string;
@@ -268,6 +269,8 @@ export default function AdminScoreManagementPage() {
             </button>
           </div>
         </div>
+
+        <TrainerScoreVisibilityPanel />
 
         {/* Alerts */}
         {error && (

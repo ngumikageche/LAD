@@ -278,12 +278,24 @@ def scope_scores(query, user: User | None):
     """
     institution_id = visible_institution_id(user)
     if institution_id is not None:
-        institution_subject_ids = _institution_subject_ids(institution_id)
-        course_ids = institution_course_ids(institution_id)
+        # Three ways a mark belongs to an institution, because the first two
+        # walk Institution → Department → Course → Module → Subject and every
+        # link in that chain is nullable. A course with no department, or a
+        # module with no course, empties both of those lists — and an `IN ()`
+        # against an empty list matches nothing, so a single gap in the
+        # hierarchy hid *every* mark from *every* non-master account while an
+        # admin still saw them all.
+        #
+        # The learner's own account carries the institution directly, which no
+        # amount of missing hierarchy can break, and it is exactly as narrow.
+        institution_user_ids = db.session.query(User.id).filter(
+            User.institution_id == institution_id
+        )
         query = query.filter(
             or_(
-                Score.subject_id.in_(institution_subject_ids),
-                Score.student.has(Student.course_id.in_(course_ids)),
+                Score.subject_id.in_(_institution_subject_ids(institution_id)),
+                Score.student.has(Student.course_id.in_(institution_course_ids(institution_id))),
+                Score.student.has(Student.user_id.in_(institution_user_ids)),
             )
         )
 
