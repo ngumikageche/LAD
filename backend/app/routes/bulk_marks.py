@@ -26,6 +26,7 @@ from ..models.term import Term
 from ..models.trainer_subject import TrainerSubject
 from .permissions import _is_admin
 from ..services.bulk_people_import import conflict_response, resolve_conflict_mode
+from ..services.scoping import resolve_term_label
 from ..services.subject_enrollment import (
     link_student_to_subject,
     student_subject_link_exists,
@@ -145,17 +146,21 @@ def _sole_subject_of_module(module_id, cache: dict) -> "uuid.UUID | None":
 def _normalise_term(
     raw: str | None,
     assessment: Assessment | None,
-    lookup: dict[str, str],
+    terms: list,
     row_number,
     errors: list[str],
 ) -> str | None:
     """
     The canonical term name for an uploaded row.
 
-    Returns the matching term's own spelling when the label is recognised, so
-    "term 1 2026" and "TERM 1 2026 " both become "Term 1 2026". An unrecognised
-    label is replaced by the assessment's term and reported as a warning — the
-    marks are still saved, but under a term the reports can actually find.
+    `resolve_term_label` does the matching — exact, then punctuation-insensitive,
+    then a bare ordinal — so "term 1 2026", "Term 1, 2026" and "1" all become
+    "Term 1 2026". An unrecognised label is replaced by the assessment's term
+    and reported: the marks are still saved, but under a term the reports can
+    actually find, because a label matching no term is invisible everywhere.
+
+    `terms` is passed in rather than queried so the rules stay testable without
+    a database.
     """
     label = (raw or "").strip()
     assessment_term = assessment.term.name if assessment and assessment.term else None
@@ -163,7 +168,7 @@ def _normalise_term(
     if not label:
         return assessment_term
 
-    matched = lookup.get(label.lower())
+    matched = resolve_term_label(label, terms)
     if matched:
         return matched
 
@@ -776,11 +781,8 @@ def commit_bulk():
     # One lookup per module, not per row — a large upload is otherwise a query
     # per learner for a fact that cannot change during the batch.
     sole_subject_cache: dict[uuid.UUID, uuid.UUID | None] = {}
-    # Built once: {normalised name -> canonical name}, so a row's label can be
-    # matched without a query per row.
-    term_lookup = {
-        (name or "").strip().lower(): name for name in _known_term_names()
-    }
+    # Loaded once so a row's label can be matched without a query per row.
+    known_terms = _known_terms()
 
     for row in rows:
         # Never trust preview-only flags or calculated values from the client.
@@ -847,7 +849,7 @@ def commit_bulk():
         term = _normalise_term(
             row.get("term"),
             assessment,
-            term_lookup,
+            known_terms,
             row.get("row"),
             errors,
         )
@@ -1032,6 +1034,16 @@ CAT_FORMULA_TEMPLATE_HEADER = [
     "term",
     "feedback",
 ]
+
+
+def _known_terms() -> list[Term]:
+    """Term rows, newest first."""
+    return (
+        db.session.query(Term)
+        .filter(Term.deleted_at.is_(None))
+        .order_by(Term.start_date.desc())
+        .all()
+    )
 
 
 def _known_term_names() -> list[str]:

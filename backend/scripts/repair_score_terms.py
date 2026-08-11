@@ -18,12 +18,16 @@ appears on no report at all. This finds those marks and relabels them.
 Marks are matched to a term in this order:
 
   1. an explicit `--map` you supply;
-  2. a case- and whitespace-insensitive match on the label ("term 1 2026");
-  3. the term recorded on the mark's own assessment;
-  4. the term whose date range contains the mark's creation date.
+  2. an exact match, ignoring case and surrounding space;
+  3. a loose match, ignoring punctuation too — "Term 2, 2026";
+  4. a bare ordinal — "2" against the one term with 2 as its own word, which is
+     how a spreadsheet column of term numbers reads;
+  5. the term recorded on the mark's own assessment;
+  6. with --by-date, the term whose dates contain the mark's creation date.
 
-Anything still unresolved is listed and left untouched — a wrong term is worse
-than a missing one, so the script never guesses beyond those four rules.
+Steps 3 and 4 require exactly one candidate. Anything still unresolved is
+listed and left untouched — a mark under the wrong term is worse than one under
+no term, so the script never guesses beyond these rules.
 """
 
 from __future__ import annotations
@@ -41,6 +45,7 @@ from app import create_app  # noqa: E402
 from app.extensions import db  # noqa: E402
 from app.models.score import Score  # noqa: E402
 from app.models.term import Term  # noqa: E402
+from app.services.scoping import resolve_term_label  # noqa: E402
 
 
 def _parse_map(pairs: list[str]) -> dict[str, str]:
@@ -131,6 +136,12 @@ def main() -> int:
             for score in scores:
                 resolved = overrides.get((label or "").strip().lower())
 
+                # Exact, punctuation-insensitive, then bare-ordinal — each
+                # requiring a single candidate. Shared with the upload path so
+                # both agree on what a label means.
+                if not resolved:
+                    resolved = resolve_term_label(label, terms)
+
                 if not resolved and score.assessment and score.assessment.term:
                     resolved = score.assessment.term.name
 
@@ -158,10 +169,15 @@ def main() -> int:
                 print(f"  {label!r:30s} {count} mark(s)")
             print("  Re-run with --by-date, or name the term yourself:")
             example = next(iter(unresolved))
-            print(f'    --map "{example}={terms[0].name}"')
+            suggestion = next((t.name for t in terms if t.is_active), terms[0].name)
+            print(f'    --map "{example}={suggestion}"')
 
         if not args.apply:
             print("\nDry run — nothing was written. Re-run with --apply to make these changes.")
+            return 0
+
+        if not to_update:
+            print("\nNothing to update — no label was resolved, so no mark was changed.")
             return 0
 
         for score, resolved in to_update:

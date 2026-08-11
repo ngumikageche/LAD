@@ -19,6 +19,7 @@ than after the fact — a route that forgets to filter leaks, a route that calls
 
 from __future__ import annotations
 
+import re
 import uuid
 
 from sqlalchemy import Float, and_, case, cast, false, func, or_, true
@@ -385,6 +386,55 @@ def percentage(marks_obtained: float | int | None, total_marks: float | int | No
     if total > 0:
         return round(marks / total * 100, 1)
     return round(marks, 1)
+
+
+def loose_term_key(value: str | None) -> str:
+    """
+    A term label reduced to its comparable core.
+
+    Lowercased, punctuation replaced by spaces, runs of whitespace collapsed —
+    so "Term 2, 2026", "term 2 2026" and "TERM 2  2026" all reduce to the same
+    key. Punctuation is the most common difference between what someone types
+    and what the term is called.
+    """
+    return re.sub(r"[^a-z0-9]+", " ", (value or "").lower()).strip()
+
+
+def resolve_term_label(label: str | None, terms) -> str | None:
+    """
+    The canonical name for a typed term label, or None when it is ambiguous.
+
+    Three deterministic steps, each requiring exactly one candidate — a label
+    that could mean two terms is left alone, because a mark filed under the
+    wrong term is worse than one filed under none.
+
+      1. exact match, ignoring case and surrounding space;
+      2. loose match, ignoring punctuation too ("Term 2, 2026");
+      3. a bare ordinal — "2" against a term whose name contains 2 as its own
+         word, which is how a spreadsheet column of term numbers reads.
+    """
+    text = (label or "").strip()
+    if not text:
+        return None
+
+    by_exact = {(term.name or "").strip().lower(): term.name for term in terms}
+    if text.lower() in by_exact:
+        return by_exact[text.lower()]
+
+    key = loose_term_key(text)
+    loose = [term.name for term in terms if loose_term_key(term.name) == key]
+    if len(loose) == 1:
+        return loose[0]
+
+    if text.isdigit():
+        ordinal = [
+            term.name for term in terms
+            if re.search(rf"(?<!\d){re.escape(text)}(?!\d)", term.name or "")
+        ]
+        if len(ordinal) == 1:
+            return ordinal[0]
+
+    return None
 
 
 def term_match_clause(term):
