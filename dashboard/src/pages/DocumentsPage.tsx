@@ -27,6 +27,13 @@ interface Subject {
   course_name: string | null;
 }
 
+/**
+ * Keep in step with `MAX_CONTENT_LENGTH` in the backend config. This only
+ * catches the mistake earlier and more clearly — the server enforces the real
+ * limit, and a reverse proxy in front of it enforces its own before that.
+ */
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+
 function formatBytes(bytes: number | null) {
   if (!bytes) return '—';
   if (bytes < 1024) return `${bytes} B`;
@@ -308,6 +315,15 @@ function UploadModal({ token, isAdmin, onClose, onUploaded }: {
       setError('Please select a student.');
       return;
     }
+    // Checked here so an oversized file is refused instantly rather than after
+    // the whole body has been pushed over the wire and rejected at the far end.
+    if (file.size > MAX_UPLOAD_BYTES) {
+      setError(
+        `${file.name} is ${formatBytes(file.size)}. The maximum upload size is ` +
+        `${MAX_UPLOAD_BYTES / (1024 * 1024)}MB.`
+      );
+      return;
+    }
 
     setUploading(true);
     setError(null);
@@ -520,7 +536,7 @@ function UploadModal({ token, isAdmin, onClose, onUploaded }: {
                 ) : (
                   <div className="text-slate-500 text-sm">
                     <Upload size={24} className="mx-auto mb-2 text-slate-600" />
-                    Click to select a file
+                    Click to select a file (up to {MAX_UPLOAD_BYTES / (1024 * 1024)}MB)
                     <p className="text-xs mt-1">PDF, DOC, XLS, PPT, images, ZIP…</p>
                   </div>
                 )}

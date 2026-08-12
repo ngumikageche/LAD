@@ -17,7 +17,7 @@ from __future__ import annotations
 import os
 import uuid
 
-from flask import Blueprint, request, send_from_directory
+from flask import Blueprint, current_app, request, send_from_directory
 from werkzeug.utils import secure_filename
 
 from ..extensions import db
@@ -36,7 +36,17 @@ ALLOWED_EXTENSIONS = {
     "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
     "txt", "csv", "png", "jpg", "jpeg", "gif", "zip",
 }
-MAX_BYTES = 25 * 1024 * 1024
+
+
+def _max_bytes() -> int:
+    """
+    The configured upload ceiling, read at call time.
+
+    Hardcoding a second number here would let it drift from
+    `MAX_CONTENT_LENGTH`, leaving a file the server accepts but this endpoint
+    refuses.
+    """
+    return int(current_app.config.get("MAX_CONTENT_LENGTH") or 0)
 
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "..", "..", "uploads", "portfolio")
 
@@ -287,11 +297,12 @@ def upload_evidence():
     save_path = os.path.join(UPLOAD_FOLDER, unique_name)
     file.save(save_path)
 
-    if os.path.getsize(save_path) > MAX_BYTES:
+    limit = _max_bytes()
+    if limit and os.path.getsize(save_path) > limit:
         # Checked after writing because the stream length is not known before,
         # so the oversized file is removed rather than left on disk.
         os.remove(save_path)
-        return {"error": f"File is larger than {MAX_BYTES // (1024 * 1024)}MB"}, 413
+        return {"error": f"File is larger than {limit // (1024 * 1024)}MB"}, 413
 
     evidence = PortfolioEvidence(
         student_id=student_uuid,

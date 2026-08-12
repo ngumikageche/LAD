@@ -160,6 +160,23 @@ def create_app() -> Flask:
         flush_audit_events()
         return response
 
+    @app.errorhandler(413)
+    def _payload_too_large(_error):
+        """
+        Say how large a file may be, in JSON.
+
+        Werkzeug answers an oversized upload with an HTML error page, which the
+        dashboard cannot parse — it fell back to "Request failed (413)", so an
+        upload that was merely too big looked like an outage. The limit is
+        reported rather than described in prose so it cannot drift from the
+        configured value.
+        """
+        limit = app.config.get("MAX_CONTENT_LENGTH") or 0
+        return {
+            "error": f"File is too large. The maximum upload size is {limit // (1024 * 1024)}MB.",
+            "max_bytes": limit,
+        }, 413
+
     @app.get("/")
     def health_check():
         return {"status": "ok", "app": "LAD Backend"}, 200

@@ -31,8 +31,12 @@ class Config:
             "https://larim.co.ke,https://www.larim.co.ke"
         )
     )
+    # Ceiling on any upload body. Note this is only the *application's* limit:
+    # a reverse proxy in front of it enforces its own first, and nginx defaults
+    # to 1MB, which rejects the request before Flask ever sees it. Raising this
+    # alone will not lift that — `client_max_body_size` has to match.
     MAX_CONTENT_LENGTH = int(
-        os.getenv("MAX_CONTENT_LENGTH", str(25 * 1024 * 1024))
+        os.getenv("MAX_CONTENT_LENGTH", str(50 * 1024 * 1024))
     )
 
     # Analytics results are memoized for a minute. The default in-process cache
