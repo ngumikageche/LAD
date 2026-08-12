@@ -471,6 +471,43 @@ def update_syllabus_topic(trainer_id: str, plan_id: str):
     }, 200
 
 
+@bp.delete("/<trainer_id>/syllabus/<plan_id>")
+def delete_syllabus_topic(trainer_id: str, plan_id: str):
+    """
+    Remove a topic from the coverage log.
+
+    Soft-deleted, matching every other record here: the report already filters
+    on `deleted_at`, so the row leaves the log while the history of what was
+    once planned survives. Guarded exactly as the update is — a trainer reaches
+    only their own plans, and a plan belonging to someone else is reported as
+    missing rather than forbidden, so the endpoint cannot be used to discover
+    which ids exist.
+    """
+    user, trainer, error, status = _require_trainer_or_admin()
+    if error:
+        return error, status
+
+    try:
+        t_uuid = parse_uuid(trainer_id, "trainer_id")
+        p_uuid = parse_uuid(plan_id, "plan_id")
+    except ValueError as exc:
+        return {"error": str(exc)}, 400
+
+    if not _is_admin(user) and (not trainer or trainer.id != t_uuid):
+        return {"error": "Permission denied"}, 403
+
+    plan = db.session.get(LessonPlan, p_uuid)
+    if not plan or plan.deleted_at:
+        return {"error": "Topic not found"}, 404
+    if plan.trainer_id != t_uuid:
+        return {"error": "Topic not found"}, 404
+
+    plan.deleted_at = datetime.utcnow()
+    db.session.commit()
+    log_view(user, "report.syllabus", entity_id=str(p_uuid), metadata={"action": "deleted"})
+    return {"status": "deleted", "id": str(p_uuid)}, 200
+
+
 # ─────────────────────────────────────────────────────────────
 # T3 — Teacher Attendance Summary
 # GET  /reports/trainer/<trainer_id>/attendance

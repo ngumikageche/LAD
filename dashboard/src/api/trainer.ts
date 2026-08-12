@@ -614,6 +614,10 @@ export const trainerReportCardsAPI = {
     const response = await apiClient.put(`/reports/trainer/${trainerId}/syllabus/${planId}`, data);
     return response.data;
   },
+  async deleteSyllabusTopic(trainerId: string, planId: string) {
+    const response = await apiClient.delete(`/reports/trainer/${trainerId}/syllabus/${planId}`);
+    return response.data as { status: string; id: string };
+  },
   async getTrainerAttendance(trainerId: string, termId?: string) {
     const params = termId ? `?term_id=${termId}` : '';
     const response = await apiClient.get(`/reports/trainer/${trainerId}/attendance${params}`);

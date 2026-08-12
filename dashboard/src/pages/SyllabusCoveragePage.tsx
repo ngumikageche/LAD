@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Printer, Plus, CheckCircle2, Clock, AlertCircle } from 'lucide-react';
+import { Printer, Plus, CheckCircle2, Clock, AlertCircle, Trash2 } from 'lucide-react';
 import { trainerReportCardsAPI, trainerSubjectsAPI } from '../api/trainer';
 import { useAuth } from '../auth/AuthContext';
 import {
@@ -43,6 +43,9 @@ export default function SyllabusCoveragePage() {
   const [newTopic, setNewTopic] = useState({ topic: '', subject_id: '', planned_date: '', description: '' });
   const [saving, setSaving] = useState(false);
   const [importing, setImporting] = useState(false);
+  // Held per row rather than as a single flag so one row removing does not
+  // disable the others.
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Get trainer ID from user object - could be trainer_id, id, or other field
   const trainerId = user?.trainer_id || user?.id;
@@ -125,6 +128,23 @@ export default function SyllabusCoveragePage() {
       setError(err instanceof Error ? err.message : 'Failed to add topic');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const removeTopic = async (planId: string, topicName: string) => {
+    if (!trainerId) return;
+    // Nothing on this page can put the row back, and the log is the trainer's
+    // record of what was taught, so a stray click should not clear an entry.
+    if (!window.confirm(`Remove "${topicName || 'this topic'}" from the coverage log?`)) return;
+    try {
+      setDeletingId(planId);
+      setError(null);
+      await trainerReportCardsAPI.deleteSyllabusTopic(trainerId, planId);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove topic');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -310,6 +330,7 @@ export default function SyllabusCoveragePage() {
                       <th className="px-3 py-3 text-center">Covered On</th>
                       <th className="px-3 py-3 text-center">Status</th>
                       <th className="px-3 py-3 text-center print:hidden">Capture</th>
+                      <th className="px-3 py-3 text-center print:hidden">Remove</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -345,6 +366,17 @@ export default function SyllabusCoveragePage() {
                             />
                             Covered
                           </label>
+                        </td>
+                        <td className="px-3 py-3 text-center print:hidden">
+                          <button
+                            onClick={() => removeTopic(t.id, t.topic)}
+                            disabled={deletingId === t.id}
+                            aria-label={`Remove ${t.topic || 'topic'}`}
+                            className="inline-flex items-center gap-1 rounded-full border border-red-400/20 bg-red-500/10 px-2.5 py-1 text-xs font-medium text-red-200 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            <Trash2 size={14} />
+                            {deletingId === t.id ? 'Removing…' : 'Remove'}
+                          </button>
                         </td>
                       </tr>
                     ))}
