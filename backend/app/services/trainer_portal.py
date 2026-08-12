@@ -209,6 +209,13 @@ def subject_payload(subject: Subject, stats: dict | None = None) -> dict:
     return {
         "id": str(subject.id),
         "name": subject.name,
+        "code": subject.code,
+        # The trainer screens read `subject_name`/`subject_code` — their subject
+        # dropdowns rendered blank options for every assigned subject without
+        # these, which reads as "the list failed to load". Both spellings are
+        # served rather than renaming, since other callers read `name`.
+        "subject_name": subject.name,
+        "subject_code": subject.code,
         "description": subject.description,
         "syllabus_topics": subject.syllabus_topics if isinstance(subject.syllabus_topics, list) else [],
         "module_id": str(subject.module_id),

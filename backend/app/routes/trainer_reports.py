@@ -254,7 +254,12 @@ def syllabus_report(trainer_id: str):
         except ValueError as exc:
             return {"error": str(exc)}, 400
     if term:
-        q = q.filter(LessonPlan.term_id == term.id)
+        # A plan with no term counts toward whichever term is being viewed, the
+        # same rule `term_match_clause` applies to marks. Every plan written
+        # before the create paths stamped a term carries NULL here, and a strict
+        # `== term.id` filtered them straight back out of the only page that
+        # shows them — the topic saved, returned 201, and never appeared.
+        q = q.filter(or_(LessonPlan.term_id.is_(None), LessonPlan.term_id == term.id))
 
     plans = q.order_by(LessonPlan.planned_date.asc().nullslast(), LessonPlan.created_at.asc()).all()
 
@@ -330,6 +335,13 @@ def add_syllabus_topic(trainer_id: str):
             term_uuid = parse_uuid(term_id_str, "term_id")
         except ValueError as exc:
             return {"error": str(exc)}, 400
+    else:
+        # The report resolves the active term when the caller names none, so a
+        # topic stored without one is attributed to no term at all. Stamp the
+        # term the reader will ask for, or the row drifts out of scope the
+        # moment the term filter is applied.
+        active_term = _get_active_term()
+        term_uuid = active_term.id if active_term else None
 
     planned_date = None
     if payload.get("planned_date"):
@@ -388,11 +400,20 @@ def import_syllabus_template(trainer_id: str):
             LessonPlan.deleted_at.is_(None),
         ).all()
     }
+    # Imported rows are read back through the same term-scoped report as
+    # hand-added ones, so they need the same stamp; without it the import
+    # reports a count and the page stays empty.
+    active_term = _get_active_term()
     created = 0
     for topic in topics:
         normalized = str(topic).strip()
         if normalized and normalized not in existing:
-            db.session.add(LessonPlan(trainer_id=t_uuid, subject_id=subject_uuid, topic=normalized))
+            db.session.add(LessonPlan(
+                trainer_id=t_uuid,
+                subject_id=subject_uuid,
+                term_id=active_term.id if active_term else None,
+                topic=normalized,
+            ))
             created += 1
     db.session.commit()
     return {"created": created, "total_template_topics": len(topics)}, 201

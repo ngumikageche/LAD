@@ -19,6 +19,7 @@ from ..models.subject import Subject
 from ..models.score_evidence import ScoreEvidence
 from .permissions import log_view, require_permission, get_current_user
 from ..services.score_evidence import EVIDENCE_UPLOAD_FOLDER, can_access_score_evidence
+from ..services.scoping import scope_scores
 from ..services.subject_enrollment import link_student_to_subject
 
 bp = Blueprint('scores', __name__, url_prefix='/scores')
@@ -265,7 +266,12 @@ def list_scores():
         return error, status
 
     from sqlalchemy.orm import selectinload
-    query = db.session.query(Score).order_by(Score.created_at.desc())
+    # `scores.read` says the caller may read marks, not that they may read
+    # everyone's: without this a trainer holding the permission listed every
+    # mark in the institution, and a student-role account without a learner
+    # profile did too. Admins and master-data holders are unscoped, so their
+    # view is unchanged.
+    query = scope_scores(db.session.query(Score), user).order_by(Score.created_at.desc())
     query = query.options(
         joinedload(Score.enrollment).selectinload(Enrollment.student).selectinload(Student.user),
         joinedload(Score.student).selectinload(Student.user),

@@ -7,12 +7,13 @@ from flask import g
 from collections import defaultdict
 from datetime import datetime
 
-from sqlalchemy import case, func
+from sqlalchemy import and_, case, func, or_
 
 from ..extensions import cache, db
 from ..models.assessment import Assessment
 from ..models.course import Course
 from ..models.attendance import Attendance
+from ..models.attendance_session import AttendanceRecord, AttendanceSession
 from ..models.competency import Competency
 from ..models.portfolio_evidence import PortfolioEvidence
 from ..models.score import Score
@@ -200,12 +201,6 @@ def mastery_label(score: float) -> str:
     return "high"
 
 
-def _attendance_rate_expr():
-    presentish = case((func.lower(Attendance.status).in_(["present", "late"]), 1), else_=0)
-    total = func.count(Attendance.id)
-    return (func.sum(presentish) * 100.0 / func.nullif(total, 0))
-
-
 def _student_name_expr():
     return func.coalesce(User.name, Student.registration_number, "Unknown")
 
@@ -384,49 +379,159 @@ def get_attendance_performance(
     trainer_id: str | None = None,
     student_id: str | None = None,
 ) -> dict:
-    attendance_rate = _attendance_rate_expr()
-    query = (
-        db.session.query(
-            Student.id.label("student_id"),
-            User.name.label("student_name"),
-            attendance_rate.label("attendance_rate"),
-            func.avg(Score.marks_obtained).label("average_score"),
-        )
-        .join(User, User.id == Student.user_id)
-        .outerjoin(Score, (Score.student_id == Student.id) & (Score.deleted_at.is_(None)))
-        .outerjoin(Subject, Subject.id == Score.subject_id)
-        .outerjoin(
-            Attendance,
-            (Attendance.student_id == Student.id)
-            & (Attendance.deleted_at.is_(None))
-            & (
-                (Subject.module_id.is_(None))
-                | (Attendance.module_id == Subject.module_id)
-            ),
-        )
-        .filter(Student.deleted_at.is_(None))
-    )
+    """
+    Attendance per learner, alongside the marks they earned.
 
+    Attendance is counted independently of marks. This used to reach the
+    register by joining through `Score` — subject taken from the score, module
+    taken from that subject — and then filtered on `Score.subject_id`, a WHERE
+    against an outer-joined table that quietly became an inner join. Any
+    learner without a mark in the caller's subjects was dropped before their
+    attendance was read, and a scope where that was true of everyone produced
+    no rows at all, which the dashboard reported as an attendance signal of 0%
+    while the register was plainly full.
+
+    Both registers are read, because a learner may appear in either and looking
+    at one alone reports 0% for a cohort that uses the other: `attendance` is a
+    manual roll call carrying a status, `attendance_records` is a QR/GPS
+    check-in against a session. This is the rule `alerts.attendance_rate`
+    already applies for the same reason.
+    """
     subject_ids = _resolve_subject_ids(department_id, course_id, module_id, subject_id, trainer_id, student_id)
     student_ids = _resolve_student_ids(department_id, course_id, module_id, subject_id, trainer_id, student_id)
-    if subject_ids is not None:
-        query = query.filter(Score.subject_id.in_(subject_ids))
-    if student_ids is not None:
-        query = query.filter(Student.id.in_(student_ids))
 
-    rows = query.group_by(Student.id, User.name).order_by(User.name.asc()).all()
-    items = [
-        {
-            "student_id": str(row.student_id),
-            "student_name": row.student_name,
-            "attendance_rate": _round(row.attendance_rate),
-            "average_score": _round(row.average_score),
+    # ── Manual register ─────────────────────────────────────────────────
+    presentish = case((func.lower(Attendance.status).in_(["present", "late"]), 1), else_=0)
+    manual_query = (
+        db.session.query(
+            Attendance.student_id.label("student_id"),
+            func.count(Attendance.id).label("sittings"),
+            func.sum(presentish).label("attended"),
+        )
+        .filter(Attendance.deleted_at.is_(None), Attendance.student_id.isnot(None))
+        .group_by(Attendance.student_id)
+    )
+    if subject_ids is not None:
+        taught_module_ids = db.session.query(Subject.module_id).filter(Subject.id.in_(subject_ids))
+        # A roll call that never named a module cannot be attributed to one, so
+        # it counts toward whichever scope is being viewed rather than nowhere
+        # — the rule `term_match_clause` applies to marks carrying no term.
+        manual_query = manual_query.filter(
+            or_(Attendance.module_id.is_(None), Attendance.module_id.in_(taught_module_ids))
+        )
+    if student_ids is not None:
+        manual_query = manual_query.filter(Attendance.student_id.in_(student_ids))
+
+    # ── QR/GPS register ─────────────────────────────────────────────────
+    # Every session run for a subject the learner takes is a sitting they were
+    # expected at; one they have no successful check-in for is an absence.
+    expected_query = (
+        db.session.query(
+            StudentSubject.student_id.label("student_id"),
+            func.count(func.distinct(AttendanceSession.id)).label("sittings"),
+        )
+        .join(AttendanceSession, AttendanceSession.subject_id == StudentSubject.subject_id)
+        .filter(
+            AttendanceSession.deleted_at.is_(None),
+            StudentSubject.deleted_at.is_(None),
+        )
+        .group_by(StudentSubject.student_id)
+    )
+    checked_in_query = (
+        db.session.query(
+            AttendanceRecord.student_id.label("student_id"),
+            func.count(func.distinct(AttendanceRecord.attendance_session_id)).label("attended"),
+        )
+        .join(AttendanceSession, AttendanceSession.id == AttendanceRecord.attendance_session_id)
+        .filter(
+            AttendanceRecord.deleted_at.is_(None),
+            AttendanceRecord.status == "success",
+            AttendanceSession.deleted_at.is_(None),
+        )
+        .group_by(AttendanceRecord.student_id)
+    )
+    if subject_ids is not None:
+        expected_query = expected_query.filter(AttendanceSession.subject_id.in_(subject_ids))
+        checked_in_query = checked_in_query.filter(AttendanceSession.subject_id.in_(subject_ids))
+    if student_ids is not None:
+        expected_query = expected_query.filter(StudentSubject.student_id.in_(student_ids))
+        checked_in_query = checked_in_query.filter(AttendanceRecord.student_id.in_(student_ids))
+
+    tally: dict[uuid.UUID, dict[str, float]] = defaultdict(lambda: {"attended": 0.0, "sittings": 0.0})
+    for row in manual_query.all():
+        tally[row.student_id]["attended"] += float(row.attended or 0)
+        tally[row.student_id]["sittings"] += float(row.sittings or 0)
+    for row in expected_query.all():
+        tally[row.student_id]["sittings"] += float(row.sittings or 0)
+    for row in checked_in_query.all():
+        tally[row.student_id]["attended"] += float(row.attended or 0)
+
+    # ── Marks, read separately so they cannot gate attendance ───────────
+    averages: dict[uuid.UUID, float] = {}
+    if tally:
+        score_query = (
+            db.session.query(
+                Score.student_id.label("student_id"),
+                func.avg(Score.marks_obtained).label("average_score"),
+            )
+            .filter(
+                Score.deleted_at.is_(None),
+                Score.student_id.in_(list(tally.keys())),
+            )
+            .group_by(Score.student_id)
+        )
+        if subject_ids is not None:
+            taught_module_ids = db.session.query(Subject.module_id).filter(Subject.id.in_(subject_ids))
+            # Marks predating `subject_id` reach their subject only through the
+            # assessment's module; matching on `subject_id` alone drops them,
+            # the same fallback `scope_scores` and the class report apply.
+            score_query = score_query.filter(
+                or_(
+                    Score.subject_id.in_(subject_ids),
+                    and_(
+                        Score.subject_id.is_(None),
+                        Score.assessment.has(Assessment.module_id.in_(taught_module_ids)),
+                    ),
+                )
+            )
+        averages = {row.student_id: row.average_score for row in score_query.all()}
+
+    names: dict[uuid.UUID, str] = {}
+    if tally:
+        names = {
+            row.id: row.student_name
+            for row in db.session.query(Student.id, _student_name_expr().label("student_name"))
+            .outerjoin(User, User.id == Student.user_id)
+            .filter(Student.deleted_at.is_(None), Student.id.in_(list(tally.keys())))
+            .all()
         }
-        for row in rows
-    ]
+
+    items = []
+    for candidate_id, counts in tally.items():
+        sittings = counts["sittings"]
+        if sittings <= 0 or candidate_id not in names:
+            # No sitting to measure against, or a learner who has since been
+            # removed: reporting either as 0% would understate the cohort.
+            continue
+        attended = min(counts["attended"], sittings)
+        items.append(
+            {
+                "student_id": str(candidate_id),
+                "student_name": names[candidate_id],
+                "attendance_rate": _round(attended / sittings * 100),
+                "average_score": _round(averages.get(candidate_id)),
+            }
+        )
+    items.sort(key=lambda item: (item["student_name"] or "").lower())
+
+    # Correlated over learners who have both signals. Pairing an attendance
+    # rate with the 0 stood in for "no marks yet" would report a relationship
+    # between attendance and achievement that the data does not show.
+    scored_ids = {str(key) for key in averages}
+    correlated = [item for item in items if item["student_id"] in scored_ids]
     correlation = _pearson(
-        [item["attendance_rate"] for item in items],
-        [item["average_score"] for item in items],
+        [item["attendance_rate"] for item in correlated],
+        [item["average_score"] for item in correlated],
     )
     return {
         "items": items,

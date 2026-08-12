@@ -96,10 +96,16 @@ function calculateTrend(scores: any[]): ProgressRow['trend'] {
 // ── Data fetching ──────────────────────────────────────────────────────────────
 
 async function fetchProgress(token: string | null, userId: string, userType: string): Promise<ProgressRow[]> {
-  const isAdmin = userType === 'admin' || userType === 'manager';
+  // Only a learner reads their own scores through the student portal. Everyone
+  // else — trainer, admin, or any custom staff role — goes to `/scores`, which
+  // scopes the rows to the caller server-side. Branching on `=== 'admin'` sent
+  // trainers down the student path, where `@student_required` answered
+  // "Student access required" no matter what the role was granted.
+  // Lower-cased because the caller falls back to `role_name` when `user_type`
+  // is absent, and role names are free-text ("Student").
+  const isStudent = userType.toLowerCase() === 'student';
 
-  if (isAdmin) {
-    // Admin: fetch all scores (returns simple array)
+  if (!isStudent) {
     const scores = await apiRequest<any[]>('/scores', { token }).catch(() => []);
     const scoreArray: any[] = Array.isArray(scores) ? scores : [];
 
@@ -228,10 +234,13 @@ const ProgressTable = () => {
   const [departmentFilter, setDepartmentFilter] = useState('all');
   const [prioritySort, setPrioritySort] = useState('attention');
 
-  const isAdmin = user?.user_type === 'admin' || user?.user_type === 'manager'
-    || user?.role_name?.toLowerCase() === 'admin'
-    || user?.role_name?.toLowerCase() === 'manager'
-    || Boolean(user?.permissions?.['*']);
+  // Which columns the table needs, which is a question about the rows rather
+  // than about rank: a learner reading their own scores gets one row per
+  // subject and no use for a Student column, while everyone else — trainer as
+  // much as admin — gets one row per learner and needs to see who each is.
+  // Keyed to the same test `fetchProgress` branches on, so the columns always
+  // match the shape of the data that arrived.
+  const isRosterView = (user?.user_type ?? user?.role_name ?? '').toLowerCase() !== 'student';
 
   const load = async () => {
     if (!user || !token) return;
@@ -290,7 +299,7 @@ const ProgressTable = () => {
               <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
               <input
                 type="text"
-                placeholder={isAdmin ? 'Search student, course…' : 'Search subject…'}
+                placeholder={isRosterView ? 'Search student, course…' : 'Search subject…'}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="pl-9 pr-4 py-2 text-sm bg-slate-800 border border-slate-700 rounded-lg text-slate-200 placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
@@ -308,7 +317,7 @@ const ProgressTable = () => {
               <option value="at_risk">At Risk</option>
               <option value="critical">Critical</option>
             </select>
-            {isAdmin ? (
+            {isRosterView ? (
               <select
                 value={departmentFilter}
                 onChange={(e) => setDepartmentFilter(e.target.value)}
@@ -357,11 +366,11 @@ const ProgressTable = () => {
             <table className="w-full text-left">
               <thead className="bg-slate-800 border-b border-slate-700">
                 <tr>
-                  {isAdmin && <SortableTh label="Student" sortKey="student_name" sort={tc.sort} onSort={tc.setSort} />}
-                  {isAdmin && <SortableTh label="Reg No" sortKey="registration_number" sort={tc.sort} onSort={tc.setSort} />}
-                  {isAdmin && <SortableTh label="Department" sortKey="department_name" sort={tc.sort} onSort={tc.setSort} />}
-                  <SortableTh label={isAdmin ? 'Course' : 'Subject'} sortKey={isAdmin ? 'course_name' : 'subject_name'} sort={tc.sort} onSort={tc.setSort} />
-                  {!isAdmin && <SortableTh label="Module" sortKey="module_name" sort={tc.sort} onSort={tc.setSort} />}
+                  {isRosterView && <SortableTh label="Student" sortKey="student_name" sort={tc.sort} onSort={tc.setSort} />}
+                  {isRosterView && <SortableTh label="Reg No" sortKey="registration_number" sort={tc.sort} onSort={tc.setSort} />}
+                  {isRosterView && <SortableTh label="Department" sortKey="department_name" sort={tc.sort} onSort={tc.setSort} />}
+                  <SortableTh label={isRosterView ? 'Course' : 'Subject'} sortKey={isRosterView ? 'course_name' : 'subject_name'} sort={tc.sort} onSort={tc.setSort} />
+                  {!isRosterView && <SortableTh label="Module" sortKey="module_name" sort={tc.sort} onSort={tc.setSort} />}
                   <SortableTh label="Avg Score" sortKey="avg_score" sort={tc.sort} onSort={tc.setSort} />
                   <SortableTh label="Pass Rate" sortKey="pass_rate" sort={tc.sort} onSort={tc.setSort} />
                   <SortableTh label="Assessments" sortKey="total_assessments" sort={tc.sort} onSort={tc.setSort} />
@@ -372,21 +381,21 @@ const ProgressTable = () => {
               <tbody className="divide-y divide-slate-800">
                 {tc.paged.map((row, i) => (
                   <tr key={`${row.student_id}-${row.subject_name}-${i}`} className="hover:bg-slate-800/60 transition-colors">
-                    {isAdmin && (
+                    {isRosterView && (
                       <td className="px-6 py-4">
                         <p className="text-sm font-medium text-slate-100">{row.student_name}</p>
                       </td>
                     )}
-                    {isAdmin && (
+                    {isRosterView && (
                       <td className="px-6 py-4 text-sm text-slate-400">{row.registration_number}</td>
                     )}
-                    {isAdmin && (
+                    {isRosterView && (
                       <td className="px-6 py-4 text-sm text-slate-400">{row.department_name}</td>
                     )}
                     <td className="px-6 py-4 text-sm text-slate-300">
-                      {isAdmin ? row.course_name : row.subject_name}
+                      {isRosterView ? row.course_name : row.subject_name}
                     </td>
-                    {!isAdmin && (
+                    {!isRosterView && (
                       <td className="px-6 py-4 text-sm text-slate-400">{row.module_name}</td>
                     )}
                     {/* Avg Score with progress bar */}
