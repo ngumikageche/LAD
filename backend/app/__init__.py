@@ -48,6 +48,8 @@ def create_app() -> Flask:
         roles_bp,
         students_bp,
         modules_bp,
+        competencies_bp,
+        portfolio_evidence_bp,
         trainers_bp,
         users_bp,
         # extra_bp,
@@ -99,6 +101,8 @@ def create_app() -> Flask:
     app.register_blueprint(roles_bp)
     app.register_blueprint(students_bp)
     app.register_blueprint(modules_bp)
+    app.register_blueprint(competencies_bp)
+    app.register_blueprint(portfolio_evidence_bp)
     app.register_blueprint(trainers_bp)
     app.register_blueprint(users_bp)
     # app.register_blueprint(extra_bp)

@@ -79,9 +79,13 @@ export type TrainerDashboardResponse = {
   recent_scores: TrainerScore[];
   summary_panel?: {
     mastery_rate: number;
+    mastery_basis?: 'competency' | 'score' | 'none';
+    mastery_sample?: number;
     at_risk_students: number;
     attendance_rate: number;
     portfolio_completion_rate: number;
+    portfolio_basis?: 'competency' | 'none';
+    portfolio_sample?: number;
     alerts: number;
   };
   analytics?: any;

@@ -2,9 +2,15 @@ import { apiClient } from '../api/client';
 
 export type SummaryPanel = {
   mastery_rate: number;
+  /** What mastery_rate was measured from: competency evidence, marks, or nothing. */
+  mastery_basis?: 'competency' | 'score' | 'none';
+  mastery_sample?: number;
   at_risk_students: number;
   attendance_rate: number;
   portfolio_completion_rate: number;
+  /** 'none' when no competency requirement exists to submit evidence against. */
+  portfolio_basis?: 'competency' | 'none';
+  portfolio_sample?: number;
   alerts: number;
 };
 
@@ -14,7 +20,9 @@ export type HeatmapCell = {
   competency_id: string;
   competency_name: string;
   score: number;
-  mastery_level: 'low' | 'medium' | 'high';
+  /** False when nobody has been assessed against this competency yet. */
+  assessed?: boolean;
+  mastery_level: 'low' | 'medium' | 'high' | 'unassessed';
 };
 
 export type HeatmapResponse = {

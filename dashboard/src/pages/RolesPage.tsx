@@ -51,6 +51,9 @@ export const PREDEFINED_ROLES: Array<{
       'scores.create': true,
       'scores.update': true,
       'modules.read': true,
+      // Needed to pick the competency an assessment evidences; without it the
+      // picker is empty and marks never reach the mastery heatmap.
+      'competencies.read': true,
       'announcements.read': true,
       'announcements.create': true,
       'notifications.read': true,
@@ -98,6 +101,7 @@ export const PREDEFINED_ROLES: Array<{
       'trainers.read': true,
       'subjects.read': true,
       'modules.read': true,
+      'competencies.read': true,
       'scores.read': true,
       'analytics.read': true,
       'announcements.read': true,
@@ -212,6 +216,10 @@ const PERMISSION_TABS: Array<{ label: string; permissions: PermDef[] }> = [
       { key: 'subjects.read',       label: 'Read Subjects' },
       { key: 'subjects.update',     label: 'Update Subjects' },
       { key: 'subjects.delete',     label: 'Delete Subjects' },
+      { key: 'competencies.create', label: 'Create Competencies' },
+      { key: 'competencies.read',   label: 'Read Competencies' },
+      { key: 'competencies.update', label: 'Update Competencies' },
+      { key: 'competencies.delete', label: 'Delete Competencies' },
       { key: 'terms.read',          label: 'Read Academic Terms' },
       { key: 'terms.create',        label: 'Create Academic Terms' },
       { key: 'terms.update',        label: 'Update Terms & Set The Current Term' },

@@ -8,6 +8,8 @@ const SubjectsPage = lazy(() => import('./pages/SubjectsPage'));
 const ProgressPage = lazy(() => import('./pages/ProgressPage'));
 const ReportsPage = lazy(() => import('./pages/ReportsPage'));
 const ModulesPage = lazy(() => import('./pages/ModulesPage'));
+const CompetenciesPage = lazy(() => import('./pages/CompetenciesPage'));
+const PortfolioEvidencePage = lazy(() => import('./pages/PortfolioEvidencePage'));
 const UsersPage = lazy(() => import('./pages/UsersPage'));
 const RolesPage = lazy(() => import('./pages/RolesPage'));
 const InstitutionsPage = lazy(() => import('./pages/InstitutionsPage'));
@@ -111,6 +113,7 @@ function App() {
                 <Route path="/student/practical-assessments" element={<StudentPracticalAssessmentPage />} />
                 <Route path="/student/attendance/checkin" element={<StudentAttendanceCheckInPage />} />
                 <Route path="/student/documents" element={<DocumentsPage />} />
+                <Route path="/student/portfolio" element={<PortfolioEvidencePage />} />
                 <Route path="/student/online-exams" element={<StudentOnlineExamsPage />} />
                 <Route path="/student/feedback" element={<StudentFeedbackPage />} />
                 <Route path="/student/rate-trainers" element={<StudentTrainerFeedbackPage />} />
@@ -171,6 +174,9 @@ function App() {
               </Route>
               <Route element={<PermissionRoute permissionKey="modules.read" deniedTypes={['student']} />}>
                 <Route path="/modules" element={<ModulesPage />} />
+              </Route>
+              <Route element={<PermissionRoute permissionKey="competencies.read" deniedTypes={['student']} />}>
+                <Route path="/competencies" element={<CompetenciesPage />} />
               </Route>
               <Route element={<PermissionRoute permissionKey="courses.read" deniedTypes={['student']} />}>
                 <Route path="/courses" element={<CoursesPage />} />

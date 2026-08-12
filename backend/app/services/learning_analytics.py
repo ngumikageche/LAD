@@ -205,6 +205,54 @@ def _student_name_expr():
     return func.coalesce(User.name, Student.registration_number, "Unknown")
 
 
+def _score_mastery_share(
+    subject_ids: list[uuid.UUID] | None,
+    student_ids: list[uuid.UUID] | None,
+) -> tuple[float, int]:
+    """
+    High-mastery share measured from marks, for scopes holding no competency
+    evidence. Returns the percentage and how many learners it was measured over.
+
+    Mastery is defined against competencies, but nothing in the API creates a
+    competency or attaches one to an assessment — they arrive only through the
+    catalogue seeder. Reporting 0% in that case describes the wiring rather
+    than the cohort, so where there is no competency evidence the same
+    threshold is applied to the marks that do exist: a learner averaging at or
+    above `MEDIUM_MASTERY` counts as high, exactly as `mastery_label` grades a
+    competency cell.
+    """
+    achieved = (Score.marks_obtained / func.nullif(Assessment.total_marks, 0)) * 100.0
+    query = (
+        db.session.query(
+            Score.student_id.label("student_id"),
+            func.avg(achieved).label("average"),
+        )
+        .join(Assessment, Assessment.id == Score.assessment_id)
+        .filter(
+            Score.deleted_at.is_(None),
+            Assessment.deleted_at.is_(None),
+            Score.student_id.isnot(None),
+        )
+        .group_by(Score.student_id)
+    )
+    if subject_ids is not None:
+        taught_module_ids = db.session.query(Subject.module_id).filter(Subject.id.in_(subject_ids))
+        query = query.filter(
+            or_(
+                Score.subject_id.in_(subject_ids),
+                and_(Score.subject_id.is_(None), Assessment.module_id.in_(taught_module_ids)),
+            )
+        )
+    if student_ids is not None:
+        query = query.filter(Score.student_id.in_(student_ids))
+
+    averages = [float(row.average) for row in query.all() if row.average is not None]
+    if not averages:
+        return 0.0, 0
+    high = sum(1 for average in averages if average >= MEDIUM_MASTERY)
+    return _round(high / len(averages) * 100), len(averages)
+
+
 @cache.memoize(timeout=60)
 def get_heatmap(
     department_id: str | None = None,
@@ -255,18 +303,30 @@ def get_heatmap(
     items = []
     student_ids = set()
     competency_ids = set()
+    assessed_count = 0
     for row in rows:
-        score = _round(row.score)
         student_ids.add(str(row.student_id))
         competency_ids.add(str(row.competency_id))
+        # A competency nobody has been assessed against yet returns NULL here,
+        # and rounding that to 0 graded it "low" — an unassessed competency
+        # counted as failed mastery. A module part-way through delivery was
+        # therefore capped at the fraction already assessed, and one with no
+        # marks at all reported 0% mastery rather than "nothing measured yet".
+        assessed = row.score is not None
+        score = _round(row.score)
+        if assessed:
+            assessed_count += 1
         items.append(
             {
                 "student_id": str(row.student_id),
                 "student_name": row.student_name,
                 "competency_id": str(row.competency_id),
                 "competency_name": row.competency_name,
+                # Kept numeric whether or not it was assessed, because callers
+                # format it directly; `assessed` is what tells them it is real.
                 "score": score,
-                "mastery_level": mastery_label(score),
+                "assessed": assessed,
+                "mastery_level": mastery_label(score) if assessed else "unassessed",
             }
         )
 
@@ -274,6 +334,7 @@ def get_heatmap(
         "items": items,
         "students_count": len(student_ids),
         "competencies_count": len(competency_ids),
+        "assessed_count": assessed_count,
         "last_updated": datetime.utcnow().isoformat(),
     }
 
@@ -1058,15 +1119,25 @@ def build_role_dashboard(
     )
 
     heatmap_items = heatmap["items"]
-    mastery_pct = _round(
-        (
-            sum(1 for item in heatmap_items if item["mastery_level"] == "high")
-            / len(heatmap_items)
+    # Only cells actually assessed can say anything about mastery. Counting the
+    # unassessed ones held the rate down in proportion to how much of the
+    # module was still to be delivered.
+    assessed_cells = [item for item in heatmap_items if item.get("assessed")]
+    if assessed_cells:
+        mastery_pct = _round(
+            sum(1 for item in assessed_cells if item["mastery_level"] == "high")
+            / len(assessed_cells)
             * 100
         )
-        if heatmap_items
-        else 0
-    )
+        mastery_basis = "competency"
+        mastery_sample = len(assessed_cells)
+    else:
+        # No competency evidence in this scope — see `_score_mastery_share`.
+        mastery_pct, mastery_sample = _score_mastery_share(
+            _resolve_subject_ids(department_id, course_id, module_id, resolved_subject_id, trainer_id, student_id),
+            _resolve_student_ids(department_id, course_id, module_id, resolved_subject_id, trainer_id, student_id),
+        )
+        mastery_basis = "score" if mastery_sample else "none"
     attendance_items = attendance["items"]
     average_attendance = _round(
         sum(item["attendance_rate"] for item in attendance_items) / len(attendance_items)
@@ -1074,19 +1145,34 @@ def build_role_dashboard(
         else 0
     )
 
-    portfolio_items = portfolio["items"]
+    # Portfolio completion is evidence submitted against competencies required,
+    # so a learner with nothing required of them has no completion to report —
+    # averaging them in as 0% blames the cohort for a requirement that was
+    # never defined. Nothing in the API creates a competency or a piece of
+    # evidence (both arrive only through the seed scripts), so an untouched
+    # install has no requirement anywhere and says so rather than reporting 0%.
+    portfolio_items = [item for item in portfolio["items"] if item["required_count"] > 0]
     portfolio_completion = _round(
         sum(item["completion_rate"] for item in portfolio_items) / len(portfolio_items)
         if portfolio_items
         else 0
     )
+    portfolio_basis = "competency" if portfolio_items else "none"
 
     return {
         "summary_panel": {
             "mastery_rate": mastery_pct,
+            # What the rate was measured from, so the tile can say so rather
+            # than implying competency evidence that does not exist.
+            "mastery_basis": mastery_basis,
+            "mastery_sample": mastery_sample,
             "at_risk_students": len(at_risk["items"]),
             "attendance_rate": average_attendance,
             "portfolio_completion_rate": portfolio_completion,
+            # As with mastery: says whether a requirement exists at all, so the
+            # UI need not present "nothing defined" as "nothing submitted".
+            "portfolio_basis": portfolio_basis,
+            "portfolio_sample": len(portfolio_items),
             "alerts": len(at_risk["items"]),
         },
         "heatmap": heatmap,

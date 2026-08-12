@@ -12,6 +12,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 
 from ..extensions import db
 from ..models.assessment import Assessment
+from ..models.competency import Competency
 from ..models.course import Course
 from ..models.department import Department
 from ..models.score import Score
@@ -403,6 +404,11 @@ def list_assessments():
             "pass_marks": a.pass_marks,
             "course_id": str(a.course_id) if a.course_id else None,
             "course_name": a.course.name if a.course else None,
+            # Which competency this assessment evidences, if any. Marks only
+            # reach the mastery heatmap through this link, so the picker shows
+            # it and can tell an unlinked assessment from a linked one.
+            "competency_id": str(a.competency_id) if a.competency_id else None,
+            "competency_name": a.competency.name if a.competency else None,
         }
         for a in q.order_by(Assessment.name.asc()).all()
     ]
@@ -468,6 +474,25 @@ def create_assessment():
     if pass_marks < 0 or pass_marks > total_marks:
         return {"error": "Pass marks must be between zero and total marks"}, 400
 
+    # Optional, but it is the only link that puts these marks on the mastery
+    # heatmap: `get_heatmap` reaches a score through its assessment's
+    # competency, so an assessment created without one is invisible there no
+    # matter how many marks it carries.
+    competency_uuid = None
+    competency_ref = payload.get("competency_id")
+    if competency_ref:
+        try:
+            competency_uuid = uuid.UUID(str(competency_ref))
+        except (ValueError, TypeError):
+            return {"error": "Invalid 'competency_id'"}, 400
+        competency = db.session.get(Competency, competency_uuid)
+        if not competency or competency.deleted_at:
+            return {"error": "Competency not found"}, 404
+        if competency.module_id != module.id:
+            # Mastery is graded per module, so a competency from elsewhere
+            # would never line up with this assessment's learners.
+            return {"error": "That competency belongs to a different module"}, 400
+
     assessment = Assessment(
         name=name,
         assessment_type=assessment_type or "test",
@@ -476,6 +501,7 @@ def create_assessment():
         pass_marks=pass_marks,
         course_id=course.id,
         module_id=module.id,
+        competency_id=competency_uuid,
     )
     db.session.add(assessment)
     db.session.commit()
@@ -494,6 +520,7 @@ def create_assessment():
         "module_name": module.name,
         "subject_id": str(subject.id),
         "subject_code": subject.code,
+        "competency_id": str(competency_uuid) if competency_uuid else None,
     }, 201
 
 

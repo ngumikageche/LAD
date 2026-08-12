@@ -34,6 +34,7 @@ from app.models.assessment import Assessment  # noqa: E402
 from app.models.attendance import Attendance  # noqa: E402
 from app.models.attendance_session import AttendanceRecord, AttendanceSession  # noqa: E402
 from app.models.competency import Competency  # noqa: E402
+from app.models.portfolio_evidence import PortfolioEvidence  # noqa: E402
 from app.models.score import Score  # noqa: E402
 from app.models.student_subject import StudentSubject  # noqa: E402
 from app.models.subject import Subject  # noqa: E402
@@ -165,6 +166,25 @@ def diagnose(email: str | None, trainer_id: str | None) -> int:
     else:
         print("  → Attendance exists and should now be counted. Before the fix this")
         print("    read 0% unless the same learners also had marks in these subjects.")
+
+    print("\nPORTFOLIO — evidence submitted against competencies required")
+    evidence = _count(
+        db.session.query(func.count(PortfolioEvidence.id))
+        .join(Competency, Competency.id == PortfolioEvidence.competency_id)
+        .filter(
+            Competency.module_id.in_(module_ids),
+            PortfolioEvidence.deleted_at.is_(None),
+        )
+    )
+    print(f"  competencies requiring evidence    : {competencies}")
+    print(f"  evidence items submitted           : {evidence}")
+    if competencies == 0:
+        print("  → Nothing is required, so there is no completion to report. The")
+        print("    dashboard now says so instead of showing 0%.")
+    elif evidence == 0:
+        print("  → A requirement exists but no evidence has been submitted. Note that")
+        print("    no API endpoint creates portfolio evidence — it arrives only via")
+        print("    scripts/seed_linked_user_data.py, so there is no way to submit any.")
 
     subjectless = _count(
         db.session.query(func.count(Score.id)).filter(

@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../auth/AuthContext';
 import { apiRequest } from '../api/client';
+import { competenciesAPI, type Competency } from '../api/competencies';
 import ImportConflictDialog, {
   asConflictReport,
   type ConflictChoice,
@@ -141,6 +142,10 @@ export default function BulkMarksUploadPage() {
   const [newAssessmentSubjectId, setNewAssessmentSubjectId] = useState('');
   const [newAssessmentTotal, setNewAssessmentTotal] = useState('100');
   const [newAssessmentPass, setNewAssessmentPass] = useState('50');
+  // Optional, but it is the only link that puts these marks on the mastery
+  // heatmap — an assessment created without one is invisible there.
+  const [newAssessmentCompetencyId, setNewAssessmentCompetencyId] = useState('');
+  const [competencyOptions, setCompetencyOptions] = useState<Competency[]>([]);
   const [creatingAssessment, setCreatingAssessment] = useState(false);
 
   const [subjects, setSubjects] = useState<SubjectOption[]>([]);
@@ -180,6 +185,20 @@ export default function BulkMarksUploadPage() {
       .catch(() => setSubjects([]));
   }, [token]);
 
+  // Competencies belong to the subject's module, so the picker reloads when
+  // the subject changes and clears any selection that no longer applies.
+  useEffect(() => {
+    const subject = subjects.find((item) => item.id === newAssessmentSubjectId);
+    setNewAssessmentCompetencyId('');
+    if (!subject?.module_id) {
+      setCompetencyOptions([]);
+      return;
+    }
+    competenciesAPI.list(subject.module_id)
+      .then((data) => setCompetencyOptions(data.competencies ?? []))
+      .catch(() => setCompetencyOptions([]));
+  }, [newAssessmentSubjectId, subjects]);
+
   const filteredAssessments = assessments.filter((a) =>
     `${a.name} ${a.course_name ?? ''} ${a.assessment_type}`.toLowerCase().includes(assessmentSearch.toLowerCase())
   );
@@ -212,6 +231,7 @@ export default function BulkMarksUploadPage() {
           subject_code: subject.code ?? subject.id,
           total_marks: Number(newAssessmentTotal),
           pass_marks: Number(newAssessmentPass),
+          competency_id: newAssessmentCompetencyId || undefined,
         },
       });
       setAssessments((current) => [...current, created]);
@@ -511,6 +531,27 @@ export default function BulkMarksUploadPage() {
                   />
                 </label>
               </div>
+              <label className="text-xs text-slate-400">
+                Competency <span className="text-slate-500">(optional)</span>
+                <select
+                  value={newAssessmentCompetencyId}
+                  onChange={(event) => setNewAssessmentCompetencyId(event.target.value)}
+                  disabled={!newAssessmentSubjectId}
+                  className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-slate-200 disabled:opacity-50"
+                >
+                  <option value="">Not linked to a competency</option>
+                  {competencyOptions.map((competency) => (
+                    <option key={competency.id} value={competency.id}>{competency.name}</option>
+                  ))}
+                </select>
+                <span className="mt-1 block text-[11px] leading-snug text-slate-500">
+                  {!newAssessmentSubjectId
+                    ? 'Select a subject to see its competencies.'
+                    : competencyOptions.length === 0
+                      ? 'This module has no competencies yet — marks here will not count toward Mastery Rate.'
+                      : 'Marks reach the mastery heatmap only through this link.'}
+                </span>
+              </label>
             </div>
             <button
               type="button"

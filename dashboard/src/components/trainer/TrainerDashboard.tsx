@@ -78,12 +78,26 @@ const TrainerDashboard = () => {
   const passRate = dashboard?.pass_rate ?? 0;
   const attendanceRate = dashboard?.summary_panel?.attendance_rate ?? 0;
   const masteryRate = dashboard?.summary_panel?.mastery_rate ?? 0;
+  // Mastery is defined against competencies, but falls back to marks where a
+  // scope has no competency evidence. Saying which keeps the tile honest
+  // instead of implying evidence that was never captured.
+  const masteryBasis = dashboard?.summary_panel?.mastery_basis ?? 'competency';
+  const masteryHelper =
+    masteryBasis === 'competency' ? 'High-mastery competency share'
+    : masteryBasis === 'score' ? 'Learners averaging 75%+ (no competency data)'
+    : 'No competency evidence or marks yet';
   const portfolioRate = dashboard?.summary_panel?.portfolio_completion_rate ?? 0;
+  // No competency means nothing was ever required, which is not the same as
+  // evidence being outstanding — saying "0% portfolio completion" there reads
+  // as a cohort failing to submit.
+  const portfolioPhrase = dashboard?.summary_panel?.portfolio_basis === 'none'
+    ? 'no portfolio requirement defined'
+    : `${fmtPct(portfolioRate)} portfolio completion`;
 
   const pulseItems = [
     `${fmtPct(dashboard?.average_score)} class average across ${dashboard?.total_students ?? 0} students gives the current academic baseline for your teaching scope.`,
     `${fmtPct(passRate)} pass rate and ${atRiskStudents.length} at-risk students show whether underperformance is isolated or starting to spread through the cohort.`,
-    `${fmtPct(attendanceRate)} attendance and ${fmtPct(portfolioRate)} portfolio completion help explain whether the issue is knowledge, participation, or missing evidence.`,
+    `${fmtPct(attendanceRate)} attendance and ${portfolioPhrase} help explain whether the issue is knowledge, participation, or missing evidence.`,
   ];
 
   const actionItems = [
@@ -167,7 +181,7 @@ const TrainerDashboard = () => {
         <AnalyticsMetricTile
           label="Mastery Rate"
           value={fmtPct(masteryRate)}
-          helper="High-mastery competency share"
+          helper={masteryHelper}
           icon={ShieldAlert}
           accent="violet"
         />

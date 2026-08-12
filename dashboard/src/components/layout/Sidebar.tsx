@@ -6,7 +6,7 @@ import {
   BookOpen, UserCheck, ChevronDown, ChevronRight, LayoutDashboard,
   QrCode, ScanLine, PenLine, HeartPulse,
   X,
-  Scale, Star, Inbox, CalendarRange,
+  Scale, Star, Inbox, CalendarRange, Target,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { useAuth } from '../../auth/AuthContext';
@@ -44,6 +44,7 @@ const studentGroups: NavGroup[] = [
       { name: 'My Subjects',       icon: Book,            path: '/student/subjects',          color: 'text-teal-300'},
       { name: 'Online Exams',      icon: ClipboardList,   path: '/student/online-exams',      color: 'text-indigo-300' },
       { name: 'Documents',         icon: BookOpen,        path: '/student/documents',         color: 'text-indigo-300' },
+      { name: 'My Portfolio',      icon: Target,          path: '/student/portfolio',         color: 'text-violet-300' },
     ],
   },
     {
@@ -98,6 +99,7 @@ const adminGroups: NavGroup[] = [
       { name: 'Courses',           icon: Book,            path: '/courses',                    color: 'text-amber-400', permission: 'courses.read'  },
       { name: 'Modules',           icon: Book,            path: '/modules',                    color: 'text-blue-300', permission: 'modules.read' },
       { name: 'Subjects',          icon: Book,            path: '/subjects',                   color: 'text-amber-400', permission: 'subjects.read'  },
+      { name: 'Competencies',      icon: Target,          path: '/competencies',               color: 'text-violet-300', permission: 'competencies.read' },
       { name: 'Terms',             icon: CalendarRange,   path: '/terms',                      color: 'text-cyan-300', permission: 'terms.read' },
     ],
   },
@@ -171,6 +173,7 @@ const trainerGroups: NavGroup[] = [
       { name: 'My Courses',        icon: Book,            path: '/courses',                   color: 'text-amber-400', permission: 'courses.read' },
       { name: 'My Modules',        icon: Book,            path: '/modules',                   color: 'text-blue-300', permission: 'modules.read' },
       { name: 'My Subjects',       icon: Book,            path: '/subjects',                  color: 'text-amber-400', permission: 'subjects.read' },
+      { name: 'Competencies',      icon: Target,          path: '/competencies',              color: 'text-violet-300', permission: 'competencies.read' },
       { name: 'Terms',             icon: CalendarRange,   path: '/terms',                     color: 'text-cyan-300', permission: 'terms.read' },
       { name: 'Score Management',  icon: FileText,        path: '/admin/scores',              color: 'text-red-400', permission: 'admin.scores.read' },
       { name: 'Bulk Upload Marks', icon: Upload,          path: '/scores/bulk-upload',        color: 'text-amber-400', permission: 'scores.create' },

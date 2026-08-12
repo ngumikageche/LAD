@@ -10,6 +10,9 @@ const colorMap: Record<string, string> = {
   low: 'bg-red-500/15 text-red-300 border border-red-500/25',
   medium: 'bg-amber-500/15 text-amber-300 border border-amber-500/25',
   high: 'bg-green-500/15 text-green-300 border border-green-500/25',
+  // A competency nobody has sat yet is not a failure — it reads as neutral,
+  // so an in-progress module does not look like a wall of red.
+  unassessed: 'bg-slate-700/30 text-slate-500 border border-slate-700',
 };
 
 export default function CompetencyHeatmap({ items, limitRows = 8 }: Props) {
@@ -37,14 +40,19 @@ export default function CompetencyHeatmap({ items, limitRows = 8 }: Props) {
               </div>
               {competencyNames.map((competencyName) => {
                 const cell = lookup.get(`${studentName}__${competencyName}`);
-                const level = cell?.mastery_level ?? 'low';
+                const level = cell?.mastery_level ?? 'unassessed';
+                const measured = Boolean(cell) && level !== 'unassessed';
                 return (
                   <div
                     key={`${studentName}-${competencyName}`}
-                    className={`rounded-2xl px-2 py-3 text-center text-sm font-semibold ${colorMap[level]}`}
-                    title={`${studentName} / ${competencyName}: ${cell?.score ?? 0}%`}
+                    className={`rounded-2xl px-2 py-3 text-center text-sm font-semibold ${colorMap[level] ?? colorMap.unassessed}`}
+                    title={
+                      measured
+                        ? `${studentName} / ${competencyName}: ${cell?.score ?? 0}%`
+                        : `${studentName} / ${competencyName}: not assessed yet`
+                    }
                   >
-                    {cell ? `${cell.score.toFixed(0)}%` : '0%'}
+                    {measured ? `${cell!.score.toFixed(0)}%` : '—'}
                   </div>
                 );
               })}

@@ -9,6 +9,8 @@ from .students import bp as students_bp
 from .trainers import bp as trainers_bp
 from .users import bp as users_bp
 from .modules import bp as modules_bp
+from .competencies import bp as competencies_bp
+from .portfolio_evidence import bp as portfolio_evidence_bp
 # from .extra import bp as extra_bp
 from .subjects import bp as subjects_bp
 from .trainer_subjects import bp as trainer_subjects_bp
