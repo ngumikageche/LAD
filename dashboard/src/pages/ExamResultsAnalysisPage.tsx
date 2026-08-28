@@ -315,7 +315,7 @@ export default function ExamResultsAnalysisPage() {
           <ReportMetricCard label="Score Entries" value={stats.total_entries} icon={GraduationCap} accent="cyan" />
           <ReportMetricCard label="Learners" value={stats.learners_assessed} icon={Users} accent="violet" />
           <ReportMetricCard
-            label="Pass Rate"
+            label="Average Pass Rate"
             value={`${stats.pass_rate}%`}
             icon={Award}
             accent="emerald"

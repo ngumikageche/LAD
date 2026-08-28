@@ -180,7 +180,8 @@ const TrainerDashboard = () => {
         />
         <AnalyticsMetricTile
           label="Mastery Rate"
-          value={fmtPct(masteryRate)}
+          // Nothing measured is not a rate of zero, so it does not print as one.
+          value={masteryBasis === 'none' ? '—' : fmtPct(masteryRate)}
           helper={masteryHelper}
           icon={ShieldAlert}
           accent="violet"

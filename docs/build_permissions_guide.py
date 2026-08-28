@@ -7,6 +7,9 @@ The permission catalogue and the role baselines are parsed out of
 cannot drift from the keys the Roles screen actually renders. Add a key there
 and rebuild — it appears in the reference automatically.
 
+Styling is shared with the user guide through `guide_theme.py`; only the
+components unique to this document live in `EXTRA_CSS` below.
+
 Usage:
     python3 docs/build_permissions_guide.py
 
@@ -15,13 +18,15 @@ Requires Google Chrome (headless) for the HTML-to-PDF step.
 
 from __future__ import annotations
 
-import html
 import re
 import shutil
 import subprocess
 import sys
 from datetime import date
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from guide_theme import BASE_CSS, esc  # noqa: E402
 
 REPO = Path(__file__).resolve().parents[1]
 ROLES_PAGE = REPO / "dashboard" / "src" / "pages" / "RolesPage.tsx"
@@ -61,10 +66,6 @@ def parse_role_templates(source: str) -> list[tuple[str, str, list[str]]]:
 
 # ── Rendering helpers ────────────────────────────────────────────────────────
 
-def esc(value: str) -> str:
-    return html.escape(value, quote=False)
-
-
 def permission_table(perms: list[tuple[str, str]]) -> str:
     rows = "\n".join(
         f"<tr><td><code>{esc(key)}</code></td><td>{esc(label)}</td></tr>"
@@ -75,6 +76,22 @@ def permission_table(perms: list[tuple[str, str]]) -> str:
         "<thead><tr><th style=\"width:38%\">Key</th><th>What it grants</th></tr></thead>"
         f"<tbody>{rows}</tbody></table>"
     )
+
+
+EXTRA_CSS = """
+  /* ── Permission tables ── */
+  table.perm code { background: none; padding: 0; color: #14345f; font-weight: 600; }
+
+  /* ── Role templates ── */
+  .tmpl { border: 1px solid #dde3ec; border-radius: 7px; padding: 3.5mm 4mm; margin-bottom: 3.5mm; }
+  .tmpl h3 { margin-top: 0; }
+  .chips { display: flex; flex-wrap: wrap; gap: 1.4mm; }
+  .chip {
+    font-family: "SFMono-Regular", Consolas, monospace; font-size: 7.6pt;
+    background: #eef1f7; color: #1b3a6b; padding: 0.7mm 1.8mm; border-radius: 3px;
+  }
+  .tmpl-note { font-size: 9.2pt; margin-bottom: 0; }
+"""
 
 
 def build_html(tabs, templates) -> str:
@@ -114,137 +131,7 @@ def build_html(tabs, templates) -> str:
 <head>
 <meta charset="utf-8">
 <title>LAD — Working With Permissions</title>
-<style>
-  @page {{ size: A4; margin: 18mm 16mm 20mm 16mm; }}
-
-  * {{ box-sizing: border-box; }}
-  html {{ -webkit-print-color-adjust: exact; print-color-adjust: exact; }}
-  body {{
-    font-family: "Source Sans 3", "Segoe UI", Helvetica, Arial, sans-serif;
-    font-size: 10.2pt; line-height: 1.55; color: #1e2433; margin: 0;
-  }}
-  code {{
-    font-family: "SFMono-Regular", "JetBrains Mono", Consolas, monospace;
-    font-size: 0.88em; background: #eef1f7; color: #1b3a6b;
-    padding: 0.09em 0.34em; border-radius: 3px; white-space: nowrap;
-  }}
-  pre {{
-    background: #12182a; color: #dfe6f5; padding: 11px 14px; border-radius: 7px;
-    font-family: "SFMono-Regular", "JetBrains Mono", Consolas, monospace;
-    font-size: 8.6pt; line-height: 1.5; overflow-x: auto; white-space: pre-wrap;
-  }}
-  pre code {{ background: none; color: inherit; padding: 0; white-space: pre-wrap; }}
-
-  /* ── Cover ── */
-  /* Chrome ignores `@page:first`, so rather than fighting the margin box the
-     cover is a panel sized to exactly fill it: 297mm less the 18mm top and
-     20mm bottom margins. */
-  .cover {{
-    height: 259mm; padding: 30mm 20mm 16mm; border-radius: 4mm;
-    page-break-after: always;
-    background: linear-gradient(160deg, #0d1b3e 0%, #14345f 55%, #0f4a52 100%);
-    color: #fff; display: flex; flex-direction: column;
-  }}
-  .cover .mark {{
-    font-size: 9pt; letter-spacing: 0.34em; text-transform: uppercase;
-    color: #6fe3d0; font-weight: 700;
-  }}
-  .cover h1 {{ font-size: 34pt; line-height: 1.1; margin: 14mm 0 0; font-weight: 700; }}
-  .cover .sub {{ font-size: 13pt; color: #b9cbe6; margin-top: 6mm; max-width: 120mm; }}
-  .cover .rule {{ height: 3px; width: 46mm; background: #6fe3d0; margin: 10mm 0; }}
-  .cover .meta {{ margin-top: auto; font-size: 9.5pt; color: #9fb6d4; }}
-  .cover .meta strong {{ color: #fff; font-weight: 600; }}
-  .cover .stats {{ display: flex; gap: 14mm; margin-top: 12mm; }}
-  .cover .stat .n {{ font-size: 22pt; font-weight: 700; color: #6fe3d0; }}
-  .cover .stat .l {{ font-size: 8.5pt; letter-spacing: 0.13em; text-transform: uppercase; color: #9fb6d4; }}
-
-  /* ── Structure ── */
-  h2 {{
-    font-size: 16pt; margin: 0 0 4mm; padding-bottom: 2mm; color: #0d1b3e;
-    border-bottom: 2px solid #0d1b3e; page-break-after: avoid;
-  }}
-  h3 {{ font-size: 11.6pt; margin: 7mm 0 2.5mm; color: #14345f; page-break-after: avoid; }}
-  h4 {{ font-size: 10.2pt; margin: 5mm 0 1.5mm; color: #1e2433; page-break-after: avoid; }}
-  section {{ page-break-before: always; }}
-  section.first {{ page-break-before: avoid; }}
-  .keep {{ page-break-inside: avoid; }}
-  p {{ margin: 0 0 3mm; }}
-  ul, ol {{ margin: 0 0 3mm; padding-left: 5.5mm; }}
-  li {{ margin-bottom: 1.4mm; }}
-  .eyebrow {{
-    font-size: 8pt; letter-spacing: 0.22em; text-transform: uppercase;
-    color: #5b7ba6; font-weight: 700; margin-bottom: 1.5mm;
-  }}
-
-  /* ── Tables ── */
-  table {{ width: 100%; border-collapse: collapse; margin: 2mm 0 4mm; font-size: 9.2pt; }}
-  th {{
-    background: #0d1b3e; color: #fff; text-align: left; padding: 2mm 2.6mm;
-    font-weight: 600; font-size: 8.6pt; letter-spacing: 0.04em;
-  }}
-  td {{ padding: 1.8mm 2.6mm; border-bottom: 1px solid #dde3ec; vertical-align: top; }}
-  tbody tr:nth-child(even) {{ background: #f6f8fb; }}
-  table.perm code {{ background: none; padding: 0; color: #14345f; font-weight: 600; }}
-  thead {{ display: table-header-group; }}
-  tr {{ page-break-inside: avoid; }}
-
-  /* ── Callouts ── */
-  .callout {{
-    border-left: 4px solid #14345f; background: #f2f6fc; padding: 3mm 4mm;
-    margin: 3mm 0 4mm; border-radius: 0 5px 5px 0; page-break-inside: avoid;
-  }}
-  .callout.warn {{ border-left-color: #c2410c; background: #fdf3ec; }}
-  .callout.good {{ border-left-color: #0f766e; background: #eef8f6; }}
-  .callout .t {{
-    font-weight: 700; font-size: 8.4pt; letter-spacing: 0.13em;
-    text-transform: uppercase; color: #14345f; margin-bottom: 1.2mm;
-  }}
-  .callout.warn .t {{ color: #c2410c; }}
-  .callout.good .t {{ color: #0f766e; }}
-  .callout p:last-child {{ margin-bottom: 0; }}
-
-  /* ── Two-layer diagram ── */
-  .layers {{ display: flex; gap: 4mm; margin: 4mm 0 5mm; page-break-inside: avoid; }}
-  .layer {{ flex: 1; border: 1.5px solid #14345f; border-radius: 7px; padding: 3.5mm 4mm; }}
-  .layer.two {{ border-color: #0f766e; }}
-  .layer .n {{
-    font-size: 8pt; letter-spacing: 0.18em; text-transform: uppercase;
-    font-weight: 700; color: #14345f; margin-bottom: 1.5mm;
-  }}
-  .layer.two .n {{ color: #0f766e; }}
-  .layer .q {{ font-size: 11pt; font-weight: 700; margin-bottom: 2mm; color: #0d1b3e; }}
-  .layer p {{ font-size: 9.2pt; margin-bottom: 2mm; }}
-  .layer .ex {{ font-size: 8.6pt; color: #5b7ba6; margin-bottom: 0; }}
-
-  /* ── Steps ── */
-  ol.steps {{ counter-reset: s; list-style: none; padding-left: 0; margin: 3mm 0 4mm; }}
-  ol.steps > li {{
-    counter-increment: s; position: relative; padding-left: 9mm; margin-bottom: 3.2mm;
-    page-break-inside: avoid;
-  }}
-  ol.steps > li::before {{
-    content: counter(s); position: absolute; left: 0; top: 0.2mm;
-    width: 6mm; height: 6mm; border-radius: 50%; background: #14345f; color: #fff;
-    font-size: 8.4pt; font-weight: 700; display: flex; align-items: center; justify-content: center;
-  }}
-
-  /* ── Role templates ── */
-  .tmpl {{ border: 1px solid #dde3ec; border-radius: 7px; padding: 3.5mm 4mm; margin-bottom: 3.5mm; }}
-  .tmpl h3 {{ margin-top: 0; }}
-  .chips {{ display: flex; flex-wrap: wrap; gap: 1.4mm; }}
-  .chip {{
-    font-family: "SFMono-Regular", Consolas, monospace; font-size: 7.6pt;
-    background: #eef1f7; color: #1b3a6b; padding: 0.7mm 1.8mm; border-radius: 3px;
-  }}
-  .tmpl-note {{ font-size: 9.2pt; margin-bottom: 0; }}
-  .count {{
-    font-size: 8pt; font-weight: 600; color: #5b7ba6; letter-spacing: 0.04em;
-    text-transform: none; margin-left: 2mm;
-  }}
-
-  .toc li {{ margin-bottom: 1.8mm; font-size: 10pt; }}
-  .toc .s {{ color: #5b7ba6; }}
-</style>
+<style>{BASE_CSS}{EXTRA_CSS}</style>
 </head>
 <body>
 
@@ -270,7 +157,7 @@ def build_html(tabs, templates) -> str:
   <h2>What this covers</h2>
   <ol class="toc">
     <li>The two questions every request answers <span class="s">— the model everything else follows</span></li>
-    <li>Data scope and the master control <span class="s">— <code>data.master</code></span></li>
+    <li>Data scope and the master control <span class="s">— <code>data.master</code>, <code>data.department</code></span></li>
     <li>How a request is decided <span class="s">— resolution order, front and back</span></li>
     <li>Granting permissions in the Roles screen <span class="s">— step by step</span></li>
     <li>Assigning a role to a person</li>
@@ -326,12 +213,24 @@ def build_html(tabs, templates) -> str:
   <table>
     <thead><tr><th style="width:22%">Who</th><th>Sees by default</th></tr></thead>
     <tbody>
-      <tr><td><strong>Administrator</strong></td><td>Everything. The <code>*</code> wildcard carries master data access implicitly.</td></tr>
+      <tr><td><strong>Group super admin</strong></td><td>Everything. Recognised by having <em>no</em> institution on their account — that absence is what places them above the colleges rather than inside one.</td></tr>
+      <tr><td><strong>College administrator</strong></td><td>Their own institution. The <code>*</code> wildcard carries master data access on the record screens, but the cross-cohort reports hold them to their college — see below.</td></tr>
       <tr><td><strong>Manager / custom staff role</strong></td><td>Every record belonging to their own institution.</td></tr>
+      <tr><td><strong>Head of department</strong></td><td>Their own department, across every trainer in it. Granted by <code>data.department</code>, or implied by a role named <em>HOD</em> or <em>Head of Department</em>.</td></tr>
       <tr><td><strong>Trainer</strong></td><td>Their own institution, narrowed again to the subjects assigned to them — those subjects' modules, courses, learners, marks, and documents.</td></tr>
       <tr><td><strong>Student</strong></td><td>Themselves. A learner granted <code>students.read</code> still sees only their own record, and cannot enumerate classmates.</td></tr>
     </tbody>
   </table>
+
+  <div class="callout warn">
+    <div class="t">One place the wildcard does not widen you</div>
+    <p>The cross-cohort reports — <strong>Enrolment &amp; Attendance</strong> and the
+    <strong>Attendance Overview</strong> — resolve scope from the institution on the account
+    rather than from the strength of the role, because a college administrator administers one
+    college out of several and must not read the others. An explicitly granted
+    <code>data.master</code> still lifts that; a bare <code>*</code> does not. These reports
+    print the scope they are showing, so the narrowing is visible rather than silent.</p>
+  </div>
 
   <div class="callout">
     <div class="t">The institution chain</div>
@@ -347,7 +246,8 @@ def build_html(tabs, templates) -> str:
   <div class="eyebrow">Section 2</div>
   <h2>Data scope and the master control</h2>
 
-  <p>One key lifts both confinements at once.</p>
+  <p>Two keys on the <strong>Data Scope</strong> tab move a role between the levels above.
+  One lifts both confinements at once; the other sets the boundary at a department.</p>
 
   <h3><code>data.master</code> — View Master Data</h3>
   <p>Found on the <strong>Data Scope</strong> tab of the role editor, labelled
@@ -368,12 +268,28 @@ def build_html(tabs, templates) -> str:
 
   <div class="callout warn">
     <div class="t">Grant it deliberately</div>
-    <p><code>data.master</code> is the only supported way to see beyond your own scope,
-    and it is deliberately a single, visible switch rather than a side effect of any
-    other key. Give it to group-level auditors, multi-campus registrars, and quality
-    assurance staff. Do not give it to a role simply because a screen looks empty —
+    <p><code>data.master</code> is the only supported way to see beyond your own
+    <em>institution</em>, and it is deliberately a single, visible switch rather than a side
+    effect of any other key. Give it to group-level auditors, multi-campus registrars, and
+    quality assurance staff. Do not give it to a role simply because a screen looks empty —
     an empty screen is usually a missing <em>assignment</em>, not a missing permission.
     See Troubleshooting.</p>
+  </div>
+
+  <h3><code>data.department</code> — Head of Department</h3>
+  <p>The department counterpart, on the same tab. It widens a trainer from their own
+  subjects to their whole department, and narrows a college-wide manager to the same — so
+  it is a promotion for one role and a restriction for another. The department is read from
+  the trainer profile attached to the account, so a head of department needs one, with a
+  department set.</p>
+  <p>A role named <em>HOD</em> or <em>Head of Department</em> is treated as holding it
+  without the key being ticked. Grant the key explicitly when the role is named for the job
+  in some other way — <em>Programme Lead</em>, <em>Section Head</em>.</p>
+  <div class="callout">
+    <div class="t">If there is no department to hold them to</div>
+    <p>An account marked as a head of department but carrying no trainer profile, or one whose
+    profile has no department, falls back to their college rather than to an empty scope.
+    Showing them the college is wrong-but-visible; showing them nothing looks like a fault.</p>
   </div>
 
   <h3>The two alert keys</h3>
@@ -629,7 +545,7 @@ def build_html(tabs, templates) -> str:
     <thead><tr><th style="width:44%">File</th><th>Responsibility</th></tr></thead>
     <tbody>
       <tr><td><code>backend/app/routes/permissions.py</code></td><td>Key checks and the route guards</td></tr>
-      <tr><td><code>backend/app/services/scoping.py</code></td><td>Data scope — institution, trainer, and <code>data.master</code></td></tr>
+      <tr><td><code>backend/app/services/scoping.py</code></td><td>Data scope — institution, trainer, and <code>data.master</code>; plus <code>oversight_scope</code> for the cross-cohort reports</td></tr>
       <tr><td><code>dashboard/src/auth/ProtectedRoute.tsx</code></td><td>Route guards and the shared <code>hasPermission</code> helper</td></tr>
       <tr><td><code>dashboard/src/pages/RolesPage.tsx</code></td><td>The permission catalogue rendered by the editor</td></tr>
       <tr><td><code>dashboard/src/components/layout/Sidebar.tsx</code></td><td>Nav entries and the key each carries</td></tr>

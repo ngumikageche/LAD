@@ -18,7 +18,12 @@ from ..models.student import Student
 from ..models.subject import Subject
 from ..models.term import Term
 from ..models.user import User
-from ..services.scoping import scope_scores, term_match_clause, trainer_subject_ids
+from ..services.scoping import (
+    oversight_scope,
+    scope_scores,
+    term_match_clause,
+    trainer_subject_ids,
+)
 from .permissions import get_current_user, log_view, _has_permission, _is_admin, _is_student
 
 bp = Blueprint("admin_reports_v2", __name__, url_prefix="/reports/admin")
@@ -63,6 +68,19 @@ def _school_info(user) -> dict:
         "name": inst.name if inst else "Learning & Development",
         "location": inst.location if inst else "",
     }
+
+
+def _department_options(user, head_of_department_id):
+    """
+    The departments a caller may pick from — their own college's, or, for a head
+    of department, only the one they run.
+    """
+    query = db.session.query(Department).filter(Department.deleted_at.is_(None))
+    if user.institution_id:
+        query = query.filter(Department.institution_id == user.institution_id)
+    if head_of_department_id is not None:
+        query = query.filter(Department.id == head_of_department_id)
+    return query.order_by(Department.name.asc()).all()
 
 
 def _prev_term(term: Term) -> Term | None:
@@ -176,6 +194,23 @@ def exam_results():
                 .all()
             )
         ]
+
+    # A head of department reads their own department, not the whole college.
+    # Narrowed before the filter below so the course list, the subject picker,
+    # and the previous-term baseline all inherit the same boundary.
+    scope = oversight_scope(user)
+    head_of_department_id = scope.department_id if scope.mode == "department" else None
+    if head_of_department_id is not None:
+        if department and department.id != head_of_department_id:
+            return {"error": "Department is outside your department"}, 403
+        allowed = set(scope.course_ids or [])
+        permitted_course_ids = (
+            [cid for cid in permitted_course_ids if cid in allowed]
+            if permitted_course_ids is not None
+            else list(allowed)
+        )
+
+    if permitted_course_ids is not None:
         score_q = score_q.filter(_student_course_clause(permitted_course_ids))
     department_course_ids = None
     if department:
@@ -333,13 +368,7 @@ def exam_results():
             ],
             "departments": [
                 {"id": str(item.id), "name": item.name}
-                for item in db.session.query(Department)
-                .filter(
-                    Department.deleted_at.is_(None),
-                    Department.institution_id == user.institution_id if user.institution_id else True,
-                )
-                .order_by(Department.name.asc())
-                .all()
+                for item in _department_options(user, head_of_department_id)
             ],
             "courses": [
                 {"id": str(item.id), "name": item.name, "department_id": str(item.department_id)}
@@ -443,28 +472,51 @@ def enrolment_overview():
     term_id_str = request.args.get("term_id")
     term = _resolve_term(term_id_str)
 
-    cache_key = f"admin_enrolment_{term.id if term else 'all'}"
+    # Which cohorts this caller may count. A trainer reads their own subjects, a
+    # head of department their department, a college administrator their college
+    # — only the group super admin reads every college. Without this the report
+    # listed every course in the database to whoever opened it.
+    scope = oversight_scope(user)
+
+    # The signature is part of the key because the report is no longer the same
+    # document for every caller: a shared key served the first reader's scope to
+    # everyone who came after them.
+    cache_key = f"admin_enrolment_{term.id if term else 'all'}_{scope.cache_key}"
     cached = cache.get(cache_key)
     if cached:
         log_view(user, "report.admin.enrolment", metadata={"term": term.name if term else None, "cached": True})
         return cached, 200
 
-    courses = db.session.query(Course).filter(Course.deleted_at.is_(None)).order_by(Course.name).all()
+    courses_query = db.session.query(Course).filter(Course.deleted_at.is_(None))
+    if scope.course_ids is not None:
+        courses_query = (
+            courses_query.filter(Course.id.in_(scope.course_ids))
+            if scope.course_ids
+            else courses_query.filter(false())
+        )
+    courses = courses_query.order_by(Course.name).all()
+
+    def _scoped_students(query):
+        """Narrow a learner query to the cohort the caller may see."""
+        if scope.student_ids is None:
+            return query
+        if not scope.student_ids:
+            return query.filter(false())
+        return query.filter(Student.id.in_(scope.student_ids))
 
     by_course = []
     total_enrolled = 0
 
     for course in courses:
         # Students enrolled in this course
-        enrolled = (
+        enrolled = _scoped_students(
             db.session.query(func.count(Student.id))
             .filter(Student.course_id == course.id, Student.deleted_at.is_(None))
-            .scalar() or 0
-        )
+        ).scalar() or 0
         total_enrolled += enrolled
 
         # Attendance for students in this course, filtered by term date range
-        att_q = (
+        att_q = _scoped_students(
             db.session.query(Attendance)
             .join(Student, Student.id == Attendance.student_id)
             .filter(
@@ -494,8 +546,21 @@ def enrolment_overview():
             "below_threshold": att_pct is not None and att_pct < 75,
         })
 
-    # Overall attendance
-    all_att_q = db.session.query(Attendance).filter(Attendance.deleted_at.is_(None))
+    # Overall attendance, over exactly the courses listed above rather than
+    # across the whole table. Counted this way the headline cannot disagree with
+    # the rows beneath it — previously it was a global figure sitting on top of a
+    # per-course breakdown, so it answered a different question to every reader.
+    listed_course_ids = [course.id for course in courses]
+    all_att_q = _scoped_students(
+        db.session.query(Attendance)
+        .join(Student, Student.id == Attendance.student_id)
+        .filter(Attendance.deleted_at.is_(None))
+    )
+    all_att_q = (
+        all_att_q.filter(Student.course_id.in_(listed_course_ids))
+        if listed_course_ids
+        else all_att_q.filter(false())
+    )
     if term:
         all_att_q = all_att_q.filter(
             Attendance.date >= term.start_date,
@@ -520,6 +585,9 @@ def enrolment_overview():
         },
         "by_course": by_course,
         "flagged": flagged,
+        # Says whose cohorts these numbers cover, so an unexpectedly small
+        # report reads as "your scope" rather than as missing data.
+        "scope": {"mode": scope.mode, "label": scope.label},
         "generated_at": datetime.utcnow().isoformat(),
         "generated_by": user.name,
     }

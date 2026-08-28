@@ -142,6 +142,10 @@ const PERMISSION_TABS: Array<{ label: string; permissions: PermDef[] }> = [
     label: 'Data Scope',
     permissions: [
       { key: 'data.master',   label: 'View Master Data — all institutions, all trainers’ subjects' },
+      // The department counterpart: it widens a trainer from their own subjects
+      // to their whole department, and narrows a manager from the college to
+      // the same. A role named "HOD" or "Head of Department" gets it implicitly.
+      { key: 'data.department', label: 'Head of Department — own department, across its trainers' },
       { key: 'alerts.read',   label: 'Read Performance & Attendance Alerts' },
       { key: 'alerts.manage', label: 'Run & Resolve Alerts' },
     ],
@@ -155,7 +159,7 @@ const PERMISSION_TABS: Array<{ label: string; permissions: PermDef[] }> = [
     permissions: [
       { key: 'admin.analytics.read',      label: 'Admin Dashboard & System Analytics' },
       { key: 'notifications.read',        label: 'Notifications Console' },
-      { key: 'attendance.report.view',    label: 'School-Wide Attendance Report' },
+      { key: 'attendance.report.view',    label: 'Attendance Report' },
       { key: 'roles.read',                label: 'Open Roles & Permissions' },
       { key: 'institutions.read',         label: 'Open Institutions' },
       { key: 'departments.read',          label: 'Open Departments' },
@@ -251,7 +255,7 @@ const PERMISSION_TABS: Array<{ label: string; permissions: PermDef[] }> = [
       { key: 'attendance.create',      label: 'Create Sessions' },
       { key: 'attendance.read',        label: 'Read Attendance' },
       { key: 'attendance.write',       label: 'Manage Sessions (End/Regenerate)' },
-      { key: 'attendance.report.view', label: 'Open School-Wide Attendance Report' },
+      { key: 'attendance.report.view', label: 'Open Attendance Report' },
     ],
   },
   {

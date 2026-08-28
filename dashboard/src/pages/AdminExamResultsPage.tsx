@@ -52,7 +52,7 @@ interface ExamReport {
 
 const EMPTY_REASONS: Record<string, string> = {
   no_assigned_subjects:
-    'No subjects are assigned to you yet, so there are no marks in your scope. Ask an administrator to assign your units, or to grant the "View Master Data" right for school-wide results.',
+    'No subjects are assigned to you yet, so there are no marks in your scope. Ask an administrator to assign your units, or to grant the "View Master Data" right for results beyond your own.',
   no_scores_in_term:
     'No marks have been recorded for this term in your scope. Academic Terms shows which term does hold your marks.',
   learners_not_on_a_course:
@@ -160,7 +160,7 @@ export default function AdminExamResultsPage() {
         { name: 'By Subject', rows: filteredSubjects as unknown as Record<string, unknown>[] },
       ],
       `exam-results-${data.term.name ?? 'all'}`,
-      { generatedBy: data.generated_by, reportTitle: 'School-Wide Exam Results' }
+      { generatedBy: data.generated_by, reportTitle: 'Exam Results' }
     );
   };
 
@@ -190,7 +190,7 @@ export default function AdminExamResultsPage() {
   return (
     <ReportPage>
       <ReportToolbar
-        title="School-Wide Exam Results"
+        title="Exam Results"
         description="Review term-wide academic performance across courses and subjects with export-ready reporting."
         eyebrow="Admin Reports"
       >
@@ -212,7 +212,7 @@ export default function AdminExamResultsPage() {
           <p className="hidden text-[11px] font-semibold uppercase tracking-[0.32em] text-cyan-200/70 print:block">Confidential</p>
           <h1 className="mt-3 text-2xl font-semibold uppercase tracking-[0.16em] text-white sm:text-3xl">{data.school.name}</h1>
           <p className="mt-2 text-sm text-slate-400">{data.school.location}</p>
-          <h2 className="mt-4 text-lg font-semibold uppercase tracking-[0.18em] text-slate-100">School-Wide Exam Results</h2>
+          <h2 className="mt-4 text-lg font-semibold uppercase tracking-[0.18em] text-slate-100">Exam Results</h2>
           {data.term.name ? <p className="mt-2 text-sm text-slate-400">{data.term.name}</p> : null}
         </div>
 
@@ -299,13 +299,13 @@ export default function AdminExamResultsPage() {
 
         <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <ReportMetricCard
-            label="School Average"
+            label="Score Average"
             value={`${data.summary.school_avg}%`}
             accent="cyan"
             helper={data.trend ? <><TrendBadge delta={data.trend.avg_delta} /> <span>vs {data.trend.prev_term}</span></> : undefined}
           />
           <ReportMetricCard
-            label="Pass Rate"
+            label="Average Pass Rate"
             value={`${data.summary.pass_rate}%`}
             accent="emerald"
             helper={data.trend ? <><TrendBadge delta={data.trend.pass_rate_delta} /> <span>vs {data.trend.prev_term}</span></> : undefined}

@@ -25,6 +25,7 @@ from ..models.term import Term
 from ..models.trainer import Trainer
 from ..models.trainer_subject import TrainerSubject
 from ..models.user import User
+from .scoping import score_percentage_expr
 
 LOW_MASTERY = 50.0
 MEDIUM_MASTERY = 75.0
@@ -221,11 +222,16 @@ def _score_mastery_share(
     above `MEDIUM_MASTERY` counts as high, exactly as `mastery_label` grades a
     competency cell.
     """
-    achieved = (Score.marks_obtained / func.nullif(Assessment.total_marks, 0)) * 100.0
+    # `score_percentage_expr` rather than a bare division: an assessment with no
+    # recorded total means the mark is already out of 100, which is the rule the
+    # rest of the application averages by. Dividing by it regardless produced
+    # NULL for those marks, `avg` skipped them, and a learner whose marks all sat
+    # on such assessments vanished from the sample entirely — reported on screen
+    # as a mastery rate of nothing.
     query = (
         db.session.query(
             Score.student_id.label("student_id"),
-            func.avg(achieved).label("average"),
+            func.avg(score_percentage_expr()).label("average"),
         )
         .join(Assessment, Assessment.id == Score.assessment_id)
         .filter(
@@ -268,7 +274,11 @@ def get_heatmap(
             User.name.label("student_name"),
             Competency.id.label("competency_id"),
             Competency.name.label("competency_name"),
-            func.avg((Score.marks_obtained / func.nullif(Assessment.total_marks, 0)) * 100.0).label("score"),
+            # NULL only when no mark exists at all — which is what `assessed`
+            # below reads. An assessment with no recorded total means the mark is
+            # already out of 100 rather than unmarked, so it must not turn the
+            # cell NULL and have it graded "unassessed".
+            func.avg(score_percentage_expr()).label("score"),
         )
         .join(User, User.id == Student.user_id)
         .join(StudentSubject, StudentSubject.student_id == Student.id)
@@ -355,7 +365,9 @@ def get_mastery_progress(
             Subject.id.label("subject_id"),
             Subject.name.label("subject_name"),
             func.coalesce(Assessment.recorded_at, Score.term, Term.name).label("period"),
-            func.avg(Score.marks_obtained).label("average_score"),
+            # Percentages, not raw marks: a paper out of 40 and one out of 100
+            # averaged together report a figure that matches nothing else.
+            func.avg(score_percentage_expr()).label("average_score"),
         )
         .join(Student, Student.id == Score.student_id)
         .join(User, User.id == Student.user_id)
@@ -368,7 +380,18 @@ def get_mastery_progress(
     subject_ids = _resolve_subject_ids(department_id, course_id, module_id, subject_id, trainer_id, student_id)
     student_ids = _resolve_student_ids(department_id, course_id, module_id, subject_id, trainer_id, student_id)
     if subject_ids is not None:
-        query = query.filter(Score.subject_id.in_(subject_ids))
+        # A mark predating the `subject_id` column, or uploaded against an
+        # assessment whose module owns more than one subject, carries no subject
+        # and reaches one only through its assessment's module. Matching on
+        # `subject_id` alone dropped every one of them — the same rule
+        # `_score_mastery_share` and `get_attendance_performance` already apply.
+        taught_module_ids = db.session.query(Subject.module_id).filter(Subject.id.in_(subject_ids))
+        query = query.filter(
+            or_(
+                Score.subject_id.in_(subject_ids),
+                and_(Score.subject_id.is_(None), Assessment.module_id.in_(taught_module_ids)),
+            )
+        )
     if student_ids is not None:
         query = query.filter(Score.student_id.in_(student_ids))
 

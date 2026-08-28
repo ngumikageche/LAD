@@ -203,11 +203,19 @@ def performance_payload(student: Student) -> dict:
     average_score = round(sum(item["percentage"] for item in graded) / len(graded), 2) if graded else 0.0
     subject_buckets: dict[str, list[float]] = defaultdict(list)
     term_buckets: dict[str, list[float]] = defaultdict(list)
+    # A mark carrying no term, and whose assessment names none either, cannot be
+    # plotted on an axis of terms — but dropping it silently is what makes a
+    # fresh upload look like it never landed. It is counted here instead, so the
+    # dashboard can say "these marks exist but are not attributed to a term"
+    # rather than showing a trend that quietly excludes them.
+    untermed = 0
     for item in graded:
         if item["subject"]:
             subject_buckets[item["subject"]["name"]].append(item["percentage"])
         if item["term"]:
             term_buckets[item["term"]].append(item["percentage"])
+        else:
+            untermed += 1
 
     return {
         "average_score": average_score,
@@ -227,6 +235,7 @@ def performance_payload(student: Student) -> dict:
             }
             for term_name, values in sorted(term_buckets.items())
         ],
+        "untermed_scores_count": untermed,
     }
 
 
@@ -310,6 +319,9 @@ def student_dashboard(student: Student) -> dict:
         "recent_scores": scores["items"],
         "subject_performance": performance["subject_performance"],
         "trend": performance["trend"],
+        # Marks that exist but sit on no term, so the trend above cannot show
+        # them. Surfaced rather than left to be discovered.
+        "untermed_scores_count": performance["untermed_scores_count"],
         "notifications_summary": {
             "unread_count": notifications["unread_count"],
             "recent": notifications["items"][:5],

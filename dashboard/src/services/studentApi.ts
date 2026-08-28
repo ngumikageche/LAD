@@ -111,11 +111,25 @@ export type StudentDashboardResponse = {
   };
   summary_panel?: {
     mastery_rate: number;
+    /**
+     * What `mastery_rate` was measured from. The API has always sent these two;
+     * leaving them off this type is why the learner's tile showed a bare 0%
+     * whether the rate was a real result or nothing measured at all.
+     */
+    mastery_basis?: 'competency' | 'score' | 'none';
+    mastery_sample?: number;
     at_risk_students: number;
     attendance_rate: number;
     portfolio_completion_rate: number;
+    portfolio_basis?: 'competency' | 'none';
     alerts: number;
   };
+  /**
+   * Marks with no term on them and no term on their assessment. They cannot
+   * appear on `trend`, which is an axis of terms — this is how many were left
+   * out, so the screen can say so instead of looking as if nothing was uploaded.
+   */
+  untermed_scores_count?: number;
   analytics?: any;
   last_updated?: string;
 };

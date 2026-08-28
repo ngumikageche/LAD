@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import re
 import uuid
+from dataclasses import dataclass
 
 from sqlalchemy import Float, and_, case, cast, false, func, or_, true
 
@@ -40,6 +41,7 @@ from ..models.user import User
 
 
 MASTER_DATA_KEY = "data.master"
+DEPARTMENT_DATA_KEY = "data.department"
 
 
 # ── Capability checks ────────────────────────────────────────────────────────
@@ -50,8 +52,12 @@ def _permissions(user: User | None) -> dict:
     return user.role.permissions or {}
 
 
+def _role_name(user: User | None) -> str:
+    return ((user.role.role_name if user and user.role else "") or "").strip().lower()
+
+
 def is_admin(user: User | None) -> bool:
-    role_name = ((user.role.role_name if user and user.role else "") or "").lower()
+    role_name = _role_name(user)
     return role_name in {"admin", "super admin"} or _permissions(user).get("*") is True
 
 
@@ -69,15 +75,40 @@ def can_view_master_data(user: User | None) -> bool:
 def is_trainer(user: User | None) -> bool:
     if not user:
         return False
-    role_name = ((user.role.role_name if user.role else "") or "").lower()
-    return role_name == "trainer" or user.trainer is not None
+    return _role_name(user) == "trainer" or user.trainer is not None
 
 
 def is_student(user: User | None) -> bool:
     if not user:
         return False
-    role_name = ((user.role.role_name if user.role else "") or "").lower()
-    return role_name == "student" or user.student is not None
+    return _role_name(user) == "student" or user.student is not None
+
+
+def is_super_admin(user: User | None) -> bool:
+    """
+    The group-level account that sits above every college.
+
+    Distinct from `is_admin`, which is also true of a college's own
+    administrator. The two are told apart by the institution on the account:
+    a super admin is attached to none.
+    """
+    return _role_name(user) == "super admin"
+
+
+def is_department_head(user: User | None) -> bool:
+    """
+    True when the caller oversees one department rather than a whole college.
+
+    Recognised either from the role name — "HOD", "Head of Department" — or
+    from the `data.department` key, which is what a differently named role gets
+    granted from the Roles screen.
+    """
+    if not user:
+        return False
+    if _permissions(user).get(DEPARTMENT_DATA_KEY) is True:
+        return True
+    role_name = _role_name(user)
+    return role_name in {"hod", "head of department", "head of dept"} or "head of department" in role_name
 
 
 # ── Institution axis ─────────────────────────────────────────────────────────
@@ -331,6 +362,223 @@ def can_access_score(user: User | None, score_id: uuid.UUID | None) -> bool:
     return db.session.query(
         scope_scores(db.session.query(Score.id), user).filter(Score.id == score_id).exists()
     ).scalar()
+
+
+# ── Oversight scope ──────────────────────────────────────────────────────────
+#
+# The cross-cohort reports — enrolment, attendance overview — answer "how is the
+# organisation doing?" rather than "which records are mine?", so they need one
+# more distinction than the axes above make. `can_view_master_data` treats every
+# admin alike, but a college administrator and the group super admin are not
+# alike: the first administers one college out of several and must not read the
+# other two, while the second is attached to no college precisely so they can
+# read them all. The institution on the account is what separates them.
+#
+# Four levels, narrowest first. Each is contained by the one below it:
+#
+#   trainer     — the subjects assigned to them, and the learners on those
+#   department  — one department, for a head of department
+#   institution — one college, for its administrator and its staff
+#   all         — every college, for the group super admin and `data.master`
+#
+# `oversight_mode` decides which one a caller sits at; `oversight_scope` then
+# resolves that level into the ids a query can filter on.
+
+
+@dataclass(frozen=True)
+class OversightScope:
+    """What one caller may see in a cross-cohort report."""
+
+    mode: str
+    label: str
+    institution_id: uuid.UUID | None = None
+    department_id: uuid.UUID | None = None
+    #: None means "no restriction"; an empty collection means "nothing matches".
+    course_ids: list[uuid.UUID] | None = None
+    student_ids: set[uuid.UUID] | None = None
+    trainer_ids: list[uuid.UUID] | None = None
+
+    @property
+    def is_unrestricted(self) -> bool:
+        return self.mode == "all"
+
+    @property
+    def cache_key(self) -> str:
+        """
+        A signature for caching. Two callers share a cached report only when
+        they are held to exactly the same rows — without this, the first
+        trainer to open a report would serve their view to everyone.
+
+        In trainer mode the rows follow that individual's subject assignments,
+        so the trainer is part of the signature; two trainers in one department
+        must not collide. In the wider modes the department or the institution
+        determines the rows on its own.
+        """
+        owner = self.trainer_ids[0] if self.mode == "trainer" and self.trainer_ids else None
+        return f"{self.mode}:{self.institution_id}:{self.department_id}:{owner}"
+
+
+def _resolve_trainer(user: User | None) -> Trainer | None:
+    if not user:
+        return None
+    return user.trainer or db.session.query(Trainer).filter(Trainer.user_id == user.id).first()
+
+
+def _course_ids_in_department(department_id: uuid.UUID) -> list[uuid.UUID]:
+    return [
+        row[0] for row in db.session.query(Course.id).filter(
+            Course.department_id == department_id, Course.deleted_at.is_(None)
+        ).all()
+    ]
+
+
+def _course_ids_in_institution(institution_id: uuid.UUID) -> list[uuid.UUID]:
+    return [
+        row[0] for row in db.session.query(Course.id)
+        .join(Department, Department.id == Course.department_id)
+        .filter(
+            Department.institution_id == institution_id,
+            Department.deleted_at.is_(None),
+            Course.deleted_at.is_(None),
+        ).all()
+    ]
+
+
+def _course_ids_for_subjects(subject_ids: set[uuid.UUID]) -> list[uuid.UUID]:
+    """The courses a set of subjects sits under, walked Subject → Module → Course."""
+    if not subject_ids:
+        return []
+    module_ids = db.session.query(Subject.module_id).filter(Subject.id.in_(subject_ids))
+    return [
+        row[0] for row in db.session.query(Module.course_id)
+        .filter(Module.id.in_(module_ids), Module.course_id.isnot(None))
+        .distinct().all()
+    ]
+
+
+def _trainer_ids_in_departments(department_ids: list[uuid.UUID]) -> list[uuid.UUID]:
+    if not department_ids:
+        return []
+    return [
+        row[0] for row in db.session.query(Trainer.id)
+        .filter(Trainer.department_id.in_(department_ids), Trainer.deleted_at.is_(None))
+        .all()
+    ]
+
+
+def _trainer_ids_in_institution(institution_id: uuid.UUID) -> list[uuid.UUID]:
+    """
+    Trainers belonging to a college, by their department or by their own login.
+
+    Both links are followed because `Trainer.department_id` is nullable — a
+    trainer created without one would otherwise drop out of their own college's
+    reports entirely.
+    """
+    department_ids = db.session.query(Department.id).filter(
+        Department.institution_id == institution_id
+    )
+    institution_user_ids = db.session.query(User.id).filter(
+        User.institution_id == institution_id
+    )
+    return [
+        row[0] for row in db.session.query(Trainer.id).filter(
+            or_(
+                Trainer.department_id.in_(department_ids),
+                Trainer.user_id.in_(institution_user_ids),
+            )
+        ).all()
+    ]
+
+
+def oversight_mode(user: User | None, trainer: Trainer | None) -> str:
+    """
+    Which of the four levels a caller sits at. Decides nothing about *which*
+    rows — that is `oversight_scope` below — so it stays a pure function of the
+    role, the institution, and the trainer profile, and can be reasoned about
+    (and tested) without a database.
+
+    `trainer` is passed in rather than looked up because the two callers that
+    need it already hold it, and because a department head with no trainer
+    profile has no department to be held to: they fall through to their college
+    rather than to an empty scope that would show them nothing.
+    """
+    if user is None:
+        return "all"
+
+    # `data.master` is granted deliberately, from the Roles screen, to the
+    # registry-level auditor who genuinely reads every college; a super admin
+    # qualifies by having no college of their own. An admin *with* a college
+    # does not — that is the college administrator this scope exists to hold,
+    # and the wildcard on their role says what they may do, not whose data.
+    if _permissions(user).get(MASTER_DATA_KEY) is True or is_super_admin(user):
+        return "all"
+
+    if is_department_head(user) and trainer is not None and trainer.department_id:
+        return "department"
+
+    # An administrator who also happens to teach still administers the whole
+    # college; only a plain trainer is held to their own teaching load.
+    if is_trainer(user) and trainer is not None and not is_admin(user):
+        return "trainer"
+
+    if user.institution_id:
+        return "institution"
+
+    return "all"
+
+
+def oversight_scope(user: User | None) -> OversightScope:
+    """Resolve which cohorts a caller's organisation-wide reports may cover."""
+    trainer = _resolve_trainer(user)
+    mode = oversight_mode(user, trainer)
+
+    if mode == "all":
+        return OversightScope(mode="all", label="All institutions")
+
+    if mode == "department":
+        department = trainer.department
+        return OversightScope(
+            mode="department",
+            label=f"{department.name if department else 'Your department'} only",
+            institution_id=user.institution_id,
+            department_id=trainer.department_id,
+            course_ids=_course_ids_in_department(trainer.department_id),
+            trainer_ids=_trainer_ids_in_departments([trainer.department_id]),
+        )
+
+    if mode == "trainer":
+        # `trainer_subject_ids` returns None for a caller under no trainer
+        # restriction, which `oversight_mode` has already ruled out here.
+        subject_ids = trainer_subject_ids(user) or set()
+        return OversightScope(
+            mode="trainer",
+            label="Your assigned subjects only",
+            institution_id=user.institution_id,
+            department_id=trainer.department_id,
+            course_ids=_course_ids_for_subjects(subject_ids),
+            student_ids=trainer_student_ids(user) or set(),
+            trainer_ids=[trainer.id],
+        )
+
+    institution = user.institution
+    return OversightScope(
+        mode="institution",
+        label=f"{institution.name if institution else 'Your institution'} only",
+        institution_id=user.institution_id,
+        course_ids=_course_ids_in_institution(user.institution_id),
+        trainer_ids=_trainer_ids_in_institution(user.institution_id),
+    )
+
+
+def scope_attendance_sessions(query, scope: OversightScope):
+    """Attendance sessions run by the trainers within an oversight scope."""
+    if scope.trainer_ids is None:
+        return query
+    if not scope.trainer_ids:
+        return query.filter(false())
+    from ..models.attendance_session import AttendanceSession
+
+    return query.filter(AttendanceSession.trainer_id.in_(scope.trainer_ids))
 
 
 # ── Single-record guards ─────────────────────────────────────────────────────

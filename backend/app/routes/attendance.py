@@ -13,6 +13,7 @@ from ..models.attendance_session import AttendanceSession, AttendanceRecord
 from ..models.trainer import Trainer
 from ..models.student import Student
 from ..services.attendance_service import AttendanceService
+from ..services.scoping import oversight_scope, scope_attendance_sessions
 from .permissions import trainer_or_admin_required, student_required, admin_required
 
 
@@ -460,14 +461,25 @@ def get_session_by_token(token: str):
 @bp.get("/admin/overview")
 @admin_required("attendance.report.view")
 def admin_attendance_overview():
-    """Admin view: all sessions across all trainers with student counts."""
+    """
+    Sessions run by the trainers the caller oversees.
+
+    Not "all sessions across all trainers": a trainer granted this screen sees
+    their own sessions, a head of department their department's, and a college
+    administrator their college's. Only the group super admin reads every
+    college.
+    """
     from ..models.subject import Subject
     from ..models.user import User as UserModel
     from sqlalchemy.orm import joinedload
 
+    scope = oversight_scope(g.current_user)
     sessions = (
-        db.session.query(AttendanceSession)
-        .options(joinedload(AttendanceSession.trainer).joinedload(Trainer.user))
+        scope_attendance_sessions(
+            db.session.query(AttendanceSession)
+            .options(joinedload(AttendanceSession.trainer).joinedload(Trainer.user)),
+            scope,
+        )
         .order_by(AttendanceSession.started_at.desc())
         .limit(200)
         .all()
@@ -498,20 +510,47 @@ def admin_attendance_overview():
 @bp.get("/admin/analytics")
 @admin_required("attendance.report.view")
 def admin_attendance_analytics():
-    """Aggregated analytics for admin charts."""
+    """
+    Aggregated attendance analytics, over the sessions the caller oversees.
+
+    Every figure here is derived from attendance *records*, which reach their
+    scope only through the session they were taken in — so each query joins to
+    `AttendanceSession` and applies the same restriction as the overview above.
+    A chart that skipped the join would put another college's check-ins into
+    this college's totals.
+    """
     from ..models.subject import Subject
     from sqlalchemy import func, cast, Date
     from datetime import datetime, timedelta
 
+    scope = oversight_scope(g.current_user)
+
+    def scoped_sessions(query):
+        return scope_attendance_sessions(query, scope)
+
+    def scoped_records(query):
+        """Records, joined to their session so the scope applies to them too."""
+        if scope.is_unrestricted:
+            return query
+        return scope_attendance_sessions(
+            query.join(
+                AttendanceSession,
+                AttendanceSession.id == AttendanceRecord.attendance_session_id,
+            ),
+            scope,
+        )
+
     # Daily check-ins for last 30 days
     thirty_days_ago = datetime.utcnow() - timedelta(days=30)
     daily_rows = (
-        db.session.query(
-            cast(AttendanceRecord.checked_in_at, Date).label("day"),
-            func.count(AttendanceRecord.id).label("total"),
-            func.sum(
-                db.case((AttendanceRecord.status == "success", 1), else_=0)
-            ).label("successful"),
+        scoped_records(
+            db.session.query(
+                cast(AttendanceRecord.checked_in_at, Date).label("day"),
+                func.count(AttendanceRecord.id).label("total"),
+                func.sum(
+                    db.case((AttendanceRecord.status == "success", 1), else_=0)
+                ).label("successful"),
+            )
         )
         .filter(AttendanceRecord.checked_in_at >= thirty_days_ago)
         .group_by(cast(AttendanceRecord.checked_in_at, Date))
@@ -525,7 +564,9 @@ def admin_attendance_analytics():
 
     # Check-in status breakdown (all time)
     status_rows = (
-        db.session.query(AttendanceRecord.status, func.count(AttendanceRecord.id))
+        scoped_records(
+            db.session.query(AttendanceRecord.status, func.count(AttendanceRecord.id))
+        )
         .group_by(AttendanceRecord.status)
         .all()
     )
@@ -533,11 +574,13 @@ def admin_attendance_analytics():
 
     # Top 10 subjects by check-ins
     subject_rows = (
-        db.session.query(
-            AttendanceSession.subject_id,
-            func.count(AttendanceRecord.id).label("checkins"),
+        scoped_sessions(
+            db.session.query(
+                AttendanceSession.subject_id,
+                func.count(AttendanceRecord.id).label("checkins"),
+            )
+            .join(AttendanceRecord, AttendanceRecord.attendance_session_id == AttendanceSession.id)
         )
-        .join(AttendanceRecord, AttendanceRecord.attendance_session_id == AttendanceSession.id)
         .filter(AttendanceRecord.status == "success")
         .group_by(AttendanceSession.subject_id)
         .order_by(func.count(AttendanceRecord.id).desc())
@@ -554,14 +597,16 @@ def admin_attendance_analytics():
 
     # Top 10 trainers by sessions run
     trainer_rows = (
-        db.session.query(
-            AttendanceSession.trainer_id,
-            func.count(AttendanceSession.id).label("sessions"),
-            func.sum(
-                db.case((AttendanceRecord.status == "success", 1), else_=0)
-            ).label("checkins"),
+        scoped_sessions(
+            db.session.query(
+                AttendanceSession.trainer_id,
+                func.count(AttendanceSession.id).label("sessions"),
+                func.sum(
+                    db.case((AttendanceRecord.status == "success", 1), else_=0)
+                ).label("checkins"),
+            )
+            .outerjoin(AttendanceRecord, AttendanceRecord.attendance_session_id == AttendanceSession.id)
         )
-        .outerjoin(AttendanceRecord, AttendanceRecord.attendance_session_id == AttendanceSession.id)
         .group_by(AttendanceSession.trainer_id)
         .order_by(func.count(AttendanceSession.id).desc())
         .limit(10)
@@ -576,10 +621,18 @@ def admin_attendance_analytics():
         by_trainer.append({"trainer": name, "sessions": sessions_count, "checkins": int(checkins or 0)})
 
     # Overall summary
-    total_sessions = db.session.query(func.count(AttendanceSession.id)).scalar() or 0
-    total_checkins = db.session.query(func.count(AttendanceRecord.id)).filter(AttendanceRecord.status == "success").scalar() or 0
-    active_sessions = db.session.query(func.count(AttendanceSession.id)).filter(AttendanceSession.status == "active").scalar() or 0
-    manual_checkins = db.session.query(func.count(AttendanceRecord.id)).filter(AttendanceRecord.status == "manual").scalar() or 0
+    total_sessions = scoped_sessions(
+        db.session.query(func.count(AttendanceSession.id))
+    ).scalar() or 0
+    total_checkins = scoped_records(
+        db.session.query(func.count(AttendanceRecord.id))
+    ).filter(AttendanceRecord.status == "success").scalar() or 0
+    active_sessions = scoped_sessions(
+        db.session.query(func.count(AttendanceSession.id))
+    ).filter(AttendanceSession.status == "active").scalar() or 0
+    manual_checkins = scoped_records(
+        db.session.query(func.count(AttendanceRecord.id))
+    ).filter(AttendanceRecord.status == "manual").scalar() or 0
 
     return {
         "summary": {
@@ -592,6 +645,7 @@ def admin_attendance_analytics():
         "status_breakdown": status_breakdown,
         "by_subject": by_subject,
         "by_trainer": by_trainer,
+        "scope": {"mode": scope.mode, "label": scope.label},
     }, 200
 
 

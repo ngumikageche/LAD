@@ -107,8 +107,8 @@ const reportCards: ReportCard[] = [
   },
   {
     key: 'exam-results',
-    title: 'School Pass Rate',
-    description: 'School-wide result trends by course and subject.',
+    title: 'Exam Results',
+    description: 'Result trends by course and subject, within your scope.',
     category: 'Academic',
     permission: 'reports.admin.pass_rate',
     path: '/admin/reports/exam-results',

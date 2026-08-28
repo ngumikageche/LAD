@@ -14,6 +14,7 @@ interface ProgressRow {
   course_name: string;
   department_name: string;
   module_name: string;
+  subject_id: string;
   subject_name: string;
   avg_score: number;
   total_assessments: number;
@@ -24,6 +25,31 @@ interface ProgressRow {
   trend: 'improving' | 'stable' | 'declining' | null;
   status: 'excellent' | 'good' | 'average' | 'at_risk' | 'critical';
 }
+
+/**
+ * One mark, flattened to the fields the table derives from.
+ *
+ * Progress rows are aggregates, so filtering has to happen on the marks that
+ * feed them rather than on the rows themselves: picking a subject must
+ * recompute each learner's average from that subject's marks alone, not hide
+ * learners whose first recorded mark happened to be in another subject.
+ */
+interface ScoreRecord {
+  student_id: string;
+  student_name: string;
+  registration_number: string;
+  course_name: string;
+  department_name: string;
+  module_name: string;
+  subject_id: string;
+  subject_name: string;
+  marks: number;
+  is_passed: boolean | null;
+  term: string | null;
+  created_at: string | null;
+}
+
+const UNASSIGNED_SUBJECT = 'unassigned';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -67,23 +93,21 @@ function TrendIcon({ trend }: { trend: ProgressRow['trend'] }) {
 
 // ── Trend calculation ──────────────────────────────────────────────────────────
 
-function calculateTrend(scores: any[]): ProgressRow['trend'] {
+function calculateTrend(scores: ScoreRecord[]): ProgressRow['trend'] {
   if (scores.length < 3) return null; // Need at least 3 scores to determine trend
-  
+
   // Sort by creation date ascending (oldest first)
-  const sorted = [...scores].sort((a, b) => {
-    const dateA = new Date(a.created_at || a.date || 0).getTime();
-    const dateB = new Date(b.created_at || b.date || 0).getTime();
-    return dateA - dateB;
-  });
+  const sorted = [...scores].sort(
+    (a, b) => new Date(a.created_at ?? 0).getTime() - new Date(b.created_at ?? 0).getTime(),
+  );
 
   // Split into first half and second half
   const mid = Math.floor(sorted.length / 2);
   const firstHalf = sorted.slice(0, mid);
   const secondHalf = sorted.slice(mid);
 
-  const avgFirst = firstHalf.reduce((sum, s) => sum + (s.score ?? s.marks_obtained ?? 0), 0) / firstHalf.length;
-  const avgSecond = secondHalf.reduce((sum, s) => sum + (s.score ?? s.marks_obtained ?? 0), 0) / secondHalf.length;
+  const avgFirst = firstHalf.reduce((sum, s) => sum + s.marks, 0) / firstHalf.length;
+  const avgSecond = secondHalf.reduce((sum, s) => sum + s.marks, 0) / secondHalf.length;
 
   const diff = avgSecond - avgFirst;
   const changePercent = avgFirst > 0 ? Math.abs(diff / avgFirst) * 100 : 0;
@@ -95,7 +119,7 @@ function calculateTrend(scores: any[]): ProgressRow['trend'] {
 
 // ── Data fetching ──────────────────────────────────────────────────────────────
 
-async function fetchProgress(token: string | null, userId: string, userType: string): Promise<ProgressRow[]> {
+async function fetchScores(token: string | null, userId: string, userType: string): Promise<ScoreRecord[]> {
   // Only a learner reads their own scores through the student portal. Everyone
   // else — trainer, admin, or any custom staff role — goes to `/scores`, which
   // scopes the rows to the caller server-side. Branching on `=== 'admin'` sent
@@ -109,86 +133,82 @@ async function fetchProgress(token: string | null, userId: string, userType: str
     const scores = await apiRequest<any[]>('/scores', { token }).catch(() => []);
     const scoreArray: any[] = Array.isArray(scores) ? scores : [];
 
-    // Group scores by student_id
-    const byStudent: Record<string, any[]> = {};
-    
-    for (const s of scoreArray) {
-      // Get student_id from enrollment if not directly set
-      const sid = s.student_id;
-      if (!sid && s.enrollment_id) {
-        // Would need to fetch enrollment data, skip for now
-        continue;
-      }
-      if (!sid) continue;
-      
-      if (!byStudent[sid]) byStudent[sid] = [];
-      byStudent[sid].push(s);
-    }
-
-    return Object.entries(byStudent).map(([studentId, stScores]) => {
-      const avg = stScores.reduce((sum: number, s: any) => sum + (s.marks_obtained ?? 0), 0) / stScores.length;
-      const passed = stScores.filter((s: any) => s.is_passed === true || (s.marks_obtained ?? 0) >= 50).length;
-      const failed = stScores.length - passed;
-      const passRate = stScores.length ? Math.round((passed / stScores.length) * 100) : 0;
-      const avgRounded = Math.round(avg * 10) / 10;
-      const trend = calculateTrend(stScores);
-
-      return {
-        student_id: studentId,
-        student_name: stScores[0]?.student_name ?? '—',
-        registration_number: stScores[0]?.registration_number ?? '—',
-        course_name: stScores[0]?.course_name ?? '—',
-        department_name: stScores[0]?.department_name ?? 'Unassigned',
-        module_name: stScores[0]?.module_name ?? '—',
-        subject_name: stScores[0]?.subject_name ?? '—',
-        avg_score: avgRounded,
-        total_assessments: stScores.length,
-        passed,
-        failed,
-        pass_rate: passRate,
-        term: stScores[0]?.term ?? null,
-        trend,
-        status: deriveStatus(avgRounded),
-      } satisfies ProgressRow;
-    });
+    return scoreArray
+      // A mark whose learner is only reachable through an enrolment carries no
+      // `student_id`, and there is nothing to group it by.
+      .filter((s: any) => Boolean(s.student_id))
+      .map((s: any) => ({
+        student_id: s.student_id,
+        student_name: s.student_name ?? '—',
+        registration_number: s.registration_number ?? '—',
+        course_name: s.course_name ?? '—',
+        department_name: s.department_name ?? 'Unassigned',
+        module_name: s.module_name ?? '—',
+        subject_id: s.subject_id ?? UNASSIGNED_SUBJECT,
+        subject_name: s.subject_name ?? 'Unassigned',
+        marks: s.marks_obtained ?? 0,
+        is_passed: s.is_passed ?? null,
+        term: s.term ?? null,
+        created_at: s.created_at ?? s.date ?? null,
+      } satisfies ScoreRecord));
   }
 
   // Student: fetch own scores
   const data = await apiRequest<any>('/api/v1/student/scores', { token });
   const items: any[] = Array.isArray(data?.items) ? data.items : Array.isArray(data) ? data : [];
 
-  // Group by subject
-  const bySubject: Record<string, any[]> = {};
-  for (const s of items) {
-    const key = s.subject?.id ?? s.subject_id ?? 'unknown';
-    if (!bySubject[key]) bySubject[key] = [];
-    bySubject[key].push(s);
+  return items.map((s: any) => ({
+    student_id: userId,
+    student_name: 'Me',
+    registration_number: '—',
+    course_name: s.subject?.module?.course?.name ?? '—',
+    department_name: s.subject?.module?.course?.department?.name ?? '—',
+    module_name: s.subject?.module?.name ?? '—',
+    subject_id: s.subject?.id ?? s.subject_id ?? UNASSIGNED_SUBJECT,
+    subject_name: s.subject?.name ?? s.subject_name ?? 'Unassigned',
+    marks: s.score ?? 0,
+    is_passed: s.is_passed ?? null,
+    term: s.term ?? null,
+    created_at: s.created_at ?? s.date ?? null,
+  } satisfies ScoreRecord));
+}
+
+/**
+ * Aggregate marks into progress rows — one per learner for staff, one per
+ * subject for a learner reading their own record.
+ */
+function buildRows(scores: ScoreRecord[], isRosterView: boolean): ProgressRow[] {
+  const groups = new Map<string, ScoreRecord[]>();
+  for (const score of scores) {
+    const key = isRosterView ? score.student_id : score.subject_id;
+    const bucket = groups.get(key);
+    if (bucket) bucket.push(score);
+    else groups.set(key, [score]);
   }
 
-  return Object.entries(bySubject).map(([, subjectScores]) => {
-    const first = subjectScores[0];
-    const avg = subjectScores.reduce((sum, s) => sum + (s.score ?? 0), 0) / subjectScores.length;
-    const passed = subjectScores.filter((s) => s.is_passed === true || s.score >= 50).length;
-    const failed = subjectScores.length - passed;
-    const passRate = Math.round((passed / subjectScores.length) * 100);
+  return Array.from(groups.values()).map((items) => {
+    const first = items[0];
+    const avg = items.reduce((sum, s) => sum + s.marks, 0) / items.length;
+    const passed = items.filter((s) => s.is_passed === true || s.marks >= 50).length;
+    const failed = items.length - passed;
     const avgRounded = Math.round(avg * 10) / 10;
-    const trend = calculateTrend(subjectScores);
 
     return {
-      student_id: userId,
-      student_name: 'Me',
-      registration_number: '—',
-      course_name: first?.subject?.module?.course?.name ?? '—',
-      department_name: first?.subject?.module?.course?.department?.name ?? '—',
-      module_name: first?.subject?.module?.name ?? '—',
-      subject_name: first?.subject?.name ?? '—',
+      student_id: first.student_id,
+      student_name: first.student_name,
+      registration_number: first.registration_number,
+      course_name: first.course_name,
+      department_name: first.department_name,
+      module_name: first.module_name,
+      subject_id: first.subject_id,
+      subject_name: first.subject_name,
       avg_score: avgRounded,
-      total_assessments: subjectScores.length,
+      total_assessments: items.length,
       passed,
       failed,
-      pass_rate: passRate,
-      term: first?.term ?? null,
-      trend,
+      pass_rate: Math.round((passed / items.length) * 100),
+      term: first.term,
+      trend: calculateTrend(items),
       status: deriveStatus(avgRounded),
     } satisfies ProgressRow;
   });
@@ -226,19 +246,20 @@ function SummaryCards({ rows }: { rows: ProgressRow[] }) {
 
 const ProgressTable = () => {
   const { user, token } = useAuth();
-  const [rows, setRows] = useState<ProgressRow[]>([]);
+  const [scores, setScores] = useState<ScoreRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [departmentFilter, setDepartmentFilter] = useState('all');
+  const [subjectFilter, setSubjectFilter] = useState('all');
   const [prioritySort, setPrioritySort] = useState('attention');
 
   // Which columns the table needs, which is a question about the rows rather
   // than about rank: a learner reading their own scores gets one row per
   // subject and no use for a Student column, while everyone else — trainer as
   // much as admin — gets one row per learner and needs to see who each is.
-  // Keyed to the same test `fetchProgress` branches on, so the columns always
+  // Keyed to the same test `fetchScores` branches on, so the columns always
   // match the shape of the data that arrived.
   const isRosterView = (user?.user_type ?? user?.role_name ?? '').toLowerCase() !== 'student';
 
@@ -247,8 +268,8 @@ const ProgressTable = () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await fetchProgress(token, user.id, user.user_type ?? user.role_name ?? '');
-      setRows(data);
+      const data = await fetchScores(token, user.id, user.user_type ?? user.role_name ?? '');
+      setScores(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load progress data');
     } finally {
@@ -258,10 +279,36 @@ const ProgressTable = () => {
 
   useEffect(() => { load(); }, [user?.id, token]);
 
+  /** Every subject with a recorded mark in scope, for the subject picker. */
+  const subjects = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const score of scores) byId.set(score.subject_id, score.subject_name);
+    return Array.from(byId, ([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [scores]);
+
+  // The subject filter is applied to the marks, not to the finished rows, so a
+  // chosen subject re-averages each learner over that subject alone. The
+  // summary cards read from these rows for the same reason.
+  const rows = useMemo(() => {
+    const inScope = subjectFilter === 'all'
+      ? scores
+      : scores.filter((score) => score.subject_id === subjectFilter);
+    return buildRows(inScope, isRosterView);
+  }, [scores, subjectFilter, isRosterView]);
+
   const departments = useMemo(
     () => Array.from(new Set(rows.map((row) => row.department_name).filter(Boolean))).sort(),
     [rows],
   );
+
+  // A subject that no longer exists in scope would otherwise leave the table
+  // permanently empty with no way back short of a reload.
+  useEffect(() => {
+    if (subjectFilter !== 'all' && !subjects.some((subject) => subject.id === subjectFilter)) {
+      setSubjectFilter('all');
+    }
+  }, [subjects, subjectFilter]);
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase();
@@ -316,6 +363,15 @@ const ProgressTable = () => {
               <option value="average">Average</option>
               <option value="at_risk">At Risk</option>
               <option value="critical">Critical</option>
+            </select>
+            <select
+              value={subjectFilter}
+              onChange={(e) => setSubjectFilter(e.target.value)}
+              title="Show progress for a single subject"
+              className="px-3 py-2 text-sm bg-slate-800 border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 max-w-[16rem]"
+            >
+              <option value="all">All subjects</option>
+              {subjects.map((subject) => <option key={subject.id} value={subject.id}>{subject.name}</option>)}
             </select>
             {isRosterView ? (
               <select

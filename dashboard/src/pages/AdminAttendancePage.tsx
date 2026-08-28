@@ -25,6 +25,8 @@ interface Analytics {
   status_breakdown: { status: string; count: number }[];
   by_subject: { subject: string; checkins: number }[];
   by_trainer: { trainer: string; sessions: number; checkins: number }[];
+  /** Whose sessions these figures cover — one trainer's, one department's, one college's, or all. */
+  scope?: { mode: 'all' | 'institution' | 'department' | 'trainer'; label: string };
 }
 
 const STATUS_COLORS: Record<string, string> = {
@@ -104,7 +106,11 @@ export default function AdminAttendancePage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-200">Attendance Overview</h1>
-          <p className="text-sm text-slate-500 mt-1">All attendance sessions across all trainers</p>
+          <p className="text-sm text-slate-500 mt-1">
+            {analytics?.scope && analytics.scope.mode !== 'all'
+              ? `Attendance sessions — ${analytics.scope.label}`
+              : 'All attendance sessions across all trainers'}
+          </p>
         </div>
         <button onClick={load} className="flex items-center gap-2 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm font-medium">
           <RefreshCw size={15} /> Refresh

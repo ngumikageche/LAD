@@ -1,0 +1,689 @@
+#!/usr/bin/env python3
+"""
+Build the LAD user guide as a PDF.
+
+The navigation map at the back is parsed out of
+`dashboard/src/components/layout/Sidebar.tsx` rather than retyped here, so the
+document cannot drift from the menu people actually see. Add a destination
+there and rebuild — it appears in the reference automatically. This is the same
+arrangement the permissions guide uses for the permission catalogue, and the
+two share their styling through `guide_theme.py`.
+
+Usage:
+    python3 docs/build_user_guide.py
+
+Requires Google Chrome (headless) for the HTML-to-PDF step.
+"""
+
+from __future__ import annotations
+
+import re
+import shutil
+import subprocess
+import sys
+from datetime import date
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from guide_theme import BASE_CSS, esc  # noqa: E402
+
+REPO = Path(__file__).resolve().parents[1]
+SIDEBAR = REPO / "dashboard" / "src" / "components" / "layout" / "Sidebar.tsx"
+OUT_HTML = REPO / "docs" / "user-guide.html"
+OUT_PDF = REPO / "docs" / "LAD-User-Guide.pdf"
+
+
+# ── Parse the navigation out of the source of truth ──────────────────────────
+
+NavGroup = tuple[str, list[tuple[str, str, str | None]]]
+
+
+def parse_nav_groups(source: str, const_name: str) -> list[NavGroup]:
+    """
+    Read one `NavGroup[]` literal into (group label, [(name, path, permission)]).
+
+    The three menus are plain array literals, so the end of the declaration is
+    the first line that is exactly `];` — searching for a bare `]` would stop
+    at the end of the first group's `items`.
+
+    Items are read a line at a time rather than with one regex over the whole
+    block. Each entry occupies exactly one line, and `permission` is optional:
+    a pattern that skips ahead looking for one happily runs past the end of its
+    own entry and picks up the next entry's key, which silently swallowed whole
+    groups when this was written the other way.
+    """
+    start = source.index(f"const {const_name}")
+    end = source.index("\n];", start)
+    block = source[start:end]
+
+    groups: list[NavGroup] = []
+    for group_match in re.finditer(r"label: '([^']+)',\s*\n\s*items: \[(.*?)\n\s*\],", block, re.S):
+        items: list[tuple[str, str, str | None]] = []
+        for line in group_match.group(2).splitlines():
+            name = re.search(r"name:\s*'([^']+)'", line)
+            path = re.search(r"path:\s*'([^']+)'", line)
+            if not name or not path:
+                continue
+            permission = re.search(r"permission:\s*'([^']+)'", line)
+            items.append((name.group(1), path.group(1), permission.group(1) if permission else None))
+        groups.append((group_match.group(1), items))
+    return groups
+
+
+# ── Rendering helpers ────────────────────────────────────────────────────────
+
+def nav_table(groups: list[NavGroup]) -> str:
+    """One table per menu, with a spanning row introducing each group."""
+    rows = []
+    for label, items in groups:
+        rows.append(f'<tr class="grp"><td colspan="3">{esc(label)}</td></tr>')
+        for name, path, permission in items:
+            key = f"<code>{esc(permission)}</code>" if permission else '<span class="always">Always shown</span>'
+            rows.append(
+                f"<tr><td><strong>{esc(name)}</strong></td>"
+                f"<td><code>{esc(path)}</code></td><td>{key}</td></tr>"
+            )
+    return (
+        '<table class="nav">'
+        '<thead><tr><th style="width:30%">Menu entry</th>'
+        '<th style="width:32%">Address</th><th>Shown when the role holds</th></tr></thead>'
+        f"<tbody>{''.join(rows)}</tbody></table>"
+    )
+
+
+EXTRA_CSS = """
+  /* ── Navigation reference ── */
+  table.nav code { background: none; padding: 0; color: #14345f; font-weight: 600; }
+  table.nav tr.grp td {
+    background: #e7edf6; font-weight: 700; font-size: 8.4pt; letter-spacing: 0.14em;
+    text-transform: uppercase; color: #14345f; padding: 1.6mm 2.6mm;
+  }
+  table.nav tbody tr.grp + tr { background: #fff; }
+  .always { color: #5b7ba6; font-size: 8.6pt; }
+
+  /* ── Role cards ── */
+  .roles { display: flex; gap: 4mm; margin: 4mm 0 5mm; page-break-inside: avoid; }
+  .role {
+    flex: 1; border: 1.5px solid #dde3ec; border-top: 3px solid #14345f;
+    border-radius: 7px; padding: 3.5mm 4mm;
+  }
+  .role.t { border-top-color: #0f766e; }
+  .role.a { border-top-color: #c2410c; }
+  .role h4 { margin: 0 0 1.5mm; font-size: 11pt; color: #0d1b3e; }
+  .role p { font-size: 9pt; margin-bottom: 2mm; }
+  .role .lands { font-size: 8.4pt; color: #5b7ba6; margin-bottom: 0; }
+
+  /* ── Scope ladder ── */
+  .ladder { margin: 3mm 0 4mm; page-break-inside: avoid; }
+  .rung {
+    display: flex; align-items: baseline; gap: 3mm; border-left: 3px solid #14345f;
+    padding: 2mm 0 2mm 4mm; margin-bottom: 1.5mm; background: #f6f8fb;
+    border-radius: 0 5px 5px 0;
+  }
+  /* Wide enough for "College administrator" on one line — a wrapped label
+     pushes its description out of alignment with the rungs above it. */
+  .rung .who { font-weight: 700; font-size: 9.6pt; color: #0d1b3e; flex: 0 0 40mm; }
+  .rung .sees { font-size: 9.2pt; }
+  .rung.w1 { border-left-color: #0f766e; }
+  .rung.w2 { border-left-color: #14345f; }
+  .rung.w3 { border-left-color: #5b7ba6; }
+  .rung.w4 { border-left-color: #c2410c; }
+"""
+
+
+def build_html(menus: dict[str, list[NavGroup]]) -> str:
+    today = date.today().strftime("%d %B %Y")
+    destinations = {
+        role: sum(len(items) for _, items in groups) for role, groups in menus.items()
+    }
+    unique_paths = len({
+        path
+        for groups in menus.values()
+        for _, items in groups
+        for _, path, _ in items
+    })
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>LAD — User Guide</title>
+<style>{BASE_CSS}{EXTRA_CSS}</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="mark">LAD &middot; Learning &amp; Academic Management</div>
+  <h1>Using LAD</h1>
+  <div class="rule"></div>
+  <div class="sub">A guide for learners, trainers, and administrators — what each
+  screen is for, how to finish the tasks you came to do, and why you see the
+  records you see.</div>
+  <div class="stats">
+    <div class="stat"><div class="n">3</div><div class="l">Portals</div></div>
+    <div class="stat"><div class="n">{unique_paths}</div><div class="l">Destinations</div></div>
+    <div class="stat"><div class="n">4</div><div class="l">Scope levels</div></div>
+  </div>
+  <div class="meta">
+    <strong>User Guide</strong><br>
+    Generated {today} from the live navigation map
+  </div>
+</div>
+
+<section class="first">
+  <div class="eyebrow">Contents</div>
+  <h2>What this covers</h2>
+  <ol class="toc">
+    <li>Getting started <span class="s">— signing in and finding your way</span></li>
+    <li>What you can see <span class="s">— the four scope levels</span></li>
+    <li>For learners <span class="s">— attendance, marks, subjects, portfolio</span></li>
+    <li>For trainers <span class="s">— attendance, enrolment, marks, reports</span></li>
+    <li>For administrators <span class="s">— people, structure, oversight</span></li>
+    <li>Reports and exports <span class="s">— every report, and how to get it out</span></li>
+    <li>Troubleshooting <span class="s">— "why can't I see it?"</span></li>
+    <li>Navigation reference <span class="s">— every menu entry, per portal</span></li>
+    <li>Glossary</li>
+  </ol>
+
+  <div class="callout">
+    <div class="t">Read this first</div>
+    <p>Two different things decide what appears on your screen. Your <strong>role</strong>
+    decides which menu entries exist for you at all; your <strong>scope</strong> decides
+    whose records those screens then show. A screen that opens but looks empty is almost
+    always the second one — see section 2, and Troubleshooting.</p>
+  </div>
+
+  <p>This guide describes what to do in the interface. Its companion,
+  <strong>Working With Permissions</strong>, describes how access is granted in the
+  first place, and is written for whoever administers roles.</p>
+</section>
+
+<section>
+  <div class="eyebrow">Section 1</div>
+  <h2>Getting started</h2>
+
+  <h3>Signing in</h3>
+  <ol class="steps">
+    <li>Open LAD and sign in with your email address and password on the
+    <strong>Welcome Back</strong> screen. Accounts are created for you — there is no
+    public self-registration.</li>
+    <li>You land on the dashboard for your account type. There is no portal to choose:
+    LAD reads it from your account and sends you to the right one.</li>
+    <li>If a permission changes while you are signed in, sign out and back in.
+    Permissions are read once, at sign-in.</li>
+  </ol>
+
+  <h3>The three portals</h3>
+  <div class="roles">
+    <div class="role">
+      <h4>Learner</h4>
+      <p>Your own record: marks, subjects, attendance, exams, portfolio evidence, and
+      feedback on your trainers.</p>
+      <p class="lands">Lands on <code>/student/dashboard</code></p>
+    </div>
+    <div class="role t">
+      <h4>Trainer</h4>
+      <p>The subjects assigned to you and the learners on them — attendance, marks,
+      assessments, and class analytics.</p>
+      <p class="lands">Lands on <code>/trainer-hub</code></p>
+    </div>
+    <div class="role a">
+      <h4>Staff / Administrator</h4>
+      <p>People, academic structure, and oversight across whatever part of the
+      organisation you are responsible for.</p>
+      <p class="lands">Lands on <code>/admin/dashboard</code></p>
+    </div>
+  </div>
+
+  <p>A staff account with neither a learner nor a trainer profile is treated as the third
+  kind. If such a role has not been granted the admin dashboard, it lands on
+  <strong>Reports</strong> instead, so there is always somewhere to arrive.</p>
+
+  <h3>Finding your way</h3>
+  <ul>
+    <li>The <strong>sidebar</strong> is grouped by job — Overview, People, Academics,
+    Reports, Attendance. Click a group heading to collapse it, and the arrows at the top
+    to narrow the whole sidebar to icons.</li>
+    <li>The sidebar only lists what you may open. If an entry is not there, your role
+    has not been granted it — it is not hidden behind a menu somewhere else.</li>
+    <li>Screens that build up over several stages label them <strong>Step 1</strong>,
+    <strong>Step 2</strong>, and so on, top to bottom. Work down the page.</li>
+    <li>Tables share one set of controls: click a column heading to sort, use the search
+    box to narrow, and page through at the bottom.</li>
+  </ul>
+</section>
+
+<section>
+  <div class="eyebrow">Section 2</div>
+  <h2>What you can see</h2>
+
+  <p>Every list, report, and dashboard in LAD is filtered to you before it is fetched.
+  Four levels exist, narrowest first. You sit at exactly one.</p>
+
+  <div class="ladder">
+    <div class="rung w1"><span class="who">Trainer</span>
+      <span class="sees">The subjects assigned to you, and the learners, marks, attendance,
+      and documents that belong to them.</span></div>
+    <div class="rung w2"><span class="who">Head of department</span>
+      <span class="sees">Every course, trainer, and cohort in your department — across all
+      the trainers in it.</span></div>
+    <div class="rung w3"><span class="who">College administrator</span>
+      <span class="sees">Everything belonging to your college. Not the other colleges,
+      even with a full administrative role.</span></div>
+    <div class="rung w4"><span class="who">Group super admin</span>
+      <span class="sees">Every college. This is the only level that reads across the
+      whole group.</span></div>
+  </div>
+
+  <p>A learner is narrower still: they see themselves, and nothing else, on every screen.</p>
+
+  <div class="callout">
+    <div class="t">Why an administrator does not see every college</div>
+    <p>What separates a college administrator from the group super admin is the
+    <strong>institution recorded on their account</strong>, not the strength of their role.
+    An account attached to a college is held to that college; the group account is attached
+    to none, which is what lets it read them all. Cross-college oversight for anyone else is
+    granted deliberately, as a single visible setting, and never arrives as a side effect of
+    some other permission.</p>
+  </div>
+
+  <p>Reports that are narrowed say so. The <strong>Enrolment &amp; Attendance Overview</strong>
+  and the <strong>Attendance Overview</strong> both print the scope they are showing —
+  "Your assigned subjects only", your department, or your college — so an unexpectedly short
+  report reads as your scope rather than as missing data.</p>
+
+  <div class="callout warn">
+    <div class="t">Empty is not the same as broken</div>
+    <p>A newly created trainer sees nothing at all until subjects are assigned to them.
+    Their permissions may be complete and the screens will still be empty, because a trainer's
+    data comes from their assignments. Ask an administrator to assign your units.</p>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Section 3</div>
+  <h2>For learners</h2>
+
+  <h3 class="keep">Check in to class</h3>
+  <p><strong>Attendance → Check In.</strong> Your trainer displays a QR code that changes
+  every few seconds.</p>
+  <ol class="steps">
+    <li>Open <strong>Check In</strong>. Allow location access when your browser asks —
+    LAD requests it while you are still lining up the code, because the code expires
+    faster than a location fix usually arrives.</li>
+    <li>Point your camera at the QR code. No camera? Choose <em>Enter code manually</em>
+    and type the six-character session code your trainer reads out.</li>
+    <li>Confirm the check-in. Your position is compared with your trainer's, and you must
+    be inside the radius they set for the session.</li>
+  </ol>
+  <div class="callout">
+    <div class="t">If the check-in is refused</div>
+    <p><em>GPS failed</em> means you were outside the allowed radius, or your location was
+    too imprecise to tell — move nearer a window and try again. <em>Not enrolled</em> means
+    you are not on that subject's roster. <em>Duplicate</em> means you are already marked
+    present. Your trainer can record you manually in any of these cases.</p>
+  </div>
+
+  <h3 class="keep">See your marks</h3>
+  <p><strong>Academics → My Scores</strong> lists every recorded mark with its assessment,
+  grade, and whether it passed. <strong>Reports → Report Card</strong> assembles the same
+  marks into a printable termly card, and <strong>Reports → Practical Reports</strong>
+  shows competency outcomes with the full task breakdown.</p>
+  <p>A mark is a percentage of the assessment it belongs to, so a paper out of 40 and one
+  out of 100 are directly comparable. The pass threshold is <strong>50%</strong>.</p>
+
+  <h3 class="keep">Your subjects, documents, and portfolio</h3>
+  <ul>
+    <li><strong>My Subjects</strong> — what you are enrolled on, with your average in each.</li>
+    <li><strong>Documents</strong> — material your trainers have shared for those subjects.</li>
+    <li><strong>My Portfolio</strong> — upload evidence against the competencies your course
+    requires, and track what is still outstanding.</li>
+    <li><strong>Online Exams</strong> — exams your trainer has published, sat in the browser.</li>
+  </ul>
+
+  <h3 class="keep">Attendance and standing</h3>
+  <p><strong>Reports → Attendance</strong> shows your present, absent, and late records for
+  the period. Sustained attendance below <strong>75%</strong>, or an average below
+  <strong>50%</strong>, raises an alert to you and to the trainers who teach you; it clears
+  itself when the figures recover. <strong>Disciplinary Records</strong> lists anything
+  formally recorded against you.</p>
+
+  <h3 class="keep">Feedback, both directions</h3>
+  <p><strong>Trainer Feedback</strong> is feedback written to you. <strong>Rate My
+  Trainers</strong> is where you submit yours.</p>
+</section>
+
+<section>
+  <div class="eyebrow">Section 4</div>
+  <h2>For trainers</h2>
+
+  <h3>Your dashboard</h3>
+  <p>The <strong>Teaching Performance Hub</strong> opens on all your assigned subjects.
+  The <strong>Assigned subject scope</strong> selector at the top narrows every metric,
+  chart, and panel below it to one subject — class average, mastery, attendance signal,
+  at-risk learners, the competency heatmap, and the cohort comparison all follow it.</p>
+
+  <h3 class="keep">Take attendance</h3>
+  <p><strong>Attendance → Take Attendance</strong> runs a live QR session.</p>
+  <ol class="steps">
+    <li><strong>Start Attendance Session</strong>, and pick the class. Allow location
+    access — your position is the centre of the check-in radius.</li>
+    <li>Set the <strong>duration</strong> (5 minutes is the recommended scan window), the
+    <strong>allowed radius</strong> in metres, and how often the code refreshes.</li>
+    <li>Display the QR code. It regenerates on the interval you chose, so a screenshot
+    passed to an absent learner expires almost immediately. The six-character session code
+    beneath it is the fallback for anyone without a camera.</li>
+    <li>Watch check-ins arrive live, then end the session.</li>
+  </ol>
+  <p><strong>Attendance → Manual Attendance</strong> covers everyone the QR flow missed:
+  select the class, then mark the register by hand.</p>
+
+  <h3 class="keep">Enrol learners onto a subject</h3>
+  <p><strong>People → Learner Enrollment.</strong> Choose one of your assigned subjects,
+  then either enter a single learner's registration number or email, or import a roster.
+  <strong>Template</strong> downloads a CSV with the columns the importer expects —
+  <code>registration_number</code> and/or <code>email</code>. The import reports how many
+  were enrolled, how many were already on the subject, and how many could not be found.</p>
+  <div class="callout">
+    <div class="t">Enrolment attaches, it does not create</div>
+    <p>This screen puts existing learners onto your subject. A learner who has never been
+    added to the institution has to be created first, on the Students screen or through
+    Data Import.</p>
+  </div>
+
+  <h3 class="keep">Record marks</h3>
+  <p>For a handful of marks, use the score form on your dashboard. For a whole class, use
+  <strong>Academics → Bulk Upload Marks</strong>, which works down the page in four steps.</p>
+  <ol class="steps">
+    <li><strong>Select Assessment.</strong> Pick the assessment the marks belong to, then
+    <strong>Download Class List</strong> — an Excel file already filled in with your
+    learners and the codes the importer needs. Its assessment code is shown with a
+    <em>Copy Code</em> button.</li>
+    <li><strong>Select Subject</strong> (optional). Sets the subject for every row that does
+    not name its own. Applies to the whole batch.</li>
+    <li><strong>Upload Marks File.</strong> Fill in the marks column of the downloaded class
+    list and upload it. You may also attach scans or photographs of the original scripts as
+    evidence. Then <strong>Preview &amp; Validate</strong>.</li>
+    <li><strong>Review &amp; Commit.</strong> The preview flags every invalid row, every
+    learner who already has a mark for this assessment, and every learner the commit would
+    attach to the subject. Nothing is written until you commit.</li>
+  </ol>
+  <div class="callout good">
+    <div class="t">Always start from the downloaded class list</div>
+    <p>It carries the learner, assessment, module, and subject codes already filled in, so
+    the only column you touch is the mark. A hand-built spreadsheet is where mismatched
+    codes come from.</p>
+  </div>
+  <p>Assessments marked from three CATs have their own layout: choose the scenario and the
+  class list carries a column per CAT, with the final mark computed for you.</p>
+
+  <h3 class="keep">Review and edit recorded marks</h3>
+  <p><strong>Academics → Score Management</strong> lists every mark in your scope. Filter to
+  <strong>one subject</strong> with the subject dropdown, search by learner, course, subject,
+  or assessment, and sort any column. Marks can be edited or removed here, and the filtered
+  set exported to Excel, PDF, or CSV.</p>
+
+  <h3 class="keep">Track progress</h3>
+  <p><strong>Academics → Progress</strong> gives one row per learner with average, pass rate,
+  assessment count, trend, and standing. The <strong>subject filter</strong> re-averages every
+  learner over that subject alone rather than merely hiding rows, so the summary cards above
+  the table describe the subject you picked. <em>Needs attention first</em> puts the weakest
+  learners at the top.</p>
+
+  <h3>Assessments and material</h3>
+  <ul>
+    <li><strong>Practical Assess.</strong> — author practical assessments and record
+    competency outcomes against them.</li>
+    <li><strong>Online Exams</strong> — build an exam, publish it, and review submissions.</li>
+    <li><strong>Documents</strong> — share material with the learners on your subjects.</li>
+    <li><strong>Competencies</strong> — the competency framework your assessments evidence.</li>
+  </ul>
+
+  <h3>Your reports</h3>
+  <ul>
+    <li><strong>Class Performance</strong> — averages, pass rates, ranking, grade distribution.</li>
+    <li><strong>Syllabus Coverage</strong> — planned against covered topics.</li>
+    <li><strong>Learner Attendance</strong> — the attendance record for your classes.</li>
+    <li><strong>Trainer Reports</strong> — the exportable set of the above.</li>
+  </ul>
+
+  <h3>Feedback</h3>
+  <p><strong>Provide Feedback</strong> writes to a learner — the at-risk panel on your
+  dashboard links straight into it with the learner and subject already selected.
+  <strong>My Feedback</strong> is what learners have submitted about you.</p>
+</section>
+
+<section>
+  <div class="eyebrow">Section 5</div>
+  <h2>For administrators</h2>
+
+  <h3>People</h3>
+  <ol class="steps">
+    <li><strong>People → Users</strong> creates the account: name, email, <strong>role</strong>,
+    and <strong>institution</strong>. The institution is what places the person in a college —
+    without it they are not confined to one.</li>
+    <li><strong>People → Trainers</strong> then assigns teaching. Use <strong>Assign
+    Subjects</strong> to pick course, module, and subjects. A trainer sees nothing until this
+    is done.</li>
+    <li><strong>People → Students</strong> manages learner records and the course each is
+    enrolled on.</li>
+    <li><strong>People → Roles</strong> defines what each role may open. It is covered in
+    full by the companion permissions guide.</li>
+    <li><strong>People → Data Import</strong> brings people in in bulk rather than one at a
+    time, and reports conflicts before anything is written.</li>
+  </ol>
+
+  <h3>Academic structure</h3>
+  <p>The hierarchy runs <code>Institution → Department → Course → Module → Subject</code>,
+  and each level has its own screen under <strong>Institution</strong>. Scope is resolved by
+  walking this chain, so a course left without a department, or a module without a course,
+  will drop cohorts out of reports. <strong>Terms</strong> defines the academic periods that
+  reports group by; exactly one is active, and reports default to it.</p>
+
+  <h3>Marks and oversight</h3>
+  <ul>
+    <li><strong>Score Management</strong> — every mark in your scope, filterable by subject,
+    editable, exportable.</li>
+    <li><strong>Bulk Upload Marks</strong> — the same four-step flow trainers use.</li>
+    <li><strong>Progress</strong> — learner-by-learner standing across your scope.</li>
+    <li><strong>Attendance Report</strong> — sessions, check-in outcomes, and trainer activity
+    for the trainers you oversee.</li>
+    <li><strong>Compliance</strong> — the audit view of what has and has not been recorded.</li>
+  </ul>
+
+  <h3>Dashboard and analytics</h3>
+  <p><strong>Admin Dashboard</strong> is the headline view — enrolment, pass rates, term
+  trend, department performance. <strong>Analytics</strong> is the same picture with the
+  filters and breakdowns to interrogate it: by department, course, module, subject, trainer,
+  or learner.</p>
+
+  <div class="callout warn">
+    <div class="t">Taking access away</div>
+    <p>Removing a permission changes it for everyone holding that role. To narrow one person,
+    move them to a narrower role instead. To stop a trainer seeing a class without touching
+    their permissions at all, remove the subject assignment — that is what their visibility
+    is built from.</p>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Section 6</div>
+  <h2>Reports and exports</h2>
+
+  <table>
+    <thead><tr><th style="width:30%">Report</th><th style="width:18%">Who</th><th>What it answers</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Exam Results</strong></td><td>Staff</td>
+        <td>Score average, average pass rate, and top course for the term, broken down by course and by subject, with movement against the previous term.</td></tr>
+      <tr><td><strong>Exam Analysis</strong></td><td>Staff</td>
+        <td>The same marks either aggregated by assessment, subject, and course, or listed as individual learner entries.</td></tr>
+      <tr><td><strong>Enrolment &amp; Attendance</strong></td><td>Staff</td>
+        <td>Course population and attendance health, flagging any course below the 75% threshold.</td></tr>
+      <tr><td><strong>Attendance Overview</strong></td><td>Staff</td>
+        <td>Sessions, check-in outcomes, daily trend, and trainer activity.</td></tr>
+      <tr><td><strong>Practical Assessments</strong></td><td>Staff, learner</td>
+        <td>Competency outcomes in summary, or learner records with the full task breakdown.</td></tr>
+      <tr><td><strong>Class Performance</strong></td><td>Trainer</td>
+        <td>Averages, pass rates, ranking, and grade distribution for one class.</td></tr>
+      <tr><td><strong>Syllabus Coverage</strong></td><td>Trainer</td>
+        <td>Planned against covered topics, as a completion percentage.</td></tr>
+      <tr><td><strong>Report Card</strong></td><td>Learner</td>
+        <td>The termly record, ready to print.</td></tr>
+      <tr><td><strong>My Attendance</strong></td><td>Learner</td>
+        <td>Present, absent, and late records for the period.</td></tr>
+      <tr><td><strong>Compliance</strong></td><td>Staff</td>
+        <td>What has and has not been recorded, for audit.</td></tr>
+    </tbody>
+  </table>
+
+  <p><strong>Reports → All Reports</strong> is the catalogue of everything you can open,
+  filtered to your role.</p>
+
+  <h3>Getting a report out</h3>
+  <ul>
+    <li><strong>Print</strong> uses a print stylesheet — filter controls drop away and the
+    header becomes a titled, dated document.</li>
+    <li><strong>Excel</strong> writes one sheet per breakdown.</li>
+    <li><strong>PDF</strong> writes the same tables as a document.</li>
+    <li><strong>CSV</strong> writes the main table only, for loading elsewhere.</li>
+  </ul>
+  <div class="callout">
+    <div class="t">Exports follow your filters</div>
+    <p>Every export carries the rows currently on screen, not the unfiltered set, and records
+    who generated it and when. Set the filters first, then export.</p>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Section 7</div>
+  <h2>Troubleshooting</h2>
+
+  <table>
+    <thead><tr><th style="width:36%">What you are seeing</th><th>What it means</th></tr></thead>
+    <tbody>
+      <tr><td><strong>A menu entry is missing</strong></td>
+        <td>Your role has not been granted it. The sidebar, the address, and the underlying
+        data all unlock together, so there is no other route to it.</td></tr>
+      <tr><td><strong>"You do not have permission to view this"</strong></td>
+        <td>You reached a screen your role cannot open. Ask an administrator for the key that
+        screen needs.</td></tr>
+      <tr><td><strong>The screen opens but is empty</strong></td>
+        <td>The common case, and it is scope rather than permission. If you are a trainer,
+        check your subject assignments; otherwise check the institution on your account.</td></tr>
+      <tr><td><strong>A trainer sees no learners or marks</strong></td>
+        <td>No units are assigned to them. Trainers → Assign Subjects. Permissions are not the
+        problem.</td></tr>
+      <tr><td><strong>A report shows less than expected</strong></td>
+        <td>Check the scope label printed on it, and the term. Reports default to the active
+        term, and marks filed under a different term will not appear.</td></tr>
+      <tr><td><strong>A permission change had no effect</strong></td>
+        <td>Permissions load at sign-in. Sign out and back in.</td></tr>
+      <tr><td><strong>Check-in refused — GPS failed</strong></td>
+        <td>You were outside the session's radius, or your position was too imprecise. Move
+        nearer a window; the trainer can mark you manually.</td></tr>
+      <tr><td><strong>A bulk upload row is rejected</strong></td>
+        <td>The preview names the reason per row. Almost always a code that does not match —
+        start again from the downloaded class list rather than a hand-built sheet.</td></tr>
+      <tr><td><strong>Marks uploaded but missing from a report</strong></td>
+        <td>They are probably filed under another term, or the learners are not attached to a
+        course, so they cannot be grouped into a class. The Exam Results report says which.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    <div class="t">A diagnostic order that works</div>
+    <p>Ask in this order: <strong>(1)</strong> Is the entry in my sidebar?
+    <strong>(2)</strong> If it opens but is empty, whose records should it show — am I in
+    scope? <strong>(3)</strong> If I am a trainer, do I hold the unit? <strong>(4)</strong>
+    Is the report on the right term? Nearly every question resolves at one of those four.</p>
+  </div>
+</section>
+
+<section>
+  <div class="eyebrow">Section 8</div>
+  <h2>Navigation reference</h2>
+  <p>Every entry in each portal's sidebar, in the order it appears. An entry is shown only
+  when the role holds the key beside it — entries with no key are always shown to that
+  portal. Several destinations appear in more than one portal; it is the same screen,
+  scoped to whoever opened it.</p>
+
+  <h3 class="keep">Learner portal <span class="count">{destinations['student']} entries</span></h3>
+  {nav_table(menus['student'])}
+
+  <h3 class="keep">Trainer portal <span class="count">{destinations['trainer']} entries</span></h3>
+  {nav_table(menus['trainer'])}
+
+  <h3 class="keep">Staff &amp; administrator portal <span class="count">{destinations['admin']} entries</span></h3>
+  {nav_table(menus['admin'])}
+</section>
+
+<section>
+  <div class="eyebrow">Section 9</div>
+  <h2>Glossary</h2>
+
+  <table>
+    <thead><tr><th style="width:26%">Term</th><th>Meaning in LAD</th></tr></thead>
+    <tbody>
+      <tr><td><strong>Institution</strong></td><td>A college. The top of the academic hierarchy, and the boundary most staff are held to.</td></tr>
+      <tr><td><strong>Department</strong></td><td>A division of a college, owning courses and trainers. The boundary a head of department is held to.</td></tr>
+      <tr><td><strong>Course</strong></td><td>The programme a learner is enrolled on, at a CBET level.</td></tr>
+      <tr><td><strong>Module</strong></td><td>A block of a course, containing subjects.</td></tr>
+      <tr><td><strong>Subject</strong></td><td>The unit actually taught. Trainers are assigned subjects, and it is the assignment that decides what they see.</td></tr>
+      <tr><td><strong>Assessment</strong></td><td>A specific piece of marked work, with a total and a pass mark. Marks belong to assessments.</td></tr>
+      <tr><td><strong>CAT</strong></td><td>Continuous assessment test. Three of them can be combined into one final mark by a chosen formula.</td></tr>
+      <tr><td><strong>Competency</strong></td><td>A skill a learner must evidence. Practical assessments and portfolio evidence are recorded against these.</td></tr>
+      <tr><td><strong>Term</strong></td><td>The academic period reports group by. One is active at a time, and reports default to it.</td></tr>
+      <tr><td><strong>Scope</strong></td><td>Whose records a screen shows you, decided separately from whether you may open it.</td></tr>
+      <tr><td><strong>Session</strong></td><td>One live attendance sitting, with a rotating QR code, a time limit, and a radius.</td></tr>
+      <tr><td><strong>At risk</strong></td><td>A learner averaging below 50%, or attending below 75% over the last 90 days.</td></tr>
+    </tbody>
+  </table>
+
+  <h3>Rebuilding this document</h3>
+  <pre><code>python3 docs/build_user_guide.py</code></pre>
+  <p>The navigation reference is parsed from the dashboard's sidebar, so a destination added
+  there appears here on the next rebuild without being retyped.</p>
+</section>
+
+</body>
+</html>
+"""
+
+
+def main() -> int:
+    source = SIDEBAR.read_text()
+    menus = {
+        "student": parse_nav_groups(source, "studentGroups"),
+        "trainer": parse_nav_groups(source, "trainerGroups"),
+        "admin": parse_nav_groups(source, "adminGroups"),
+    }
+    for role, groups in menus.items():
+        if not groups or not any(items for _, items in groups):
+            print(f"No {role} nav parsed — has Sidebar.tsx changed shape?", file=sys.stderr)
+            return 1
+
+    OUT_HTML.write_text(build_html(menus))
+    total = sum(len(items) for groups in menus.values() for _, items in groups)
+    print(f"HTML  → {OUT_HTML}  ({total} entries across {len(menus)} portals)")
+
+    chrome = shutil.which("google-chrome") or shutil.which("chromium") or shutil.which("chromium-browser")
+    if not chrome:
+        print("Chrome not found — HTML written, PDF skipped.", file=sys.stderr)
+        return 1
+
+    subprocess.run(
+        [
+            chrome, "--headless", "--disable-gpu", "--no-sandbox",
+            "--no-pdf-header-footer",
+            f"--print-to-pdf={OUT_PDF}",
+            OUT_HTML.as_uri(),
+        ],
+        check=True,
+        capture_output=True,
+    )
+    print(f"PDF   → {OUT_PDF}  ({OUT_PDF.stat().st_size // 1024} KB)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

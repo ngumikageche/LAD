@@ -73,7 +73,6 @@
   }
   td { padding: 1.8mm 2.6mm; border-bottom: 1px solid #dde3ec; vertical-align: top; }
   tbody tr:nth-child(even) { background: #f6f8fb; }
-  table.perm code { background: none; padding: 0; color: #14345f; font-weight: 600; }
   thead { display: table-header-group; }
   tr { page-break-inside: avoid; }
 
@@ -92,7 +91,7 @@
   .callout.good .t { color: #0f766e; }
   .callout p:last-child { margin-bottom: 0; }
 
-  /* ── Two-layer diagram ── */
+  /* ── Side-by-side panels ── */
   .layers { display: flex; gap: 4mm; margin: 4mm 0 5mm; page-break-inside: avoid; }
   .layer { flex: 1; border: 1.5px solid #14345f; border-radius: 7px; padding: 3.5mm 4mm; }
   .layer.two { border-color: #0f766e; }
@@ -105,7 +104,7 @@
   .layer p { font-size: 9.2pt; margin-bottom: 2mm; }
   .layer .ex { font-size: 8.6pt; color: #5b7ba6; margin-bottom: 0; }
 
-  /* ── Steps ── */
+  /* ── Numbered steps ── */
   ol.steps { counter-reset: s; list-style: none; padding-left: 0; margin: 3mm 0 4mm; }
   ol.steps > li {
     counter-increment: s; position: relative; padding-left: 9mm; margin-bottom: 3.2mm;
@@ -117,6 +116,17 @@
     font-size: 8.4pt; font-weight: 700; display: flex; align-items: center; justify-content: center;
   }
 
+  .count {
+    font-size: 8pt; font-weight: 600; color: #5b7ba6; letter-spacing: 0.04em;
+    text-transform: none; margin-left: 2mm;
+  }
+
+  .toc li { margin-bottom: 1.8mm; font-size: 10pt; }
+  .toc .s { color: #5b7ba6; }
+
+  /* ── Permission tables ── */
+  table.perm code { background: none; padding: 0; color: #14345f; font-weight: 600; }
+
   /* ── Role templates ── */
   .tmpl { border: 1px solid #dde3ec; border-radius: 7px; padding: 3.5mm 4mm; margin-bottom: 3.5mm; }
   .tmpl h3 { margin-top: 0; }
@@ -126,13 +136,6 @@
     background: #eef1f7; color: #1b3a6b; padding: 0.7mm 1.8mm; border-radius: 3px;
   }
   .tmpl-note { font-size: 9.2pt; margin-bottom: 0; }
-  .count {
-    font-size: 8pt; font-weight: 600; color: #5b7ba6; letter-spacing: 0.04em;
-    text-transform: none; margin-left: 2mm;
-  }
-
-  .toc li { margin-bottom: 1.8mm; font-size: 10pt; }
-  .toc .s { color: #5b7ba6; }
 </style>
 </head>
 <body>
@@ -144,13 +147,13 @@
   <div class="sub">How access is granted, how data is scoped to an institution,
   and how to give a role exactly what it needs — and nothing more.</div>
   <div class="stats">
-    <div class="stat"><div class="n">116</div><div class="l">Permission keys</div></div>
+    <div class="stat"><div class="n">132</div><div class="l">Permission keys</div></div>
     <div class="stat"><div class="n">9</div><div class="l">Categories</div></div>
     <div class="stat"><div class="n">2</div><div class="l">Access layers</div></div>
   </div>
   <div class="meta">
     <strong>Administrator &amp; Developer Guide</strong><br>
-    Generated 09 August 2026 from the live permission catalogue
+    Generated 14 August 2026 from the live permission catalogue
   </div>
 </div>
 
@@ -159,13 +162,13 @@
   <h2>What this covers</h2>
   <ol class="toc">
     <li>The two questions every request answers <span class="s">— the model everything else follows</span></li>
-    <li>Data scope and the master control <span class="s">— <code>data.master</code></span></li>
+    <li>Data scope and the master control <span class="s">— <code>data.master</code>, <code>data.department</code></span></li>
     <li>How a request is decided <span class="s">— resolution order, front and back</span></li>
     <li>Granting permissions in the Roles screen <span class="s">— step by step</span></li>
     <li>Assigning a role to a person</li>
     <li>Common tasks <span class="s">— recipes for the requests you will actually get</span></li>
     <li>Troubleshooting <span class="s">— "why can't they see it?"</span></li>
-    <li>Full permission reference <span class="s">— all 116 keys by category</span></li>
+    <li>Full permission reference <span class="s">— all 132 keys by category</span></li>
     <li>Role baselines</li>
     <li>For developers <span class="s">— adding a key, scoping a new endpoint</span></li>
   </ol>
@@ -215,12 +218,24 @@
   <table>
     <thead><tr><th style="width:22%">Who</th><th>Sees by default</th></tr></thead>
     <tbody>
-      <tr><td><strong>Administrator</strong></td><td>Everything. The <code>*</code> wildcard carries master data access implicitly.</td></tr>
+      <tr><td><strong>Group super admin</strong></td><td>Everything. Recognised by having <em>no</em> institution on their account — that absence is what places them above the colleges rather than inside one.</td></tr>
+      <tr><td><strong>College administrator</strong></td><td>Their own institution. The <code>*</code> wildcard carries master data access on the record screens, but the cross-cohort reports hold them to their college — see below.</td></tr>
       <tr><td><strong>Manager / custom staff role</strong></td><td>Every record belonging to their own institution.</td></tr>
+      <tr><td><strong>Head of department</strong></td><td>Their own department, across every trainer in it. Granted by <code>data.department</code>, or implied by a role named <em>HOD</em> or <em>Head of Department</em>.</td></tr>
       <tr><td><strong>Trainer</strong></td><td>Their own institution, narrowed again to the subjects assigned to them — those subjects' modules, courses, learners, marks, and documents.</td></tr>
       <tr><td><strong>Student</strong></td><td>Themselves. A learner granted <code>students.read</code> still sees only their own record, and cannot enumerate classmates.</td></tr>
     </tbody>
   </table>
+
+  <div class="callout warn">
+    <div class="t">One place the wildcard does not widen you</div>
+    <p>The cross-cohort reports — <strong>Enrolment &amp; Attendance</strong> and the
+    <strong>Attendance Overview</strong> — resolve scope from the institution on the account
+    rather than from the strength of the role, because a college administrator administers one
+    college out of several and must not read the others. An explicitly granted
+    <code>data.master</code> still lifts that; a bare <code>*</code> does not. These reports
+    print the scope they are showing, so the narrowing is visible rather than silent.</p>
+  </div>
 
   <div class="callout">
     <div class="t">The institution chain</div>
@@ -236,7 +251,8 @@
   <div class="eyebrow">Section 2</div>
   <h2>Data scope and the master control</h2>
 
-  <p>One key lifts both confinements at once.</p>
+  <p>Two keys on the <strong>Data Scope</strong> tab move a role between the levels above.
+  One lifts both confinements at once; the other sets the boundary at a department.</p>
 
   <h3><code>data.master</code> — View Master Data</h3>
   <p>Found on the <strong>Data Scope</strong> tab of the role editor, labelled
@@ -257,12 +273,28 @@
 
   <div class="callout warn">
     <div class="t">Grant it deliberately</div>
-    <p><code>data.master</code> is the only supported way to see beyond your own scope,
-    and it is deliberately a single, visible switch rather than a side effect of any
-    other key. Give it to group-level auditors, multi-campus registrars, and quality
-    assurance staff. Do not give it to a role simply because a screen looks empty —
+    <p><code>data.master</code> is the only supported way to see beyond your own
+    <em>institution</em>, and it is deliberately a single, visible switch rather than a side
+    effect of any other key. Give it to group-level auditors, multi-campus registrars, and
+    quality assurance staff. Do not give it to a role simply because a screen looks empty —
     an empty screen is usually a missing <em>assignment</em>, not a missing permission.
     See Troubleshooting.</p>
+  </div>
+
+  <h3><code>data.department</code> — Head of Department</h3>
+  <p>The department counterpart, on the same tab. It widens a trainer from their own
+  subjects to their whole department, and narrows a college-wide manager to the same — so
+  it is a promotion for one role and a restriction for another. The department is read from
+  the trainer profile attached to the account, so a head of department needs one, with a
+  department set.</p>
+  <p>A role named <em>HOD</em> or <em>Head of Department</em> is treated as holding it
+  without the key being ticked. Grant the key explicitly when the role is named for the job
+  in some other way — <em>Programme Lead</em>, <em>Section Head</em>.</p>
+  <div class="callout">
+    <div class="t">If there is no department to hold them to</div>
+    <p>An account marked as a head of department but carrying no trainer profile, or one whose
+    profile has no department, falls back to their college rather than to an empty scope.
+    Showing them the college is wrong-but-visible; showing them nothing looks like a fault.</p>
   </div>
 
   <h3>The two alert keys</h3>
@@ -497,12 +529,13 @@
   <h2>Full permission reference</h2>
   <p>Every key the role editor renders, grouped as it appears on screen. A key shown in more
   than one category is the same key — ticking it anywhere grants it everywhere.</p>
-  <h3 class="keep">Data Scope <span class="count">3 keys</span></h3><table class="perm"><thead><tr><th style="width:38%">Key</th><th>What it grants</th></tr></thead><tbody><tr><td><code>data.master</code></td><td>View Master Data — all institutions, all trainers’ subjects</td></tr>
+  <h3 class="keep">Data Scope <span class="count">4 keys</span></h3><table class="perm"><thead><tr><th style="width:38%">Key</th><th>What it grants</th></tr></thead><tbody><tr><td><code>data.master</code></td><td>View Master Data — all institutions, all trainers’ subjects</td></tr>
+<tr><td><code>data.department</code></td><td>Head of Department — own department, across its trainers</td></tr>
 <tr><td><code>alerts.read</code></td><td>Read Performance &amp; Attendance Alerts</td></tr>
 <tr><td><code>alerts.manage</code></td><td>Run &amp; Resolve Alerts</td></tr></tbody></table>
-<h3 class="keep">Admin Access <span class="count">16 keys</span></h3><table class="perm"><thead><tr><th style="width:38%">Key</th><th>What it grants</th></tr></thead><tbody><tr><td><code>admin.analytics.read</code></td><td>Admin Dashboard &amp; System Analytics</td></tr>
+<h3 class="keep">Admin Access <span class="count">17 keys</span></h3><table class="perm"><thead><tr><th style="width:38%">Key</th><th>What it grants</th></tr></thead><tbody><tr><td><code>admin.analytics.read</code></td><td>Admin Dashboard &amp; System Analytics</td></tr>
 <tr><td><code>notifications.read</code></td><td>Notifications Console</td></tr>
-<tr><td><code>attendance.report.view</code></td><td>School-Wide Attendance Report</td></tr>
+<tr><td><code>attendance.report.view</code></td><td>Attendance Report</td></tr>
 <tr><td><code>roles.read</code></td><td>Open Roles &amp; Permissions</td></tr>
 <tr><td><code>institutions.read</code></td><td>Open Institutions</td></tr>
 <tr><td><code>departments.read</code></td><td>Open Departments</td></tr>
@@ -515,7 +548,8 @@
 <tr><td><code>reports.admin.compliance</code></td><td>Open Compliance Report</td></tr>
 <tr><td><code>reports.practical.assessment</code></td><td>Open Practical Assessment Reports</td></tr>
 <tr><td><code>reports.admin.pass_rate</code></td><td>Open Exam Results &amp; Analysis</td></tr>
-<tr><td><code>reports.admin.enrolment</code></td><td>Open Enrolment Report</td></tr></tbody></table>
+<tr><td><code>reports.admin.enrolment</code></td><td>Open Enrolment Report</td></tr>
+<tr><td><code>terms.read</code></td><td>Open Academic Terms</td></tr></tbody></table>
 <h3 class="keep">People <span class="count">16 keys</span></h3><table class="perm"><thead><tr><th style="width:38%">Key</th><th>What it grants</th></tr></thead><tbody><tr><td><code>users.create</code></td><td>Create Users</td></tr>
 <tr><td><code>users.read</code></td><td>Read Users</td></tr>
 <tr><td><code>users.update</code></td><td>Update Users</td></tr>
@@ -532,7 +566,7 @@
 <tr><td><code>trainers.update</code></td><td>Update Trainers</td></tr>
 <tr><td><code>trainers.delete</code></td><td>Delete Trainers</td></tr>
 <tr><td><code>data.import</code></td><td>Import Data</td></tr></tbody></table>
-<h3 class="keep">Institution <span class="count">20 keys</span></h3><table class="perm"><thead><tr><th style="width:38%">Key</th><th>What it grants</th></tr></thead><tbody><tr><td><code>institutions.create</code></td><td>Create Institutions</td></tr>
+<h3 class="keep">Institution <span class="count">28 keys</span></h3><table class="perm"><thead><tr><th style="width:38%">Key</th><th>What it grants</th></tr></thead><tbody><tr><td><code>institutions.create</code></td><td>Create Institutions</td></tr>
 <tr><td><code>institutions.read</code></td><td>Read Institutions</td></tr>
 <tr><td><code>institutions.update</code></td><td>Update Institutions</td></tr>
 <tr><td><code>institutions.delete</code></td><td>Delete Institutions</td></tr>
@@ -551,7 +585,15 @@
 <tr><td><code>subjects.create</code></td><td>Create Subjects</td></tr>
 <tr><td><code>subjects.read</code></td><td>Read Subjects</td></tr>
 <tr><td><code>subjects.update</code></td><td>Update Subjects</td></tr>
-<tr><td><code>subjects.delete</code></td><td>Delete Subjects</td></tr></tbody></table>
+<tr><td><code>subjects.delete</code></td><td>Delete Subjects</td></tr>
+<tr><td><code>competencies.create</code></td><td>Create Competencies</td></tr>
+<tr><td><code>competencies.read</code></td><td>Read Competencies</td></tr>
+<tr><td><code>competencies.update</code></td><td>Update Competencies</td></tr>
+<tr><td><code>competencies.delete</code></td><td>Delete Competencies</td></tr>
+<tr><td><code>terms.read</code></td><td>Read Academic Terms</td></tr>
+<tr><td><code>terms.create</code></td><td>Create Academic Terms</td></tr>
+<tr><td><code>terms.update</code></td><td>Update Terms &amp; Set The Current Term</td></tr>
+<tr><td><code>terms.delete</code></td><td>Delete Academic Terms</td></tr></tbody></table>
 <h3 class="keep">Academics <span class="count">14 keys</span></h3><table class="perm"><thead><tr><th style="width:38%">Key</th><th>What it grants</th></tr></thead><tbody><tr><td><code>scores.create</code></td><td>Create Scores (incl. Bulk Marks Upload)</td></tr>
 <tr><td><code>scores.read</code></td><td>Read Scores</td></tr>
 <tr><td><code>scores.update</code></td><td>Update Scores</td></tr>
@@ -569,7 +611,7 @@
 <h3 class="keep">Attendance <span class="count">4 keys</span></h3><table class="perm"><thead><tr><th style="width:38%">Key</th><th>What it grants</th></tr></thead><tbody><tr><td><code>attendance.create</code></td><td>Create Sessions</td></tr>
 <tr><td><code>attendance.read</code></td><td>Read Attendance</td></tr>
 <tr><td><code>attendance.write</code></td><td>Manage Sessions (End/Regenerate)</td></tr>
-<tr><td><code>attendance.report.view</code></td><td>Open School-Wide Attendance Report</td></tr></tbody></table>
+<tr><td><code>attendance.report.view</code></td><td>Open Attendance Report</td></tr></tbody></table>
 <h3 class="keep">Content <span class="count">9 keys</span></h3><table class="perm"><thead><tr><th style="width:38%">Key</th><th>What it grants</th></tr></thead><tbody><tr><td><code>documents.create</code></td><td>Upload Documents</td></tr>
 <tr><td><code>documents.read</code></td><td>Read Documents</td></tr>
 <tr><td><code>documents.delete</code></td><td>Delete Documents</td></tr>
@@ -579,7 +621,7 @@
 <tr><td><code>notifications.read</code></td><td>Read Notifications</td></tr>
 <tr><td><code>notifications.update</code></td><td>Update Notifications</td></tr>
 <tr><td><code>notifications.delete</code></td><td>Delete Notifications</td></tr></tbody></table>
-<h3 class="keep">Reports <span class="count">44 keys</span></h3><table class="perm"><thead><tr><th style="width:38%">Key</th><th>What it grants</th></tr></thead><tbody><tr><td><code>reports.student.term.view</code></td><td>View Student Report Cards</td></tr>
+<h3 class="keep">Reports <span class="count">51 keys</span></h3><table class="perm"><thead><tr><th style="width:38%">Key</th><th>What it grants</th></tr></thead><tbody><tr><td><code>reports.student.term.view</code></td><td>View Student Report Cards</td></tr>
 <tr><td><code>reports.student.term.print</code></td><td>Print Student Report Cards</td></tr>
 <tr><td><code>reports.student.term.export</code></td><td>Export Student Report Cards</td></tr>
 <tr><td><code>reports.student.transcript.view</code></td><td>View Student Transcripts</td></tr>
@@ -588,6 +630,9 @@
 <tr><td><code>reports.student.attendance.view</code></td><td>View Student Attendance Reports</td></tr>
 <tr><td><code>reports.student.attendance.print</code></td><td>Print Student Attendance Reports</td></tr>
 <tr><td><code>reports.student.attendance.export</code></td><td>Export Student Attendance Reports</td></tr>
+<tr><td><code>reports.student.fees.view</code></td><td>View Student Fee Statements</td></tr>
+<tr><td><code>reports.student.fees.print</code></td><td>Print Student Fee Statements</td></tr>
+<tr><td><code>reports.student.fees.export</code></td><td>Export Student Fee Statements</td></tr>
 <tr><td><code>reports.student.discipline.view</code></td><td>View Student Discipline Reports</td></tr>
 <tr><td><code>reports.student.discipline.print</code></td><td>Print Student Discipline Reports</td></tr>
 <tr><td><code>reports.student.discipline.export</code></td><td>Export Student Discipline Reports</td></tr>
@@ -613,6 +658,10 @@
 <tr><td><code>reports.admin.enrolment.view</code></td><td>View Admin Enrolment Reports</td></tr>
 <tr><td><code>reports.admin.enrolment.print</code></td><td>Print Admin Enrolment Reports</td></tr>
 <tr><td><code>reports.admin.enrolment.export</code></td><td>Export Admin Enrolment Reports</td></tr>
+<tr><td><code>reports.admin.fees</code></td><td>Open Fee Collection Report</td></tr>
+<tr><td><code>reports.admin.fees.view</code></td><td>View Fee Collection Report</td></tr>
+<tr><td><code>reports.admin.fees.print</code></td><td>Print Fee Collection Report</td></tr>
+<tr><td><code>reports.admin.fees.export</code></td><td>Export Fee Collection Report</td></tr>
 <tr><td><code>reports.admin.safeguarding.view</code></td><td>View Safeguarding Reports</td></tr>
 <tr><td><code>reports.admin.safeguarding.print</code></td><td>Print Safeguarding Reports</td></tr>
 <tr><td><code>reports.admin.safeguarding.export</code></td><td>Export Safeguarding Reports</td></tr>
@@ -636,8 +685,8 @@
   apply them for you.</p>
   <div class="tmpl keep"><h3>Admin <span class="count">System · wildcard</span></h3><p class="tmpl-note">Holds the wildcard <code>*</code> — every permission, present and future, plus master data access. Reserve it for genuine system administrators.</p></div>
 <div class="tmpl keep"><h3>Student <span class="count">Academic · 12 keys</span></h3><div class="chips"><span class="chip">students.read</span><span class="chip">students_view_own_subjects</span><span class="chip">student_subjects.read</span><span class="chip">scores.read</span><span class="chip">announcements.read</span><span class="chip">notifications.read</span><span class="chip">documents.read</span><span class="chip">attendance.read</span><span class="chip">analytics.read</span><span class="chip">reports.student.term.view</span><span class="chip">reports.student.attendance.view</span><span class="chip">feedback.trainer.submit</span></div></div>
-<div class="tmpl keep"><h3>Trainer <span class="count">Academic · 38 keys</span></h3><div class="chips"><span class="chip">trainers.read</span><span class="chip">trainers.update</span><span class="chip">students.read</span><span class="chip">subjects.read</span><span class="chip">courses.read</span><span class="chip">scores.read</span><span class="chip">scores.create</span><span class="chip">scores.update</span><span class="chip">modules.read</span><span class="chip">announcements.read</span><span class="chip">announcements.create</span><span class="chip">notifications.read</span><span class="chip">notifications.create</span><span class="chip">documents.read</span><span class="chip">documents.create</span><span class="chip">documents.delete</span><span class="chip">attendance.create</span><span class="chip">attendance.read</span><span class="chip">attendance.write</span><span class="chip">analytics.read</span><span class="chip">trainer_subjects.read</span><span class="chip">alerts.read</span><span class="chip">alerts.manage</span><span class="chip">reports.class.performance.view</span><span class="chip">reports.class.performance.print</span><span class="chip">reports.class.performance.export</span><span class="chip">reports.teacher.syllabus.view</span><span class="chip">reports.teacher.attendance.view</span><span class="chip">reports.student.discipline.view</span><span class="chip">reports.student.discipline.print</span><span class="chip">reports.student.discipline.export</span><span class="chip">reports.student.write</span><span class="chip">practical.assessments.manage</span><span class="chip">online_exams.manage</span><span class="chip">reports.practical.assessment</span><span class="chip">reports.practical.assessment.view</span><span class="chip">reports.practical.assessment.print</span><span class="chip">reports.practical.assessment.export</span></div></div>
-<div class="tmpl keep"><h3>Manager <span class="count">Management · 29 keys</span></h3><div class="chips"><span class="chip">departments.read</span><span class="chip">departments.update</span><span class="chip">courses.read</span><span class="chip">courses.update</span><span class="chip">students.read</span><span class="chip">trainers.read</span><span class="chip">subjects.read</span><span class="chip">modules.read</span><span class="chip">scores.read</span><span class="chip">analytics.read</span><span class="chip">announcements.read</span><span class="chip">announcements.create</span><span class="chip">notifications.read</span><span class="chip">notifications.create</span><span class="chip">documents.read</span><span class="chip">attendance.read</span><span class="chip">reports.admin.pass_rate.view</span><span class="chip">reports.admin.enrolment.view</span><span class="chip">reports.class.performance.view</span><span class="chip">reports.class.at_risk.view</span><span class="chip">reports.student.write</span><span class="chip">feedback.trainer.view</span><span class="chip">alerts.read</span><span class="chip">alerts.manage</span><span class="chip">admin.analytics.read</span><span class="chip">attendance.report.view</span><span class="chip">reports.practical.assessment</span><span class="chip">reports.practical.assessment.view</span><span class="chip">reports.practical.assessment.export</span></div></div>
+<div class="tmpl keep"><h3>Trainer <span class="count">Academic · 40 keys</span></h3><div class="chips"><span class="chip">trainers.read</span><span class="chip">trainers.update</span><span class="chip">students.read</span><span class="chip">subjects.read</span><span class="chip">courses.read</span><span class="chip">scores.read</span><span class="chip">scores.create</span><span class="chip">scores.update</span><span class="chip">modules.read</span><span class="chip">competencies.read</span><span class="chip">announcements.read</span><span class="chip">announcements.create</span><span class="chip">notifications.read</span><span class="chip">notifications.create</span><span class="chip">documents.read</span><span class="chip">documents.create</span><span class="chip">documents.delete</span><span class="chip">attendance.create</span><span class="chip">attendance.read</span><span class="chip">attendance.write</span><span class="chip">analytics.read</span><span class="chip">trainer_subjects.read</span><span class="chip">terms.read</span><span class="chip">alerts.read</span><span class="chip">alerts.manage</span><span class="chip">reports.class.performance.view</span><span class="chip">reports.class.performance.print</span><span class="chip">reports.class.performance.export</span><span class="chip">reports.teacher.syllabus.view</span><span class="chip">reports.teacher.attendance.view</span><span class="chip">reports.student.discipline.view</span><span class="chip">reports.student.discipline.print</span><span class="chip">reports.student.discipline.export</span><span class="chip">reports.student.write</span><span class="chip">practical.assessments.manage</span><span class="chip">online_exams.manage</span><span class="chip">reports.practical.assessment</span><span class="chip">reports.practical.assessment.view</span><span class="chip">reports.practical.assessment.print</span><span class="chip">reports.practical.assessment.export</span></div></div>
+<div class="tmpl keep"><h3>Manager <span class="count">Management · 32 keys</span></h3><div class="chips"><span class="chip">departments.read</span><span class="chip">departments.update</span><span class="chip">courses.read</span><span class="chip">courses.update</span><span class="chip">students.read</span><span class="chip">trainers.read</span><span class="chip">subjects.read</span><span class="chip">modules.read</span><span class="chip">competencies.read</span><span class="chip">scores.read</span><span class="chip">analytics.read</span><span class="chip">announcements.read</span><span class="chip">announcements.create</span><span class="chip">notifications.read</span><span class="chip">notifications.create</span><span class="chip">documents.read</span><span class="chip">attendance.read</span><span class="chip">reports.admin.pass_rate.view</span><span class="chip">reports.admin.enrolment.view</span><span class="chip">reports.class.performance.view</span><span class="chip">reports.class.at_risk.view</span><span class="chip">reports.student.write</span><span class="chip">feedback.trainer.view</span><span class="chip">terms.read</span><span class="chip">terms.update</span><span class="chip">alerts.read</span><span class="chip">alerts.manage</span><span class="chip">admin.analytics.read</span><span class="chip">attendance.report.view</span><span class="chip">reports.practical.assessment</span><span class="chip">reports.practical.assessment.view</span><span class="chip">reports.practical.assessment.export</span></div></div>
 </section>
 
 <section>
@@ -649,7 +698,7 @@
     <thead><tr><th style="width:44%">File</th><th>Responsibility</th></tr></thead>
     <tbody>
       <tr><td><code>backend/app/routes/permissions.py</code></td><td>Key checks and the route guards</td></tr>
-      <tr><td><code>backend/app/services/scoping.py</code></td><td>Data scope — institution, trainer, and <code>data.master</code></td></tr>
+      <tr><td><code>backend/app/services/scoping.py</code></td><td>Data scope — institution, trainer, and <code>data.master</code>; plus <code>oversight_scope</code> for the cross-cohort reports</td></tr>
       <tr><td><code>dashboard/src/auth/ProtectedRoute.tsx</code></td><td>Route guards and the shared <code>hasPermission</code> helper</td></tr>
       <tr><td><code>dashboard/src/pages/RolesPage.tsx</code></td><td>The permission catalogue rendered by the editor</td></tr>
       <tr><td><code>dashboard/src/components/layout/Sidebar.tsx</code></td><td>Nav entries and the key each carries</td></tr>

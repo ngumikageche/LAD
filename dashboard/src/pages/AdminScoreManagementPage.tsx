@@ -32,6 +32,9 @@ interface ScoreForm {
   feedback: string;
 }
 
+/** Bucket for marks recorded before a subject was attached to them. */
+const UNASSIGNED_SUBJECT = 'unassigned';
+
 export default function AdminScoreManagementPage() {
   const { user } = useAuth();
   const [scores, setScores] = useState<Score[]>([]);
@@ -41,6 +44,7 @@ export default function AdminScoreManagementPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [subjectFilter, setSubjectFilter] = useState('all');
   const [showUpload, setShowUpload] = useState(false);
 
   const [formData, setFormData] = useState<ScoreForm>({
@@ -174,14 +178,36 @@ export default function AdminScoreManagementPage() {
     setTimeout(() => setSuccess(null), 3000);
   };
 
-  const filteredScores = scores.filter(score =>
-    searchTerm === '' ||
-    (score.student_name ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (score.registration_number ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (score.course_name ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (score.assessment_name ?? '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (score.assessment_name ?? '').toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  /**
+   * The subjects that actually have marks here, for the subject picker. Keyed
+   * by id so two subjects sharing a name stay distinct; marks recorded before
+   * the `subject_id` column existed are grouped under one "Unassigned" entry
+   * rather than dropped, since they are still someone's marks to find.
+   */
+  const subjectOptions = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const score of scores) {
+      byId.set(score.subject_id ?? UNASSIGNED_SUBJECT, score.subject_name ?? 'Unassigned');
+    }
+    return Array.from(byId, ([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [scores]);
+
+  const filteredScores = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+    return scores.filter((score) => {
+      const matchesSearch =
+        query === '' ||
+        (score.student_name ?? '').toLowerCase().includes(query) ||
+        (score.registration_number ?? '').toLowerCase().includes(query) ||
+        (score.course_name ?? '').toLowerCase().includes(query) ||
+        (score.subject_name ?? '').toLowerCase().includes(query) ||
+        (score.assessment_name ?? '').toLowerCase().includes(query);
+      const matchesSubject =
+        subjectFilter === 'all' || (score.subject_id ?? UNASSIGNED_SUBJECT) === subjectFilter;
+      return matchesSearch && matchesSubject;
+    });
+  }, [scores, searchTerm, subjectFilter]);
 
   const tc = useTableControls(filteredScores);
 
@@ -208,7 +234,12 @@ export default function AdminScoreManagementPage() {
   const exportMeta = {
     generatedBy: user?.name ?? 'Unknown',
     reportTitle: 'Score Management Export',
-    subtitle: searchTerm ? `Filtered by "${searchTerm}"` : 'All recorded scores',
+    subtitle: [
+      subjectFilter === 'all'
+        ? null
+        : subjectOptions.find((subject) => subject.id === subjectFilter)?.name,
+      searchTerm ? `Filtered by "${searchTerm}"` : null,
+    ].filter(Boolean).join(' · ') || 'All recorded scores',
   };
   const exportName = `scores-${new Date().toISOString().slice(0, 10)}`;
 
@@ -399,8 +430,8 @@ export default function AdminScoreManagementPage() {
         )}
 
         {/* Filters */}
-        <div className="mb-6 flex gap-4 bg-slate-900 border border-slate-800 p-4 rounded-lg shadow">
-          <div className="flex-1">
+        <div className="mb-6 flex flex-wrap gap-4 bg-slate-900 border border-slate-800 p-4 rounded-lg shadow">
+          <div className="flex-1 min-w-[200px]">
             <input
               type="text"
               placeholder="Search scores..."
@@ -409,6 +440,17 @@ export default function AdminScoreManagementPage() {
               className="w-full px-4 py-2 border border-slate-700 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
             />
           </div>
+          <select
+            value={subjectFilter}
+            onChange={(e) => setSubjectFilter(e.target.value)}
+            title="Show marks for a single subject"
+            className="px-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent max-w-xs"
+          >
+            <option value="all">All subjects</option>
+            {subjectOptions.map((subject) => (
+              <option key={subject.id} value={subject.id}>{subject.name}</option>
+            ))}
+          </select>
           <div className="flex gap-2">
             <button
               type="button"
@@ -455,6 +497,7 @@ export default function AdminScoreManagementPage() {
                   <SortableTh label="Student" sortKey="student_name" sort={tc.sort} onSort={tc.setSort} />
                   <SortableTh label="Reg No" sortKey="registration_number" sort={tc.sort} onSort={tc.setSort} />
                   <SortableTh label="Course" sortKey="course_name" sort={tc.sort} onSort={tc.setSort} />
+                  <SortableTh label="Subject" sortKey="subject_name" sort={tc.sort} onSort={tc.setSort} />
                   <SortableTh label="Assessment" sortKey="assessment_name" sort={tc.sort} onSort={tc.setSort} />
                   <SortableTh label="Marks" sortKey="marks_obtained" sort={tc.sort} onSort={tc.setSort} />
                   <SortableTh label="Grade" sortKey="grade" sort={tc.sort} onSort={tc.setSort} />
@@ -467,11 +510,13 @@ export default function AdminScoreManagementPage() {
               <tbody className="divide-y divide-slate-800">
                 {tc.paged.map((score) => (
                   <tr key={score.id} className="hover:bg-slate-800">
-                    <td className="px-6 py-4">
-                      <p className="text-sm font-medium text-slate-100">{score.student_name ?? '—'}</p>
-                      <p className="text-xs text-slate-500">{score.registration_number ?? '—'}</p>
-                    </td>
+                    {/* One cell per header — the reg number used to sit inside
+                        the Student cell, which left every column after it
+                        rendered one heading to the left of its own data. */}
+                    <td className="px-6 py-4 text-sm font-medium text-slate-100">{score.student_name ?? '—'}</td>
+                    <td className="px-6 py-4 text-sm text-slate-400">{score.registration_number ?? '—'}</td>
                     <td className="px-6 py-4 text-sm text-slate-300">{score.course_name ?? '—'}</td>
+                    <td className="px-6 py-4 text-sm text-slate-300">{score.subject_name ?? '—'}</td>
                     <td className="px-6 py-4 text-sm text-slate-300">{score.assessment_name ?? '—'}</td>
                     <td className="px-6 py-4 text-slate-100 font-bold">{score.marks_obtained}</td>
                     <td className="px-6 py-4">

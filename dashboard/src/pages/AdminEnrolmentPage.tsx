@@ -23,6 +23,8 @@ interface EnrolmentReport {
   summary: { total_enrolled: number; total_courses: number; overall_attendance_pct: number | null; flagged_courses: number };
   by_course: CourseRow[];
   flagged: CourseRow[];
+  /** Whose cohorts these numbers cover — one trainer's, one department's, one college's, or all. */
+  scope?: { mode: 'all' | 'institution' | 'department' | 'trainer'; label: string };
   generated_at: string;
   generated_by: string;
 }
@@ -106,6 +108,11 @@ export default function AdminEnrolmentPage() {
           <p className="mt-2 text-sm text-slate-400">{data.school.location}</p>
           <h2 className="mt-4 text-lg font-semibold uppercase tracking-[0.18em] text-slate-100">Enrolment & Attendance Overview</h2>
           {data.term.name ? <p className="mt-2 text-sm text-slate-400">{data.term.name}</p> : null}
+          {data.scope && data.scope.mode !== 'all' ? (
+            <p className="mt-3 inline-flex rounded-full border border-cyan-400/20 bg-cyan-400/10 px-3 py-1 text-xs font-semibold text-cyan-100">
+              {data.scope.label}
+            </p>
+          ) : null}
         </div>
 
         <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

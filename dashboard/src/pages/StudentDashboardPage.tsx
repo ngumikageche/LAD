@@ -140,8 +140,20 @@ const StudentDashboardPage = () => {
     return trend[trend.length - 1].average_score - trend[0].average_score;
   }, [dashboard]);
 
+  const untermedScores = dashboard?.untermed_scores_count ?? 0;
+
   const attendanceRate = dashboard?.summary_panel?.attendance_rate ?? 0;
   const masteryRate = dashboard?.summary_panel?.mastery_rate ?? 0;
+  // Mastery is graded against competencies, and falls back to marks where a
+  // learner's modules carry no competency evidence. Saying which keeps the tile
+  // honest: with neither, the rate is not a score of zero but nothing measured,
+  // and rendering it as a flat "0.0%" reported a failing learner where there
+  // was only missing wiring. The trainer dashboard has always done this.
+  const masteryBasis = dashboard?.summary_panel?.mastery_basis ?? 'competency';
+  const masteryHelper =
+    masteryBasis === 'competency' ? 'Competency cells rated at strong mastery'
+    : masteryBasis === 'score' ? 'Subjects you are averaging 75%+ in (no competency data)'
+    : 'No competency evidence or marks recorded yet';
   const portfolioRate = dashboard?.summary_panel?.portfolio_completion_rate ?? 0;
   const unreadAlerts = dashboard?.summary_panel?.alerts ?? dashboard?.notifications_summary.unread_count ?? 0;
   const recentScoresCount = dashboard?.recent_scores.length ?? 0;
@@ -149,7 +161,11 @@ const StudentDashboardPage = () => {
   const pulseItems = [
     `${fmtPct(dashboard?.average_score)} overall average across ${dashboard?.enrolled_subjects_count ?? 0} enrolled subjects shows your current academic position.`,
     trendDirection === null
-      ? 'Trend direction is not established yet because there are not enough term records.'
+      ? untermedScores > 0
+        // The common cause, and the one that reads as missing data: the marks
+        // are recorded but carry no term, so an axis of terms cannot plot them.
+        ? `Trend direction is not established yet: ${untermedScores} recorded mark${untermedScores === 1 ? ' is' : 's are'} not attributed to any term, so they cannot be plotted. Ask your trainer to set the term on those marks.`
+        : 'Trend direction is not established yet because there are not enough term records.'
       : trendDirection >= 0
         ? `Your term trend is improving by ${fmtPct(trendDirection)} from the first visible term to the latest one.`
         : `Your term trend has dropped by ${fmtPct(Math.abs(trendDirection))}. Review the recent subject-level declines before they compound.`,
@@ -214,8 +230,8 @@ const StudentDashboardPage = () => {
         />
         <AnalyticsMetricTile
           label="Mastery Rate"
-          value={fmtPct(masteryRate)}
-          helper="Competency cells rated at strong mastery"
+          value={masteryBasis === 'none' ? '—' : fmtPct(masteryRate)}
+          helper={masteryHelper}
           icon={ChartColumnBig}
           accent="amber"
         />

@@ -817,57 +817,6 @@ export default function BulkMarksUploadPage() {
           )}
         </div>
 
-        {/* Upload column guide */}
-        <div className="mt-4 p-4 bg-slate-800 rounded-lg border border-slate-700">
-          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Upload Column Reference</p>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-            {[
-              { col: 'student_id', req: true, desc: 'Student code (STU001) or reg number' },
-              { col: 'student_name', req: false, desc: 'Prefilled for reference — ignored on upload' },
-              ...(selectedCatFormulaConfig
-                ? [
-                    { col: 'cat_1_marks', req: true, desc: `CAT 1 score out of ${selectedCatFormulaConfig.totals[0]}` },
-                    { col: 'cat_2_marks', req: true, desc: `CAT 2 score out of ${selectedCatFormulaConfig.totals[1]}` },
-                    { col: 'cat_3_marks', req: true, desc: `CAT 3 score out of ${selectedCatFormulaConfig.totals[2]}` },
-                  ]
-                : [
-                    { col: 'marks_obtained', req: true, desc: 'Numeric score — the column you fill in' },
-                  ]),
-              { col: 'assessment_code', req: true, desc: 'Assessment code (ASM001) — auto-filled in Class List' },
-              { col: 'module_code', req: false, desc: 'Module code (MOD001) — auto-filled in Class List' },
-              { col: 'subject_code', req: false, desc: 'Subject code (SUB001) — auto-filled in Class List' },
-              { col: 'term', req: false, desc: 'e.g. Term 1 2026' },
-              { col: 'feedback', req: false, desc: 'Text feedback' },
-            ].map(({ col, req, desc }) => (
-              <div key={col} className="flex items-start gap-1.5">
-                <span className={`mt-0.5 text-xs font-bold ${req ? 'text-indigo-400' : 'text-slate-500'}`}>
-                  {req ? '*' : '○'}
-                </span>
-                <div>
-                  <p className="text-xs font-mono text-slate-300">{col}</p>
-                  <p className="text-xs text-slate-500">{desc}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-          {(selectedAssessment || selectedSubject) && (
-            <div className="mt-3 pt-3 border-t border-slate-700 flex flex-wrap gap-x-6 gap-y-1 text-xs text-slate-400">
-              {selectedAssessment && (
-                <span>
-                  Assessment code exported in your Class List:{' '}
-                  <span className="font-mono text-indigo-300 font-bold">{selectedAssessment.code ?? selectedAssessment.id}</span>
-                </span>
-              )}
-              {selectedSubject && (
-                <span>
-                  Subject applied to this batch:{' '}
-                  <span className="font-mono text-teal-300 font-bold">{selectedSubject.code}</span>
-                </span>
-              )}
-            </div>
-          )}
-        </div>
-
         <div className="flex gap-3 mt-5">
           <button
             onClick={handlePreview}
