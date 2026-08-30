@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import DashboardLayout from './components/layout/DashboardLayout';
 import LoginPage from './pages/LoginPage';
 const RegisterPage = lazy(() => import('./pages/RegisterPage'));
@@ -16,8 +16,9 @@ const InstitutionsPage = lazy(() => import('./pages/InstitutionsPage'));
 const DepartmentsPage = lazy(() => import('./pages/DepartmentsPage'));
 const CoursesPage = lazy(() => import('./pages/CoursesPage'));
 const TrainersPage = lazy(() => import('./pages/TrainersPage'));
-const DataImportPage = lazy(() => import('./pages/DataImportPage'));
 const TrainerDashboardPage = lazy(() => import('./pages/TrainerDashboardPage'));
+const StudentCourseCoveragePage = lazy(() => import('./pages/StudentCourseCoveragePage'));
+const CourseCoverageOversightPage = lazy(() => import('./pages/CourseCoverageOversightPage'));
 const TrainerReportsPage = lazy(() => import('./pages/TrainerReportsPage'));
 const ProvideFeedbackPage = lazy(() => import('./pages/ProvideFeedbackPage'));
 const TrainerStudentProfilePage = lazy(() => import('./pages/TrainerStudentProfilePage'));
@@ -70,6 +71,17 @@ const RouteFallback = () => (
   </div>
 );
 
+/**
+ * `Provide Feedback` and `Student Reports` rendered the same page, so the
+ * trainer menu keeps only `Student Reports`. Deep links into the old path —
+ * the dashboard's "Send targeted feedback" button carries `student_id` and
+ * `subject_id` — forward with their query string intact.
+ */
+const LegacyFeedbackRedirect = () => {
+  const { search } = useLocation();
+  return <Navigate to={`/student-reports${search}`} replace />;
+};
+
 const DashboardRedirect = () => {
   const { user } = useAuth();
   if (!user) return null;
@@ -117,12 +129,13 @@ function App() {
                 <Route path="/student/online-exams" element={<StudentOnlineExamsPage />} />
                 <Route path="/student/feedback" element={<StudentFeedbackPage />} />
                 <Route path="/student/rate-trainers" element={<StudentTrainerFeedbackPage />} />
+                <Route path="/student/course-coverage" element={<StudentCourseCoveragePage />} />
                 <Route path="/student/disciplinary-records" element={<StudentDisciplinaryRecordsPage />} />
               </Route>
               <Route element={<UserTypeRoute allowedTypes={['trainer']} />}>
                 <Route path="/trainer-hub" element={<TrainerDashboardPage />} />
                 <Route path="/trainer/reports" element={<TrainerReportsPage />} />
-                <Route path="/trainer/feedback" element={<ProvideFeedbackPage />} />
+                <Route path="/trainer/feedback" element={<LegacyFeedbackRedirect />} />
                 <Route path="/trainer/student-profile" element={<TrainerStudentProfilePage />} />
                 <Route path="/trainer/class-performance" element={<ClassPerformancePage />} />
                 <Route path="/trainer/practical-assessments" element={<TrainerPracticalAssessmentPage />} />
@@ -143,14 +156,14 @@ function App() {
               <Route element={<PermissionRoute permissionKey="users.read" deniedTypes={['student']} />}>
                 <Route path="/users" element={<UsersPage />} />
               </Route>
-              <Route element={<PermissionRoute permissionKey="data.import" deniedTypes={['student']} />}>
-                <Route path="/data-import" element={<DataImportPage />} />
-              </Route>
 
               {/* Shared staff pages — open to any role granted the permission, not admins only */}
               <Route element={<PermissionRoute permissionKey="scores.create" deniedTypes={['student']} />}>
                 <Route path="/admin/scores/bulk-upload" element={<BulkMarksUploadPage />} />
                 <Route path="/scores/bulk-upload" element={<BulkMarksUploadPage />} />
+              </Route>
+              <Route element={<PermissionRoute permissionKey="reports.teacher.syllabus" deniedTypes={['student']} />}>
+                <Route path="/reports/course-coverage" element={<CourseCoverageOversightPage />} />
               </Route>
               <Route element={<PermissionRoute permissionKey="reports.student.write" deniedTypes={['student']} />}>
                 <Route path="/admin/student-reports" element={<ProvideFeedbackPage />} />

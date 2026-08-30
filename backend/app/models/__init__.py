@@ -24,6 +24,7 @@ from .dashboard_metric import DashboardMetric
 from .alert import Alert
 from .attendance import Attendance
 from .lesson_plan import LessonPlan
+from .syllabus_validation import SyllabusValidation
 from .staff_attendance import StaffAttendance
 
 from .portfolio_evidence import PortfolioEvidence
@@ -66,6 +67,7 @@ __all__ = [
 	"DashboardMetric",
 	"Attendance",
 	"LessonPlan",
+	"SyllabusValidation",
 	"StaffAttendance",
 	"Document",
 	"StudentReport",

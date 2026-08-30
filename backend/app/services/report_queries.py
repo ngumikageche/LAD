@@ -4,10 +4,10 @@ from collections import defaultdict
 from datetime import datetime
 import uuid
 
-from sqlalchemy import func
+from sqlalchemy import false, func
 
 from ..extensions import db
-from .scoping import term_match_clause
+from .scoping import OversightScope, oversight_scope, term_match_clause
 from ..models.attendance import Attendance
 from ..models.course import Course
 from ..models.enrollment import Enrollment
@@ -39,6 +39,24 @@ def _school_info(user: User) -> dict:
         "location": inst.location if inst else "",
         "type": inst.type if inst else "",
     }
+
+
+def _scope_students_to(query, scope: OversightScope):
+    """Narrow a learner query to the cohort one caller may count."""
+    if scope.student_ids is None:
+        return query
+    if not scope.student_ids:
+        return query.filter(false())
+    return query.filter(Student.id.in_(scope.student_ids))
+
+
+def _scope_courses_to(query, scope: OversightScope):
+    """Narrow a course query to the programmes one caller oversees."""
+    if scope.course_ids is None:
+        return query
+    if not scope.course_ids:
+        return query.filter(false())
+    return query.filter(Course.id.in_(scope.course_ids))
 
 
 def _require_access(user: User, report_type: str, target_id: str | uuid.UUID | None = None):
@@ -297,7 +315,39 @@ def school_pass_rate_report(user: User, term_id: str | None = None):
     if error:
         return error, status
     term = _resolve_term(term_id)
+    # A trainer reads their own learners, a head of department their department,
+    # a college administrator their college — only the group super admin reads
+    # every college. Without this the pass rate averaged all three institutions
+    # together no matter who opened it.
+    scope = oversight_scope(user)
     q = db.session.query(Score).filter(Score.deleted_at.is_(None))
+    # `Score.student_id` is nullable, so the join below is only taken when a
+    # restriction actually applies. Joining unconditionally would quietly drop
+    # every score with no learner attached from the unrestricted view, changing
+    # the figure the super admin reads for reasons that have nothing to do with
+    # scope.
+    #
+    # In trainer mode the learner set is the precise boundary — it follows the
+    # subject assignments — so it is used on its own. The wider modes have no
+    # learner list and are carried by the course list instead. Applying both
+    # would drop a learner the trainer teaches whose course record sits
+    # elsewhere.
+    if scope.student_ids is not None:
+        q = _scope_students_to(
+            q.join(Student, Student.id == Score.student_id)
+            .filter(Student.deleted_at.is_(None)),
+            scope,
+        )
+    elif scope.course_ids is not None:
+        q = (
+            q.join(Student, Student.id == Score.student_id)
+            .filter(Student.deleted_at.is_(None))
+        )
+        q = (
+            q.filter(Student.course_id.in_(scope.course_ids))
+            if scope.course_ids
+            else q.filter(false())
+        )
     if term:
         q = q.filter(term_match_clause(term))
     scores = q.all()
@@ -312,6 +362,7 @@ def school_pass_rate_report(user: User, term_id: str | None = None):
     return {
         "school": _school_info(user),
         "term": {"id": str(term.id) if term else None, "name": term.name if term else None},
+        "scope": {"mode": scope.mode, "label": scope.label},
         "summary": {
             "total_scores": len(scores),
             "passed": passed,
@@ -327,17 +378,31 @@ def enrolment_report(user: User, academic_year_id: str | None = None):
     access, error, status = _require_access(user, "admin_enrolment")
     if error:
         return error, status
-    rows = (
+    # Enrolment is a cross-cohort count, so it answers to the caller's oversight
+    # level rather than to the whole database: a trainer sees the courses behind
+    # their own subjects, a head of department their department, a college
+    # administrator their college.
+    scope = oversight_scope(user)
+    # The learner restriction belongs in the join condition, not in a WHERE
+    # clause: filtering after an outer join would silently turn it into an inner
+    # join and drop every course the caller oversees but has no visible learners
+    # in, when the honest answer for those is a row reading zero.
+    join_clause = (Student.course_id == Course.id) & (Student.deleted_at.is_(None))
+    if scope.student_ids is not None:
+        join_clause = join_clause & (
+            Student.id.in_(scope.student_ids) if scope.student_ids else false()
+        )
+    query = (
         db.session.query(Course.id, Course.name, func.count(Student.id))
-        .outerjoin(Student, Student.course_id == Course.id)
+        .outerjoin(Student, join_clause)
         .filter(Course.deleted_at.is_(None))
-        .group_by(Course.id, Course.name)
-        .order_by(Course.name.asc())
-        .all()
     )
+    query = _scope_courses_to(query, scope)
+    rows = query.group_by(Course.id, Course.name).order_by(Course.name.asc()).all()
     by_course = [{"course_id": str(cid), "course_name": name, "enrolled": count} for cid, name, count in rows]
     return {
         "school": _school_info(user),
+        "scope": {"mode": scope.mode, "label": scope.label},
         "academic_year_id": academic_year_id,
         "summary": {"total_enrolled": sum(row["enrolled"] for row in by_course), "total_courses": len(by_course)},
         "by_course": by_course,

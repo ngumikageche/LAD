@@ -165,7 +165,7 @@ const PERMISSION_TABS: Array<{ label: string; permissions: PermDef[] }> = [
       { key: 'departments.read',          label: 'Open Departments' },
       { key: 'admin.scores.read',         label: 'Open Score Management' },
       { key: 'users.read',                label: 'Open User Management' },
-      { key: 'data.import',               label: 'Open Data Import' },
+      { key: 'data.import',               label: 'Bulk Import People' },
       { key: 'documents.read',            label: 'Open Document Library' },
       { key: 'practical.assessments.manage', label: 'Author Practical Assessments' },
       { key: 'online_exams.manage',       label: 'Author Online Exams' },

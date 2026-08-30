@@ -38,6 +38,7 @@ from .reports import bp as reports_bp
 from .trainer_reports import bp as trainer_reports_bp
 from .student_reports import bp as student_reports_bp
 from .trainer_feedback import bp as trainer_feedback_bp
+from .syllabus_validation import bp as syllabus_validation_bp
 from .admin_reports_v2 import bp as admin_reports_v2_bp
 from .advanced_analytics import bp as advanced_analytics_bp
 from .advanced_reports import bp as advanced_reports_bp
@@ -88,6 +89,7 @@ __all__ = [
 	"trainer_reports_bp",
 	"student_reports_bp",
 	"trainer_feedback_bp",
+	"syllabus_validation_bp",
 	"admin_reports_v2_bp",
 	"advanced_analytics_bp",
 	"advanced_reports_bp",

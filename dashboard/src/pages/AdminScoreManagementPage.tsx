@@ -340,12 +340,6 @@ export default function AdminScoreManagementPage() {
                   <p className="text-sm text-slate-400">CSV or Excel files (Max 5MB)</p>
                 </label>
               </div>
-              <div>
-                <h4 className="font-medium text-slate-100 mb-2">CSV Format:</h4>
-                <code className="block bg-slate-800 p-3 rounded text-sm text-slate-300 overflow-x-auto">
-                  student_id,subject_id,marks_obtained,total_marks
-                </code>
-              </div>
               <button
                 onClick={() => setShowUpload(false)}
                 className="px-4 py-2 bg-slate-700 text-slate-300 rounded-lg hover:bg-slate-600 transition"

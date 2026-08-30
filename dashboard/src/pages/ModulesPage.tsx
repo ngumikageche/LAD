@@ -229,7 +229,7 @@ const ModulesPage = () => {
             <thead className="bg-slate-800 border-b border-slate-700">
               <tr>
                 <SortableTh label="ID" sortKey="code" sort={tc.sort} onSort={tc.setSort} />
-                <SortableTh label="Name" sortKey="name" sort={tc.sort} onSort={tc.setSort} />
+                <SortableTh label="Module Name" sortKey="name" sort={tc.sort} onSort={tc.setSort} />
                 <SortableTh label="Course" sortKey="course" sort={tc.sort} onSort={tc.setSort} />
                 <SortableTh label="Description" sortKey="description" sort={tc.sort} onSort={tc.setSort} />
                 <th className="px-6 py-3"></th>
@@ -313,7 +313,7 @@ const ModulesPage = () => {
             {error && <div className="mb-4 text-red-600 text-sm">{error}</div>}
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1">Name</label>
+                <label className="block text-sm font-medium text-slate-300 mb-1">Module Name</label>
                 <input
                   type="text"
                   className="w-full px-4 py-2 rounded-lg border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"

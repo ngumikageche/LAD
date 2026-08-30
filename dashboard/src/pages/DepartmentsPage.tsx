@@ -1,5 +1,5 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
-import { Plus, X } from 'lucide-react';
+import { Fragment, FormEvent, useEffect, useMemo, useState } from 'react';
+import { ChevronDown, ChevronRight, Plus, X } from 'lucide-react';
 import { apiRequest } from '../api/client';
 import { useAuth } from '../auth/AuthContext';
 import { useTableControls } from '../hooks/useTableControls';
@@ -18,6 +18,29 @@ type Department = {
   created_at: string | null;
 };
 
+/** A subject three levels below the department: department → course → module → subject. */
+type DepartmentSubject = {
+  id: string;
+  code: string | null;
+  name: string;
+  module_id: string;
+  module_name: string | null;
+  course_id: string | null;
+  course_name: string | null;
+};
+
+type DepartmentSubjectsResponse = {
+  department: { id: string; code: string | null; name: string };
+  subjects: DepartmentSubject[];
+};
+
+/** Per-department load state for the expandable subject list. */
+type SubjectsState = {
+  status: 'loading' | 'ready' | 'error';
+  subjects: DepartmentSubject[];
+  error?: string;
+};
+
 type DepartmentForm = {
   id?: string;
   name: string;
@@ -34,6 +57,9 @@ const DepartmentsPage = () => {
   const [departments, setDepartments] = useState<Department[]>([]);
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [institutionFilter, setInstitutionFilter] = useState('all');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [subjectsByDepartment, setSubjectsByDepartment] = useState<Record<string, SubjectsState>>({});
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -64,20 +90,62 @@ const DepartmentsPage = () => {
     }
   }, [token]);
 
+  const institutionNameById = useMemo(
+    () => new Map(institutions.map((institution) => [institution.id, institution.name])),
+    [institutions],
+  );
+
   const filtered = useMemo(() => {
     const search = searchTerm.toLowerCase();
     return departments.filter((item) => {
-      return (
-        item.name.toLowerCase().includes(search) ||
-        institutions.find((inst) => inst.id === item.institution_id)?.name.toLowerCase().includes(search)
-      );
+      if (institutionFilter !== 'all' && item.institution_id !== institutionFilter) return false;
+      if (!search) return true;
+      const institutionName = institutionNameById.get(item.institution_id)?.toLowerCase() ?? '';
+      return item.name.toLowerCase().includes(search) || institutionName.includes(search);
     });
-  }, [departments, institutions, searchTerm]);
+  }, [departments, institutionNameById, institutionFilter, searchTerm]);
+
+  /**
+   * Subjects are fetched per department, on first expand, and kept after
+   * collapse — reopening a row a second time should not re-hit the API.
+   */
+  const toggleSubjects = async (department: Department) => {
+    if (expandedId === department.id) {
+      setExpandedId(null);
+      return;
+    }
+    setExpandedId(department.id);
+    if (subjectsByDepartment[department.id]?.status === 'ready') return;
+
+    setSubjectsByDepartment((current) => ({
+      ...current,
+      [department.id]: { status: 'loading', subjects: [] },
+    }));
+    try {
+      const result = await apiRequest<DepartmentSubjectsResponse>(
+        `/departments/${department.id}/subjects`,
+        { token },
+      );
+      setSubjectsByDepartment((current) => ({
+        ...current,
+        [department.id]: { status: 'ready', subjects: result.subjects },
+      }));
+    } catch (err) {
+      setSubjectsByDepartment((current) => ({
+        ...current,
+        [department.id]: {
+          status: 'error',
+          subjects: [],
+          error: err instanceof Error ? err.message : 'Failed to load subjects',
+        },
+      }));
+    }
+  };
 
   const tc = useTableControls(
     filtered,
     15,
-    (item, key) => key === 'institution' ? institutions.find(i => i.id === item.institution_id)?.name ?? '' : (item as any)[key],
+    (item, key) => key === 'institution' ? institutionNameById.get(item.institution_id) ?? '' : (item as any)[key],
   );
 
   const openCreate = () => {
@@ -170,14 +238,30 @@ const DepartmentsPage = () => {
       </div>
 
       <div className="bg-slate-900 border border-slate-800 rounded-2xl shadow-lg border border-slate-800 overflow-hidden">
-        <div className="p-6 border-b border-slate-700">
+        <div className="p-6 border-b border-slate-700 flex flex-wrap gap-4">
           <input
             type="text"
             placeholder="Search by name or institution..."
-            className="w-full max-w-md px-4 py-2.5 rounded-lg border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
+            className="flex-1 min-w-[240px] max-w-md px-4 py-2.5 rounded-lg border border-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all"
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
           />
+          <select
+            value={institutionFilter}
+            onChange={(event) => {
+              setInstitutionFilter(event.target.value);
+              // A row expanded in one college should not stay open behind
+              // another college's list.
+              setExpandedId(null);
+            }}
+            title="Show departments for a single institution"
+            className="px-4 py-2.5 rounded-lg border border-slate-700 bg-slate-800 text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+          >
+            <option value="all">All institutions</option>
+            {institutions.map((institution) => (
+              <option key={institution.id} value={institution.id}>{institution.name}</option>
+            ))}
+          </select>
         </div>
         {isLoading ? (
           <div className="p-6 text-sm text-slate-400">Loading departments...</div>
@@ -188,6 +272,7 @@ const DepartmentsPage = () => {
             <table className="w-full text-left">
               <thead className="bg-slate-800 border-b border-slate-700">
                 <tr>
+                  <th className="w-10 px-3 py-4"><span className="sr-only">Show subjects</span></th>
                   <SortableTh label="ID" sortKey="code" sort={tc.sort} onSort={tc.setSort} />
                   <SortableTh label="Name" sortKey="name" sort={tc.sort} onSort={tc.setSort} />
                   <SortableTh label="Institution" sortKey="institution" sort={tc.sort} onSort={tc.setSort} />
@@ -195,12 +280,27 @@ const DepartmentsPage = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800">
-                {tc.paged.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-800 transition-colors">
+                {tc.paged.map((item) => {
+                  const expanded = expandedId === item.id;
+                  const subjectState = subjectsByDepartment[item.id];
+                  return (
+                  <Fragment key={item.id}>
+                  <tr className="hover:bg-slate-800 transition-colors">
+                    <td className="px-3 py-4">
+                      <button
+                        type="button"
+                        onClick={() => toggleSubjects(item)}
+                        aria-expanded={expanded}
+                        title={expanded ? 'Hide subjects' : 'Show subjects in this department'}
+                        className="rounded p-1 text-slate-400 hover:bg-slate-700 hover:text-slate-200"
+                      >
+                        {expanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                      </button>
+                    </td>
                     <td className="px-6 py-4"><span className="font-mono text-xs bg-slate-700 text-indigo-300 px-2 py-0.5 rounded">{item.code ?? '—'}</span></td>
                     <td className="px-6 py-4 font-medium text-slate-100">{item.name}</td>
                     <td className="px-6 py-4 text-slate-400">
-                      {institutions.find((inst) => inst.id === item.institution_id)?.name ?? '—'}
+                      {institutionNameById.get(item.institution_id) ?? '—'}
                     </td>
                     <td className="px-6 py-4 text-slate-400">
                       <div className="flex items-center gap-3">
@@ -224,7 +324,58 @@ const DepartmentsPage = () => {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  {expanded ? (
+                    <tr className="bg-slate-950/60">
+                      <td colSpan={5} className="px-6 py-4">
+                        {!subjectState || subjectState.status === 'loading' ? (
+                          <p className="text-sm text-slate-500">Loading subjects…</p>
+                        ) : subjectState.status === 'error' ? (
+                          <p className="text-sm text-red-400">{subjectState.error}</p>
+                        ) : subjectState.subjects.length === 0 ? (
+                          <p className="text-sm text-slate-500">
+                            No subjects are linked to this department yet. Subjects reach a
+                            department through their course, so a course left without a
+                            department will not appear here.
+                          </p>
+                        ) : (
+                          <div>
+                            <p className="mb-3 text-xs font-bold uppercase tracking-[0.2em] text-slate-500">
+                              {subjectState.subjects.length} subject{subjectState.subjects.length === 1 ? '' : 's'} in {item.name}
+                            </p>
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left text-sm">
+                                <thead className="text-xs uppercase tracking-wider text-slate-500">
+                                  <tr>
+                                    <th className="px-3 py-2">Code</th>
+                                    <th className="px-3 py-2">Subject</th>
+                                    <th className="px-3 py-2">Module Name</th>
+                                    <th className="px-3 py-2">Course</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-800">
+                                  {subjectState.subjects.map((subject) => (
+                                    <tr key={subject.id}>
+                                      <td className="px-3 py-2">
+                                        <span className="font-mono text-xs bg-slate-800 text-indigo-300 px-2 py-0.5 rounded">
+                                          {subject.code ?? '—'}
+                                        </span>
+                                      </td>
+                                      <td className="px-3 py-2 font-medium text-slate-200">{subject.name}</td>
+                                      <td className="px-3 py-2 text-slate-400">{subject.module_name ?? '—'}</td>
+                                      <td className="px-3 py-2 text-slate-400">{subject.course_name ?? '—'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ) : null}
+                  </Fragment>
+                  );
+                })}
               </tbody>
             </table>
           </div>

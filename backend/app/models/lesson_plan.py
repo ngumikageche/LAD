@@ -30,3 +30,6 @@ class LessonPlan(BaseModel):
     trainer = relationship("Trainer", back_populates="lesson_plans")
     subject = relationship("Subject", back_populates="lesson_plans")
     term = relationship("Term", back_populates="lesson_plans")
+    validations = relationship(
+        "SyllabusValidation", back_populates="lesson_plan", cascade="all, delete-orphan"
+    )

@@ -3,7 +3,7 @@ import {
   Book, Users, BarChart, FileText, ChevronsLeft, ChevronsRight, Upload,
   Shield, Building2, School, KeyRound, UserCog, MessageSquare, TrendingUp,
   BarChart3, Bell, ClipboardList, CalendarCheck, GraduationCap,
-  BookOpen, UserCheck, ChevronDown, ChevronRight, LayoutDashboard,
+  BookOpen, BookOpenCheck, UserCheck, ChevronDown, ChevronRight, LayoutDashboard,
   QrCode, ScanLine, PenLine, HeartPulse,
   X,
   Scale, Star, Inbox, CalendarRange, Target,
@@ -45,6 +45,7 @@ const studentGroups: NavGroup[] = [
       { name: 'Online Exams',      icon: ClipboardList,   path: '/student/online-exams',      color: 'text-indigo-300' },
       { name: 'Documents',         icon: BookOpen,        path: '/student/documents',         color: 'text-indigo-300' },
       { name: 'My Portfolio',      icon: Target,          path: '/student/portfolio',         color: 'text-violet-300' },
+      { name: 'Course Coverage',   icon: BookOpenCheck,   path: '/student/course-coverage',   color: 'text-green-400' },
     ],
   },
     {
@@ -88,7 +89,6 @@ const adminGroups: NavGroup[] = [
       { name: 'Trainer Feedback',  icon: Inbox,           path: '/trainer/feedback-received',  color: 'text-amber-400', permission: 'feedback.trainer.view' },
       { name: 'Users',             icon: Shield,          path: '/users',                      color: 'text-red-400', permission: 'users.read'   },
       { name: 'Roles',             icon: KeyRound,        path: '/roles',                      color: 'text-amber-400', permission: 'roles.read' },
-      { name: 'Data Import',       icon: Upload,          path: '/data-import',                color: 'text-cyan-300', permission: 'data.import' },
     ],
   },
   {
@@ -123,6 +123,7 @@ const adminGroups: NavGroup[] = [
       { name: 'Enrolment',         icon: ClipboardList,   path: '/admin/reports/enrolment',    color: 'text-amber-400', permission: 'reports.admin.enrolment' },
       { name: 'Disciplinary Records', icon: HeartPulse,   path: '/disciplinary-records',       color: 'text-rose-300', permission: 'reports.student.discipline' },
       { name: 'All Reports',       icon: FileText,        path: '/reports',                    color: 'text-teal-300', permission: 'reports.*' },
+      { name: 'Course Coverage',   icon: BookOpenCheck,   path: '/reports/course-coverage',    color: 'text-green-400', permission: 'reports.teacher.syllabus' },
       { name: 'Compliance',        icon: Scale,           path: '/admin/compliance',           color: 'text-emerald-300', permission: 'reports.admin.compliance' },
     ],
   },
@@ -157,20 +158,19 @@ const trainerGroups: NavGroup[] = [
       { name: 'Student Reports',   icon: FileText,        path: '/student-reports',           color: 'text-indigo-300', permission: 'reports.student.write' },
       { name: 'My Feedback',       icon: Inbox,           path: '/trainer/feedback-received', color: 'text-amber-400' },
       { name: 'Users',             icon: Shield,          path: '/users',                     color: 'text-red-400', permission: 'users.read' },
-      { name: 'Data Import',       icon: Upload,          path: '/data-import',               color: 'text-cyan-300', permission: 'data.import' },
       { name: 'Student Profile',   icon: TrendingUp,      path: '/trainer/student-profile',   color: 'text-teal-300' },
       { name: 'Learner Enrollment', icon: UserCheck,      path: '/trainer/enrollment',        color: 'text-cyan-300' },
-      { name: 'Provide Feedback',  icon: MessageSquare,   path: '/trainer/feedback',          color: 'text-amber-400' },
     ],
   },
   // No Institution group: a trainer manages their own teaching load, not the
-  // institution's structure. What they still need — their courses, modules, and
-  // subjects — lives under Academics, and each of those screens is scoped to the
-  // subjects assigned to them unless they hold `data.master`.
+  // institution's structure. What they still need — their modules and subjects —
+  // lives under Academics, and each of those screens is scoped to the subjects
+  // assigned to them unless they hold `data.master`. Courses are deliberately
+  // absent: a trainer is assigned subjects, so a whole-course listing showed
+  // them programmes they do not teach.
   {
     label: 'Academics',
     items: [
-      { name: 'My Courses',        icon: Book,            path: '/courses',                   color: 'text-amber-400', permission: 'courses.read' },
       { name: 'My Modules',        icon: Book,            path: '/modules',                   color: 'text-blue-300', permission: 'modules.read' },
       { name: 'My Subjects',       icon: Book,            path: '/subjects',                  color: 'text-amber-400', permission: 'subjects.read' },
       { name: 'Competencies',      icon: Target,          path: '/competencies',              color: 'text-violet-300', permission: 'competencies.read' },
@@ -196,6 +196,7 @@ const trainerGroups: NavGroup[] = [
       { name: 'Trainer Reports',   icon: FileText,        path: '/trainer/reports',           color: 'text-blue-300', permission: 'reports.class.performance' },
       { name: 'Class Performance', icon: BarChart3,       path: '/trainer/class-performance', color: 'text-teal-300', permission: 'reports.class.performance' },
       { name: 'Syllabus Coverage', icon: BookOpen,        path: '/trainer/syllabus',          color: 'text-green-400', permission: 'reports.teacher.syllabus' },
+      { name: 'Coverage Validation', icon: BookOpenCheck, path: '/reports/course-coverage',   color: 'text-emerald-300', permission: 'reports.teacher.syllabus' },
       { name: 'Learner Attendance', icon: UserCheck,      path: '/trainer/attendance',        color: 'text-amber-400', permission: 'reports.teacher.attendance' },
     ],
   },

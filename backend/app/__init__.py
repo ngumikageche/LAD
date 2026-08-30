@@ -79,6 +79,7 @@ def create_app() -> Flask:
         trainer_reports_bp,
         student_reports_bp,
         trainer_feedback_bp,
+        syllabus_validation_bp,
         admin_reports_v2_bp,
         advanced_analytics_bp,
         advanced_reports_bp,
@@ -136,6 +137,7 @@ def create_app() -> Flask:
     app.register_blueprint(trainer_reports_bp)
     app.register_blueprint(student_reports_bp)
     app.register_blueprint(trainer_feedback_bp)
+    app.register_blueprint(syllabus_validation_bp)
     app.register_blueprint(admin_reports_v2_bp)
     app.register_blueprint(advanced_analytics_bp)
     app.register_blueprint(advanced_reports_bp)

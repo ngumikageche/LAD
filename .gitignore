@@ -205,3 +205,7 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Version archives are regenerated from their git tag, which is the actual record.
+# See docs/DEVELOPMENT-JOURNEY.md for the command.
+versions/*.tar.gz

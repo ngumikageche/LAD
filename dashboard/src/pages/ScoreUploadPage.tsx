@@ -325,20 +325,6 @@ export default function ScoreUploadPage() {
           <div className="bg-slate-900 border border-slate-800 rounded-lg shadow p-6">
             <h2 className="text-lg font-bold text-slate-100 mb-6">Bulk Upload from CSV</h2>
 
-            {/* CSV Format Help */}
-            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <p className="font-semibold text-blue-900 mb-2">CSV Format</p>
-              <p className="text-sm text-blue-800 mb-2">
-                Your CSV file should have the following columns:
-              </p>
-              <code className="text-xs bg-slate-900 border border-slate-800 p-2 rounded block text-slate-100 mb-2">
-                student_id, assessment_id, marks_obtained, subject_id
-              </code>
-              <p className="text-xs text-blue-700">
-                Example: STU001, ASS001, 85.5, SUBJ001
-              </p>
-            </div>
-
             {/* File Upload */}
             <div className="mb-6">
               <label className="block text-sm font-medium text-slate-300 mb-2">

@@ -94,7 +94,7 @@ def _prev_term(term: Term) -> Term | None:
 
 
 # ─────────────────────────────────────────────────────────────
-# A1 — School-Wide Exam Results
+# A1 — Exam Results
 # GET /reports/admin/exam-results?term_id=
 # ─────────────────────────────────────────────────────────────
 

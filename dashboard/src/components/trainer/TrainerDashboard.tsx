@@ -233,7 +233,7 @@ const TrainerDashboard = () => {
                   </p>
                   <button
                     type="button"
-                    onClick={() => navigate(`/trainer/feedback?student_id=${encodeURIComponent(student.student_id)}${selectedSubjectId ? `&subject_id=${encodeURIComponent(selectedSubjectId)}` : ''}`)}
+                    onClick={() => navigate(`/student-reports?student_id=${encodeURIComponent(student.student_id)}${selectedSubjectId ? `&subject_id=${encodeURIComponent(selectedSubjectId)}` : ''}`)}
                     className="mt-3 rounded-xl bg-cyan-500 px-3 py-2 text-xs font-bold text-slate-950 hover:bg-cyan-400"
                   >
                     Send targeted feedback

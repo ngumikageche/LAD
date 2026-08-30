@@ -351,6 +351,18 @@ def build_html(menus: dict[str, list[NavGroup]]) -> str:
   <h3 class="keep">Feedback, both directions</h3>
   <p><strong>Trainer Feedback</strong> is feedback written to you. <strong>Rate My
   Trainers</strong> is where you submit yours.</p>
+
+  <h3 class="keep">Confirming what was taught</h3>
+  <p><strong>Academics → Course Coverage</strong> lists the topics your trainers have
+  recorded as taught, and asks you to mark each one <strong>Covered</strong> or <strong>Not
+  covered</strong>. Coverage is entered by the trainer who taught it, so without this there
+  is nothing in the system that can tell a finished syllabus from a reported one.</p>
+  <div class="callout">
+    <div class="t">Your answers are counted, not attributed</div>
+    <p>Your department sees the class total against each topic — how much of the syllabus
+    the group recognises — beside what the trainer reported. It does not see a per-topic
+    list with your name against it.</p>
+  </div>
 </section>
 
 <section>
@@ -387,8 +399,8 @@ def build_html(menus: dict[str, list[NavGroup]]) -> str:
   <div class="callout">
     <div class="t">Enrolment attaches, it does not create</div>
     <p>This screen puts existing learners onto your subject. A learner who has never been
-    added to the institution has to be created first, on the Students screen or through
-    Data Import.</p>
+    added to the institution has to be created first, on the Students screen — which is also
+    where a whole roster is imported.</p>
   </div>
 
   <h3 class="keep">Record marks</h3>
@@ -443,12 +455,15 @@ def build_html(menus: dict[str, list[NavGroup]]) -> str:
   <ul>
     <li><strong>Class Performance</strong> — averages, pass rates, ranking, grade distribution.</li>
     <li><strong>Syllabus Coverage</strong> — planned against covered topics.</li>
+    <li><strong>Coverage Validation</strong> — what you reported as covered, next to the
+    coverage your learners confirm. Coverage is self-entered, so this is the second
+    opinion; a persistent gap is what a head of department is shown.</li>
     <li><strong>Learner Attendance</strong> — the attendance record for your classes.</li>
     <li><strong>Trainer Reports</strong> — the exportable set of the above.</li>
   </ul>
 
   <h3>Feedback</h3>
-  <p><strong>Provide Feedback</strong> writes to a learner — the at-risk panel on your
+  <p><strong>Student Reports</strong> writes to a learner — the at-risk panel on your
   dashboard links straight into it with the learner and subject already selected.
   <strong>My Feedback</strong> is what learners have submitted about you.</p>
 </section>
@@ -469,8 +484,9 @@ def build_html(menus: dict[str, list[NavGroup]]) -> str:
     enrolled on.</li>
     <li><strong>People → Roles</strong> defines what each role may open. It is covered in
     full by the companion permissions guide.</li>
-    <li><strong>People → Data Import</strong> brings people in in bulk rather than one at a
-    time, and reports conflicts before anything is written.</li>
+    <li>Bulk import lives on the screen it belongs to: the <strong>Students</strong> and
+    <strong>Trainers</strong> screens each carry an import panel that reports conflicts
+    before anything is written.</li>
   </ol>
 
   <h3>Academic structure</h3>

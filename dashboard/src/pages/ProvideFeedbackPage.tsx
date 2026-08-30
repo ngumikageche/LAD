@@ -399,46 +399,6 @@ export default function ProvideFeedbackPage() {
                     </p>
                   </div>
 
-                  {/* Report Templates */}
-                  <div className="mb-4 p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg">
-                    <p className="text-sm font-medium text-blue-200 mb-2">💡 Suggested Focus Areas:</p>
-                    <div className="space-y-2">
-                      <button
-                        onClick={() =>
-                          setReportBody(
-                            reportBody +
-                            '\n- Focus on understanding fundamental concepts before moving to advanced topics.\n'
-                          )
-                        }
-                        className="text-left text-xs text-blue-300 hover:text-blue-300 w-full"
-                      >
-                        • Suggest reviewing fundamentals
-                      </button>
-                      <button
-                        onClick={() =>
-                          setReportBody(
-                            reportBody +
-                            '\n- Great effort! Continue practicing regularly to improve your performance.\n'
-                          )
-                        }
-                        className="text-left text-xs text-blue-300 hover:text-blue-300 w-full"
-                      >
-                        • Encourage consistent practice
-                      </button>
-                      <button
-                        onClick={() =>
-                          setReportBody(
-                            reportBody +
-                            '\n- Excellent work! You are showing strong understanding of the concepts.\n'
-                          )
-                        }
-                        className="text-left text-xs text-blue-300 hover:text-blue-300 w-full"
-                      >
-                        • Praise good performance
-                      </button>
-                    </div>
-                  </div>
-
                   {/* Send Button */}
                   <button
                     onClick={handleSubmitReport}
