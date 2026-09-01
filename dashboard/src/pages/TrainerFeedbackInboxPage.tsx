@@ -11,9 +11,10 @@ import {
 import { useAuth } from '../auth/AuthContext';
 import { hasPermission } from '../auth/ProtectedRoute';
 
+/** Mirrors the labels learners rate against on the Rate My Trainers page. */
 const DIMENSION_LABELS: Record<string, string> = {
-  teaching_rating: 'Teaching & delivery',
-  communication_rating: 'Communication',
+  teaching_rating: 'Teaching, delivery & communication',
+  communication_rating: 'Course coverage',
   support_rating: 'Learner support',
 };
 

@@ -17,6 +17,7 @@ import {
   ShieldAlert,
   SlidersHorizontal,
   Sparkles,
+  TrendingUp,
   Users,
   X,
 } from 'lucide-react';
@@ -27,7 +28,7 @@ type ReportCard = {
   key: string;
   title: string;
   description: string;
-  category: 'Academic' | 'Attendance' | 'Behaviour' | 'Finance' | 'Compliance' | 'Teacher';
+  category: 'Academic' | 'Performance' | 'Attendance' | 'Behaviour' | 'Finance' | 'Compliance' | 'Teacher';
   permission: string;
   path: string;
   icon: ElementType;
@@ -37,12 +38,22 @@ type ReportCard = {
 const reportCards: ReportCard[] = [
   {
     key: 'student-report-card',
-    title: 'Term Result Report',
-    description: 'Subject scores, grade outcomes, attendance summary, and remarks.',
+    title: 'Report Card',
+    description: 'End-of-term report card: subject scores, grade outcomes, attendance summary, and remarks.',
     category: 'Academic',
     permission: 'reports.student.term',
     path: '/student/report-card',
     icon: GraduationCap,
+    roles: ['student'],
+  },
+  {
+    key: 'student-performance',
+    title: 'Performance',
+    description: 'Marks by subject and by term, with the attendance recorded against each subject.',
+    category: 'Performance',
+    permission: 'reports.student.term',
+    path: '/student/performance',
+    icon: TrendingUp,
     roles: ['student'],
   },
   {

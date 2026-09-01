@@ -13,7 +13,7 @@ import {
 } from 'recharts';
 import CompetencyHeatmap from '../components/charts/CompetencyHeatmap';
 import { AnalyticsHero, AnalyticsMetricTile, AnalyticsNarrative, AnalyticsSection } from '../components/analytics/AnalyticsSurface';
-import AttendanceCorrelationChart from '../components/charts/AttendanceCorrelationChart';
+import AttendanceCorrelationChart, { type CorrelationPoint } from '../components/charts/AttendanceCorrelationChart';
 import InsightsPanel from '../components/ui/InsightsPanel';
 import PortfolioStatusPanel from '../components/ui/PortfolioStatusPanel';
 import WidgetHelp from '../components/ui/WidgetHelp';
@@ -132,6 +132,48 @@ const StudentDashboardPage = () => {
     });
   }, [attendance]);
 
+  /**
+   * Attendance against marks, one dot per subject the learner is assigned.
+   *
+   * The shared analytics endpoint plots one dot per learner, which on a
+   * learner's own dashboard collapses to a single point — a cohort chart with a
+   * cohort of one, and nothing to read a relationship off. Their own subjects
+   * are the comparison that means something to them, so the points are built
+   * here from the marks and the register they already hold.
+   */
+  const subjectCorrelation = useMemo(() => {
+    const attendanceBySubject = new Map<string, { total: number; present: number }>();
+    attendance.forEach((record) => {
+      const subjectName = record.subject_name?.trim();
+      if (!subjectName) return;
+      const bucket = attendanceBySubject.get(subjectName) || { total: 0, present: 0 };
+      bucket.total += 1;
+      if (record.status === 'success') bucket.present += 1;
+      attendanceBySubject.set(subjectName, bucket);
+    });
+
+    const plotted: CorrelationPoint[] = [];
+    const awaitingAttendance: string[] = [];
+
+    (dashboard?.subject_performance || []).forEach((subject) => {
+      const bucket = attendanceBySubject.get(subject.subject_name);
+      // A subject with no register cannot be placed on the attendance axis, and
+      // pinning it at 0% would read as a learner who never attended — the same
+      // reading the integrity flag on this chart is looking for.
+      if (!bucket || bucket.total === 0) {
+        awaitingAttendance.push(subject.subject_name);
+        return;
+      }
+      plotted.push({
+        label: subject.subject_name,
+        attendance_rate: (bucket.present / bucket.total) * 100,
+        average_score: subject.average_score,
+      });
+    });
+
+    return { plotted, awaitingAttendance };
+  }, [attendance, dashboard]);
+
   const trendDirection = useMemo(() => {
     const trend = dashboard?.trend || [];
     if (trend.length < 2) {
@@ -196,7 +238,7 @@ const StudentDashboardPage = () => {
     <div className="space-y-8">
       <AnalyticsHero
         eyebrow="Student Dashboard"
-        title="Academic Progress Studio"
+        title="Academic Progress Overview"
         description="Understand how your scores, attendance, and portfolio evidence connect so you can decide where to focus next with confidence."
       >
         <div className="rounded-3xl border border-white/10 bg-white/[0.06] px-6 py-4 backdrop-blur">
@@ -443,11 +485,16 @@ const StudentDashboardPage = () => {
       </div>
 
       <AnalyticsSection
-        title="Attendance vs Performance"
-        description="See whether class attendance is closely connected to your academic results."
-        action={<WidgetHelp title="Attendance vs Performance" description="Shows the relationship between attendance and academic performance so you can tell whether missing classes is likely contributing to weaker scores." />}
+        title="Attendance vs Performance by Subject"
+        description="Each dot is one of your assigned subjects, plotting the attendance you recorded in it against the marks you earned."
+        action={<WidgetHelp title="Attendance vs Performance by Subject" description="Plots each subject you are assigned by your attendance in it and your average score, so you can see which subjects your attendance is holding back rather than judging attendance overall." />}
       >
-        <AttendanceCorrelationChart items={dashboard?.analytics?.attendance_correlation?.items || []} />
+        <AttendanceCorrelationChart items={subjectCorrelation.plotted} unit="subject" />
+        {subjectCorrelation.awaitingAttendance.length > 0 ? (
+          <p className="mt-3 text-xs text-slate-500">
+            Not plotted, no attendance recorded yet: {subjectCorrelation.awaitingAttendance.join(', ')}.
+          </p>
+        ) : null}
       </AnalyticsSection>
 
       <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">

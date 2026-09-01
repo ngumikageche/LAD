@@ -66,6 +66,25 @@ cd dashboard
 npm run dev
 ```
 
+## Demonstration data
+
+`backend/scripts/seed_trainer_showcase.py` fills in everything one named trainer
+needs for a live demonstration — account, department, subjects, learners, marks,
+attendance, practical assessments, competencies, portfolio, alerts, reports, and
+feedback — and simulates course coverage across every trainer so the coverage
+oversight report has confirmed, flagged, and unanswered pairings to filter by.
+
+```bash
+cd backend
+venv/bin/python scripts/seed_trainer_showcase.py --dry-run   # see what it would do
+venv/bin/python scripts/seed_trainer_showcase.py             # apply it
+```
+
+It repairs rather than rebuilds: every stage is idempotent, only missing pieces
+are created, and no subject already assigned to another trainer is reassigned.
+Pass `--email` and `--name` to target a different trainer, `--only coverage` to
+generate just the course-coverage data, and `--help` for the rest.
+
 ## Tests and checks
 
 ```bash

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { AlertCircle, AlertTriangle, Download, Printer, RefreshCw, ShieldCheck } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AlertCircle, AlertTriangle, Download, Printer, RefreshCw, Search, ShieldCheck, X } from 'lucide-react';
 import {
   syllabusCoverageAPI,
   type CoverageOversightReport,
@@ -35,10 +35,16 @@ const STATUS_STYLE: Record<CoverageStatus, { label: string; className: string }>
 
 const pct = (value: number | null) => (value === null ? '—' : `${value.toFixed(1)}%`);
 
+const STATUS_ORDER: CoverageStatus[] = ['flagged', 'confirmed', 'unvalidated'];
+
 export default function CourseCoverageOversightPage() {
   const [data, setData] = useState<CoverageOversightReport | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [department, setDepartment] = useState('all');
+  const [subject, setSubject] = useState('all');
+  const [status, setStatus] = useState<'all' | CoverageStatus>('all');
+  const [search, setSearch] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -54,10 +60,55 @@ export default function CourseCoverageOversightPage() {
 
   useEffect(() => { load(); }, [load]);
 
+  const rows = useMemo(() => data?.rows ?? [], [data]);
+
+  const departments = useMemo(
+    () => Array.from(new Set(rows.map((row) => row.department_name).filter(Boolean) as string[])).sort(),
+    [rows],
+  );
+
+  /**
+   * Subject choices follow the department already picked, so the two filters
+   * cannot be combined into a pairing that has no rows behind it.
+   */
+  const subjects = useMemo(() => {
+    const scoped = department === 'all' ? rows : rows.filter((row) => row.department_name === department);
+    return Array.from(new Set(scoped.map((row) => row.subject_name))).sort();
+  }, [rows, department]);
+
+  useEffect(() => {
+    if (subject !== 'all' && !subjects.includes(subject)) setSubject('all');
+  }, [subjects, subject]);
+
+  const visibleRows = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    return rows.filter((row) => (
+      (department === 'all' || row.department_name === department)
+      && (subject === 'all' || row.subject_name === subject)
+      && (status === 'all' || row.status === status)
+      && (!query || row.trainer_name.toLowerCase().includes(query) || row.subject_name.toLowerCase().includes(query))
+    ));
+  }, [rows, department, subject, status, search]);
+
+  const statusCounts = useMemo(() => {
+    const counts: Record<CoverageStatus, number> = { flagged: 0, confirmed: 0, unvalidated: 0 };
+    rows.forEach((row) => { counts[row.status] += 1; });
+    return counts;
+  }, [rows]);
+
+  const filtersActive = department !== 'all' || subject !== 'all' || status !== 'all' || search.trim() !== '';
+
+  const clearFilters = () => {
+    setDepartment('all');
+    setSubject('all');
+    setStatus('all');
+    setSearch('');
+  };
+
   const handleExport = () => {
     if (!data) return;
     exportExcel(
-      [{ name: 'Course Coverage', rows: data.rows as unknown as Record<string, unknown>[] }],
+      [{ name: 'Course Coverage', rows: visibleRows as unknown as Record<string, unknown>[] }],
       `course-coverage-${data.term.name ?? 'all'}`,
       { generatedBy: data.scope.label, reportTitle: 'Course Coverage Validation' },
     );
@@ -138,6 +189,78 @@ export default function CourseCoverageOversightPage() {
       </ReportSurface>
 
       <ReportSurface>
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div className="grid flex-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Department
+              <select
+                value={department}
+                onChange={(event) => setDepartment(event.target.value)}
+                className="mt-1.5 w-full rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm font-normal normal-case tracking-normal text-slate-100 outline-none focus:border-cyan-400"
+              >
+                <option value="all">All departments</option>
+                {departments.map((name) => <option key={name} value={name}>{name}</option>)}
+              </select>
+            </label>
+
+            <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Subject
+              <select
+                value={subject}
+                onChange={(event) => setSubject(event.target.value)}
+                className="mt-1.5 w-full rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm font-normal normal-case tracking-normal text-slate-100 outline-none focus:border-cyan-400"
+              >
+                <option value="all">All subjects</option>
+                {subjects.map((name) => <option key={name} value={name}>{name}</option>)}
+              </select>
+            </label>
+
+            <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Status
+              <select
+                value={status}
+                onChange={(event) => setStatus(event.target.value as 'all' | CoverageStatus)}
+                className="mt-1.5 w-full rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm font-normal normal-case tracking-normal text-slate-100 outline-none focus:border-cyan-400"
+              >
+                <option value="all">All statuses ({rows.length})</option>
+                {STATUS_ORDER.map((key) => (
+                  <option key={key} value={key}>{STATUS_STYLE[key].label} ({statusCounts[key]})</option>
+                ))}
+              </select>
+            </label>
+
+            <label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Trainer
+              <span className="relative mt-1.5 block">
+                <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={15} />
+                <input
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Search trainer or subject"
+                  className="w-full rounded-xl border border-slate-700 bg-slate-950/70 py-2 pl-9 pr-3 text-sm font-normal normal-case tracking-normal text-slate-100 outline-none focus:border-cyan-400"
+                />
+              </span>
+            </label>
+          </div>
+
+          {filtersActive ? (
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="inline-flex items-center gap-1.5 self-start rounded-xl border border-slate-700 px-3 py-2 text-xs font-semibold text-slate-300 transition hover:border-slate-500 hover:text-white print:hidden lg:self-end"
+            >
+              <X size={14} /> Clear filters
+            </button>
+          ) : null}
+        </div>
+
+        <p className="mt-4 text-xs text-slate-500">
+          Showing {visibleRows.length} of {rows.length} trainer/subject pairing{rows.length === 1 ? '' : 's'}.
+          Print and export follow these filters.
+        </p>
+      </ReportSurface>
+
+      <ReportSurface>
         <ReportSectionTitle className="flex items-center gap-2">
           <ShieldCheck size={16} /> Reported vs recognised coverage — largest gap first
         </ReportSectionTitle>
@@ -157,14 +280,16 @@ export default function CourseCoverageOversightPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
-              {(data?.rows ?? []).length === 0 ? (
+              {visibleRows.length === 0 ? (
                 <tr>
                   <td colSpan={9} className="px-3 py-8 text-center text-slate-500">
-                    No syllabus topics have been recorded in this scope yet.
+                    {rows.length === 0
+                      ? 'No syllabus topics have been recorded in this scope yet.'
+                      : 'No pairings match these filters.'}
                   </td>
                 </tr>
               ) : (
-                data?.rows.map((row) => {
+                visibleRows.map((row) => {
                   const style = STATUS_STYLE[row.status];
                   return (
                     <tr key={`${row.trainer_id}-${row.subject_id}`} className="hover:bg-slate-800/40">
