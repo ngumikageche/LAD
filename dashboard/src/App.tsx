@@ -23,6 +23,7 @@ const TrainerReportsPage = lazy(() => import('./pages/TrainerReportsPage'));
 const ProvideFeedbackPage = lazy(() => import('./pages/ProvideFeedbackPage'));
 const TrainerStudentProfilePage = lazy(() => import('./pages/TrainerStudentProfilePage'));
 const StudentDashboardPage = lazy(() => import('./pages/StudentDashboardPage'));
+const StudentPerformancePage = lazy(() => import('./pages/StudentPerformancePage'));
 const StudentMarksPage = lazy(() => import('./pages/StudentMarksPage'));
 const StudentSubjectsPage = lazy(() => import('./pages/StudentSubjectsPage'));
 const StudentProfilePage = lazy(() => import('./pages/StudentProfilePage'));
@@ -121,6 +122,7 @@ function App() {
                 <Route path="/student/profile" element={<StudentProfilePage />} />
                 <Route path="/student/notifications" element={<StudentNotificationsPage />} />
                 <Route path="/student/report-card" element={<ReportCardPage />} />
+                <Route path="/student/performance" element={<StudentPerformancePage />} />
                 <Route path="/student/attendance-report" element={<AttendanceReportPage />} />
                 <Route path="/student/practical-assessments" element={<StudentPracticalAssessmentPage />} />
                 <Route path="/student/attendance/checkin" element={<StudentAttendanceCheckInPage />} />

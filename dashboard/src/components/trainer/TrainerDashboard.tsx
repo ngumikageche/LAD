@@ -3,6 +3,9 @@ import { Activity, BookOpen, ClipboardList, ShieldAlert, Users } from 'lucide-re
 import ScoreForm from './ScoreForm';
 import ScoresTable from './ScoresTable';
 import { trainerApi, type AtRiskStudent, type TrainerDashboardResponse, type TrainerSubject } from '../../services/trainerApi';
+import { trainerPracticalAssessmentsAPI, type PracticalAssessmentReport } from '../../api/trainer';
+import PracticalScoreSheet from './PracticalScoreSheet';
+import { useAuth } from '../../auth/AuthContext';
 import CompetencyHeatmap from '../charts/CompetencyHeatmap';
 import AttendanceCorrelationChart from '../charts/AttendanceCorrelationChart';
 import CohortComparisonChart from '../charts/CohortComparisonChart';
@@ -20,6 +23,7 @@ const fmtPct = (value: number | null | undefined) => `${Number(value ?? 0).toFix
 
 const TrainerDashboard = () => {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [dashboard, setDashboard] = useState<TrainerDashboardResponse | null>(null);
   const [subjects, setSubjects] = useState<TrainerSubject[]>([]);
   const [atRiskStudents, setAtRiskStudents] = useState<AtRiskStudent[]>([]);
@@ -28,6 +32,7 @@ const TrainerDashboard = () => {
   const [refreshToken, setRefreshToken] = useState(0);
   const [comparison, setComparison] = useState<CohortComparisonResponse | null>(null);
   const [selectedSubjectId, setSelectedSubjectId] = useState('');
+  const [practicalReports, setPracticalReports] = useState<PracticalAssessmentReport[]>([]);
 
   const loadDashboard = async () => {
     try {
@@ -67,6 +72,20 @@ const TrainerDashboard = () => {
     }
     loadDashboard();
   }, [refreshToken, selectedSubjectId]);
+
+  /**
+   * Kept off `loadDashboard` deliberately: the score sheet is the one panel
+   * that must still render when the analytics call fails, because it reports
+   * what the trainer themselves entered rather than a derived signal.
+   */
+  useEffect(() => {
+    let cancelled = false;
+    trainerPracticalAssessmentsAPI
+      .listPracticalAssessments()
+      .then((reports) => { if (!cancelled) setPracticalReports(reports); })
+      .catch(() => { if (!cancelled) setPracticalReports([]); });
+    return () => { cancelled = true; };
+  }, [refreshToken]);
 
   const scopedSubjects = useMemo(
     () => selectedSubjectId ? subjects.filter((subject) => subject.id === selectedSubjectId) : subjects,
@@ -282,6 +301,27 @@ const TrainerDashboard = () => {
           <PortfolioStatusPanel portfolio={dashboard?.analytics?.portfolio || { items: [], last_updated: '' }} />
         </AnalyticsSection>
       </div>
+
+      <AnalyticsSection
+        title="Practical Assessment Score Sheet"
+        description="Every practical assessment you have entered, with the practical and oral marks that produced each learner's competence outcome."
+        action={<WidgetHelp title="Practical Assessment Score Sheet" description="Lists the practical assessment data you have entered per learner — practical marks, oral marks, total, percentage, and competence outcome — so you can check and sign off what was recorded before releasing it." />}
+      >
+        <PracticalScoreSheet
+          reports={practicalReports}
+          generatedBy={user?.name ?? 'Trainer'}
+          limit={10}
+          footer={
+            <button
+              type="button"
+              onClick={() => navigate('/trainer/practical-assessments')}
+              className="font-semibold text-teal-300 underline-offset-2 hover:underline"
+            >
+              Open the full practical assessments workspace
+            </button>
+          }
+        />
+      </AnalyticsSection>
 
       <AnalyticsSection
         title="Cohort Comparison"

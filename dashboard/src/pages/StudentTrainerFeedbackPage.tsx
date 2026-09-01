@@ -11,9 +11,16 @@ import {
   type TrainerFeedbackItem,
 } from '../api/feedback';
 
+/**
+ * What each star row asks about. The keys are the stored columns and do not
+ * move — `communication_rating` now carries the course-coverage rating, which
+ * folds communication into the first row where learners judge it alongside
+ * teaching and delivery anyway, and frees the second row for the question the
+ * coverage report cannot answer from lesson plans alone.
+ */
 const DIMENSIONS = [
-  { key: 'teaching_rating', label: 'Teaching & delivery' },
-  { key: 'communication_rating', label: 'Communication' },
+  { key: 'teaching_rating', label: 'Teaching, delivery & communication' },
+  { key: 'communication_rating', label: 'Course coverage' },
   { key: 'support_rating', label: 'Learner support' },
 ] as const;
 

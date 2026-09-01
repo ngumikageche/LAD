@@ -37,6 +37,7 @@ import { FormField, Input, Select, TextArea } from '../components/ui/Form';
 import type { PracticalAssessmentPayload, PracticalAssessmentReport } from '../api/trainer';
 import { trainerPracticalAssessmentsAPI, trainerStudentsAPI, trainerSubjectsAPI } from '../api/trainer';
 import { apiRequest, resolveApiUrl } from '../api/client';
+import PracticalScoreSheet from '../components/trainer/PracticalScoreSheet';
 import {
   COMPETENCE_BANDS,
   COMPETENCE_PASS_MARK,
@@ -1426,6 +1427,10 @@ export default function TrainerPracticalAssessmentPage() {
                   ))}
                 </div>
               </div>
+            </div>
+
+            <div className="mt-6">
+              <PracticalScoreSheet reports={allReports} generatedBy={user?.name ?? 'Trainer'} />
             </div>
 
             <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-950/50 p-4">

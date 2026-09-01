@@ -1357,6 +1357,90 @@ def database_label() -> str:
 
 # ── Entry point ───────────────────────────────────────────────────────────────
 
+def group_students_by_module(
+    students: list[Student],
+) -> dict[uuid.UUID, list[tuple[Student, Enrollment]]]:
+    """
+    The learners to work on, keyed by module.
+
+    Assessments, QR sessions, and dashboard metrics belong to a module rather
+    than to one learner, so the generation is driven module by module.
+    """
+    student_lookup = {student.id: student for student in students}
+    enrollments_by_module: dict[uuid.UUID, list[tuple[Student, Enrollment]]] = {}
+    seen_enrollments: set[tuple] = set()
+    for id_batch in chunked(list(student_lookup.keys())):
+        rows = (
+            db.session.query(Enrollment)
+            .filter(
+                Enrollment.student_id.in_(id_batch),
+                Enrollment.module_id.isnot(None),
+                Enrollment.deleted_at.is_(None),
+            )
+            .order_by(Enrollment.created_at.asc())
+            .all()
+        )
+        for enrollment in rows:
+            # A learner can be enrolled in the same module for several
+            # terms; the oldest row carries the whole module's work.
+            key = (enrollment.module_id, enrollment.student_id)
+            if key in seen_enrollments:
+                continue
+            seen_enrollments.add(key)
+            enrollments_by_module.setdefault(enrollment.module_id, []).append(
+                (student_lookup[enrollment.student_id], enrollment)
+            )
+    return enrollments_by_module
+
+
+def modules_for(module_ids: list[uuid.UUID]) -> list[Module]:
+    return (
+        db.session.query(Module)
+        .filter(Module.id.in_(module_ids), Module.deleted_at.is_(None))
+        .order_by(Module.name.asc())
+        .all()
+    )
+
+
+def generate_linked_data(
+    modules: list[Module],
+    enrollments_by_module: dict[uuid.UUID, list[tuple[Student, Enrollment]]],
+    stages: set[str],
+    args: argparse.Namespace,
+    streams: Streams,
+    summary: Summary,
+) -> None:
+    """
+    Run the requested stages over the grouped learners.
+
+    Split out from `main` so other seeding scripts can select their own learners
+    — a single trainer's cohort, say — and still produce records that match the
+    ones this script writes, rather than a second, subtly different set.
+    """
+    by_subject, by_course = build_trainer_maps()
+    notification_cache: dict = {}
+    terms = get_terms(args.max_terms, summary)
+
+    for module in modules:
+        process_module(
+            module=module,
+            module_students=enrollments_by_module[module.id],
+            terms=terms,
+            by_subject=by_subject,
+            by_course=by_course,
+            notification_cache=notification_cache,
+            stages=stages,
+            args=args,
+            streams=streams,
+            summary=summary,
+        )
+        summary.modules_processed += 1
+
+    summary.students_processed = len(
+        {student.id for bucket in enrollments_by_module.values() for student, _ in bucket}
+    )
+
+
 def main() -> None:
     args = parse_args()
     stages = resolve_stages(args.only, args.skip)
@@ -1376,48 +1460,14 @@ def main() -> None:
                 "or create accounts first with scripts/seed_random_users.py."
             )
 
-        by_subject, by_course = build_trainer_maps()
-        notification_cache: dict = {}
-
-        # Group the work by module: assessments, QR sessions, and dashboard
-        # metrics are shared by everyone studying it.
-        student_lookup = {student.id: student for student in students}
-        enrollments_by_module: dict[uuid.UUID, list[tuple[Student, Enrollment]]] = {}
-        seen_enrollments: set[tuple] = set()
-        for id_batch in chunked(list(student_lookup.keys())):
-            rows = (
-                db.session.query(Enrollment)
-                .filter(
-                    Enrollment.student_id.in_(id_batch),
-                    Enrollment.module_id.isnot(None),
-                    Enrollment.deleted_at.is_(None),
-                )
-                .order_by(Enrollment.created_at.asc())
-                .all()
-            )
-            for enrollment in rows:
-                # A learner can be enrolled in the same module for several
-                # terms; the oldest row carries the whole module's work.
-                key = (enrollment.module_id, enrollment.student_id)
-                if key in seen_enrollments:
-                    continue
-                seen_enrollments.add(key)
-                enrollments_by_module.setdefault(enrollment.module_id, []).append(
-                    (student_lookup[enrollment.student_id], enrollment)
-                )
-
+        enrollments_by_module = group_students_by_module(students)
         if not enrollments_by_module:
             raise SystemExit(
                 f"{len(students)} student(s) matched but none are enrolled in a module. "
                 "Enrol them first, then re-run."
             )
 
-        modules = (
-            db.session.query(Module)
-            .filter(Module.id.in_(list(enrollments_by_module.keys())), Module.deleted_at.is_(None))
-            .order_by(Module.name.asc())
-            .all()
-        )
+        modules = modules_for(list(enrollments_by_module.keys()))
 
         if args.status or wants_menu(args):
             existing_terms = (
@@ -1433,26 +1483,8 @@ def main() -> None:
                 return
             stages, dry_run = choice
 
+        generate_linked_data(modules, enrollments_by_module, stages, args, streams, summary)
         terms = get_terms(args.max_terms, summary)
-
-        for module in modules:
-            process_module(
-                module=module,
-                module_students=enrollments_by_module[module.id],
-                terms=terms,
-                by_subject=by_subject,
-                by_course=by_course,
-                notification_cache=notification_cache,
-                stages=stages,
-                args=args,
-                streams=streams,
-                summary=summary,
-            )
-            summary.modules_processed += 1
-
-        summary.students_processed = len(
-            {student.id for bucket in enrollments_by_module.values() for student, _ in bucket}
-        )
 
         if dry_run:
             db.session.flush()
