@@ -55,7 +55,9 @@ if str(ROOT_DIR) not in sys.path:
 from app import create_app
 from app.extensions import db
 from app.models.announcement import Announcement
+from app.models.assessment import Assessment
 from app.models.competency import Competency
+from app.models.competency_record import CompetencyRecord
 from app.models.course import Course
 from app.models.course_subject import CourseSubject
 from app.models.department import Department
@@ -64,6 +66,7 @@ from app.models.institution import Institution
 from app.models.lesson_plan import LessonPlan
 from app.models.module import Module
 from app.models.role_permission import RolePermission
+from app.models.score import Score
 from app.models.staff_attendance import StaffAttendance
 from app.models.student import Student
 from app.models.student_subject import StudentSubject
@@ -220,6 +223,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--only", action="append", default=[], choices=STAGES, help="Run only these stages. Repeatable.")
     parser.add_argument("--skip", action="append", default=[], choices=STAGES, help="Skip these stages. Repeatable.")
     parser.add_argument("--no-permissions", action="store_true", help="Do not widen the trainer or student role permissions.")
+    parser.add_argument(
+        "--rebalance-marks",
+        action="store_true",
+        help=(
+            "Re-draw the marks and competency records this seeder previously generated so they land "
+            "in the current bands (most learners strong, a small weak share). Only touches scores on "
+            "generated assessments — marks entered by hand are never moved."
+        ),
+    )
     parser.add_argument("--dry-run", action="store_true", help="Do all the work, then roll back instead of committing.")
     parser.add_argument("--yes", action="store_true", help="Skip the confirmation prompt.")
     return parser.parse_args()
@@ -1078,6 +1090,83 @@ def seed_staff_records(
         summary.add("announcements")
 
 
+def rebalance_generated_marks(students: list[Student], args: argparse.Namespace, summary: Summary) -> None:
+    """
+    Re-draw previously generated marks into the current bands.
+
+    Earlier runs drew marks flat across 35–92, which held the Mastery Rate and
+    class-average tiles well under the 65% stakeholders expect a demonstration
+    to show. The generator now draws from per-learner bands, but it never
+    rewrites a mark that already exists — so data seeded before the change
+    keeps its old shape until this pass moves it. Only scores sitting on
+    generated assessments are touched (the generator stamps their description),
+    so anything a trainer entered by hand stays exactly as they entered it.
+    Competency records are re-drawn to match, from the rescored mark where one
+    reached the competency and from the learner's band where none did.
+    """
+    streams = linked.Streams(args.seed)
+    student_ids = [student.id for student in students]
+    if not student_ids:
+        return
+
+    rows = (
+        db.session.query(Score, Assessment)
+        .join(Assessment, Assessment.id == Score.assessment_id)
+        .filter(
+            Score.student_id.in_(student_ids),
+            Score.deleted_at.is_(None),
+            Assessment.deleted_at.is_(None),
+            Assessment.description.like("Generated %"),
+        )
+        .all()
+    )
+
+    rescored_by_competency: dict[tuple, float] = {}
+    rescored = 0
+    for score, assessment in rows:
+        band = linked.marks_band(streams, score.student_id)
+        redraw = rng_for(args.seed, "rebalance", score.id)
+        marks = round(max(20.0, min(98.0, redraw.uniform(*band))), 2)
+        if assessment.competency and (assessment.competency.mastery_threshold or 0) > 80:
+            marks = round(max(20.0, marks - redraw.uniform(0, 10)), 2)
+
+        if assessment.competency_id:
+            rescored_by_competency[(score.student_id, assessment.competency_id)] = marks
+        if float(score.marks_obtained or 0) == marks:
+            continue
+
+        total_marks = assessment.total_marks or 100
+        pass_marks = assessment.pass_marks if assessment.pass_marks is not None else total_marks * 0.5
+        score.marks_obtained = marks
+        score.grade = linked.assessment_grade(marks, total_marks)
+        score.feedback = linked.score_feedback(marks / total_marks * 100 if total_marks else 0, 50.0)
+        score.is_passed = marks >= pass_marks
+        rescored += 1
+
+    records = (
+        db.session.query(CompetencyRecord)
+        .filter(CompetencyRecord.student_id.in_(student_ids), CompetencyRecord.deleted_at.is_(None))
+        .all()
+    )
+    regraded = 0
+    for record in records:
+        mastery = rescored_by_competency.get((record.student_id, record.competency_id))
+        if mastery is None:
+            band = linked.marks_band(streams, record.student_id)
+            mastery = round(rng_for(args.seed, "rebalance-mastery", record.id).uniform(*band), 2)
+        if float(record.mastery_level or 0) != mastery:
+            record.mastery_level = mastery
+            record.status = linked.competency_status(mastery, record.competency)
+            regraded += 1
+
+    summary.add("marks_rebalanced", rescored)
+    summary.add("competency_records_rebalanced", regraded)
+    if rescored or regraded:
+        summary.note(
+            f"Rebalanced {rescored} generated mark(s) and {regraded} competency record(s) into the current bands"
+        )
+
+
 def linked_args(args: argparse.Namespace) -> argparse.Namespace:
     """The knobs `seed_linked_user_data` expects, at this script's settings."""
     return argparse.Namespace(
@@ -1085,7 +1174,9 @@ def linked_args(args: argparse.Namespace) -> argparse.Namespace:
         seed=args.seed,
         attendance_days=14,
         sessions_per_module=3,
-        max_terms=3,
+        # The system went live mid-year, so every generated mark belongs to the
+        # term it went live in — one term, the active one, all through.
+        max_terms=1,
         portfolio_rate=0.8,
         feedback_rate=0.75,
         risk_threshold=50.0,
@@ -1176,6 +1267,16 @@ def main() -> None:
             db.session.flush()
         elif "records" in stages:
             roster = students_of(trainer)
+
+        if args.rebalance_marks:
+            rebalance_roster = roster or students_of(trainer)
+            if rebalance_roster:
+                # Before the records stage, so the metrics it recomputes read
+                # the rescored marks rather than the ones being replaced.
+                rebalance_generated_marks(rebalance_roster, args, summary)
+                db.session.flush()
+            else:
+                summary.note("No learners are linked to this trainer — nothing to rebalance.")
 
         if "records" in stages:
             if roster:

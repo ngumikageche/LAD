@@ -499,9 +499,9 @@ const StudentDashboardPage = () => {
 
       <div className="grid gap-6 xl:grid-cols-[1fr_1fr]">
         <AnalyticsSection
-          title="Instructional Recommendations"
-          description="Rule-based suggestions generated from your score, attendance, and competency patterns."
-          action={<WidgetHelp title="Instructional Recommendations" description="Shows suggestions generated from your current performance patterns, such as where to revise more or where support may be useful." />}
+          title="Your Focus Areas"
+          description="What to concentrate on next, based on the skills and competencies you are still below target in."
+          action={<WidgetHelp title="Your Focus Areas" description="Points out the competencies and habits you should focus on next — where to revise, and whether attendance is holding your results back." />}
         >
           <InsightsPanel items={dashboard?.analytics?.recommendations?.items || []} />
         </AnalyticsSection>

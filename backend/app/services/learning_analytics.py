@@ -771,7 +771,18 @@ def get_recommendations(
     subject_id: str | None = None,
     trainer_id: str | None = None,
     student_id: str | None = None,
+    audience: str = "trainer",
 ) -> dict:
+    """
+    Rule-based suggestions from the same signals, phrased for who is reading.
+
+    The signals are shared, the reader is not: "re-teach this competency" is an
+    action only the trainer can take, and showing it on a learner's dashboard
+    told them to do their trainer's job. `audience="student"` keeps the same
+    low-mastery and at-risk rules but words each one as something the learner
+    can act on — what to revise, and whether attendance is what is holding
+    their results down.
+    """
     heatmap = get_heatmap(
         department_id=department_id,
         course_id=course_id,
@@ -795,29 +806,73 @@ def get_recommendations(
     for item in low_cells:
         low_by_competency[item["competency_name"]].append(item)
 
-    for competency_name, rows in sorted(low_by_competency.items(), key=lambda item: len(item[1]), reverse=True):
-        recommendations.append(
-            {
-                "recommendation_type": "competency_remediation",
-                "message": f"Re-teach competency {competency_name} for {len(rows)} learner(s).",
-            }
-        )
+    if audience == "student":
+        for competency_name, rows in sorted(low_by_competency.items(), key=lambda item: len(item[1]), reverse=True):
+            score = min(row["score"] for row in rows)
+            recommendations.append(
+                {
+                    "recommendation_type": "focus_area",
+                    "message": (
+                        f"Focus your revision on {competency_name} — your current level is "
+                        f"{_round(score)}%, below the mastery target. Ask your trainer where to start."
+                    ),
+                }
+            )
 
-    if len(at_risk) >= 3:
-        recommendations.append(
-            {
-                "recommendation_type": "group_remediation",
-                "message": f"Group remediation recommended for {len(at_risk)} at-risk learner(s).",
-            }
-        )
+        # In a learner's own scope the at-risk list is either empty or them.
+        for entry in at_risk:
+            if entry["attendance_rate"] < 75.0:
+                recommendations.append(
+                    {
+                        "recommendation_type": "attendance_focus",
+                        "message": (
+                            f"Your attendance is at {entry['attendance_rate']}%. Attending every "
+                            "session is the quickest way to lift the results above."
+                        ),
+                    }
+                )
+            if entry["average_score"] < 50.0:
+                recommendations.append(
+                    {
+                        "recommendation_type": "study_plan",
+                        "message": (
+                            f"Your overall average is {entry['average_score']}%. Plan extra revision "
+                            "for your weakest subjects and use your trainer's feedback on each mark."
+                        ),
+                    }
+                )
 
-    if not recommendations:
-        recommendations.append(
-            {
-                "recommendation_type": "maintain_momentum",
-                "message": "Current competency and attendance signals are stable. Maintain the current instructional plan.",
-            }
-        )
+        if not recommendations:
+            recommendations.append(
+                {
+                    "recommendation_type": "steady_progress",
+                    "message": "Your competency and attendance signals look stable. Keep your current study routine going.",
+                }
+            )
+    else:
+        for competency_name, rows in sorted(low_by_competency.items(), key=lambda item: len(item[1]), reverse=True):
+            recommendations.append(
+                {
+                    "recommendation_type": "competency_remediation",
+                    "message": f"Re-teach competency {competency_name} for {len(rows)} learner(s).",
+                }
+            )
+
+        if len(at_risk) >= 3:
+            recommendations.append(
+                {
+                    "recommendation_type": "group_remediation",
+                    "message": f"Group remediation recommended for {len(at_risk)} at-risk learner(s).",
+                }
+            )
+
+        if not recommendations:
+            recommendations.append(
+                {
+                    "recommendation_type": "maintain_momentum",
+                    "message": "Current competency and attendance signals are stable. Maintain the current instructional plan.",
+                }
+            )
 
     return {
         "items": recommendations,
@@ -1217,6 +1272,8 @@ def build_role_dashboard(
             subject_id=resolved_subject_id,
             trainer_id=trainer_id,
             student_id=student_id,
+            # A learner reads their own dashboard; everyone else reads as staff.
+            audience="student" if role == "student" else "trainer",
         ),
         "last_updated": datetime.utcnow().isoformat(),
     }

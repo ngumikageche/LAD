@@ -3,6 +3,7 @@ import { Plus, Pencil, Trash2, X, AlertCircle, Target } from 'lucide-react';
 import { apiRequest } from '../api/client';
 import { competenciesAPI, type Competency } from '../api/competencies';
 import { useAuth } from '../auth/AuthContext';
+import { hasPermission } from '../auth/ProtectedRoute';
 import type { Module } from '../types/backend';
 
 /**
@@ -30,7 +31,13 @@ const emptyForm: FormState = {
 };
 
 const CompetenciesPage = () => {
-  const { token } = useAuth();
+  const { user, token } = useAuth();
+  // Competency definitions are curriculum, not marking: trainers hold
+  // `competencies.read` and grade against them, while changing them needs the
+  // create/update/delete keys an administrator grants from the Roles screen.
+  const canCreate = hasPermission(user, 'competencies.create');
+  const canEdit = hasPermission(user, 'competencies.update');
+  const canDelete = hasPermission(user, 'competencies.delete');
   const [modules, setModules] = useState<Module[]>([]);
   const [moduleId, setModuleId] = useState('');
   const [competencies, setCompetencies] = useState<Competency[]>([]);
@@ -157,15 +164,22 @@ const CompetenciesPage = () => {
             competency, and Portfolio Completion counts evidence submitted against them — both stay at
             0% until competencies exist and assessments are linked to them.
           </p>
+          {!canCreate && !canEdit && !canDelete ? (
+            <p className="mt-2 text-xs text-slate-500">
+              You have view-only access — competencies are maintained by your administrator.
+            </p>
+          ) : null}
         </div>
-        <button
-          onClick={openCreate}
-          disabled={!moduleId}
-          title={moduleId ? undefined : 'Choose a module first'}
-          className="inline-flex items-center gap-2 rounded-xl bg-cyan-500/90 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          <Plus size={16} /> New Competency
-        </button>
+        {canCreate ? (
+          <button
+            onClick={openCreate}
+            disabled={!moduleId}
+            title={moduleId ? undefined : 'Choose a module first'}
+            className="inline-flex items-center gap-2 rounded-xl bg-cyan-500/90 px-4 py-2.5 text-sm font-semibold text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Plus size={16} /> New Competency
+          </button>
+        ) : null}
       </div>
 
       <div className="rounded-2xl border border-slate-700 bg-slate-900/60 p-4">
@@ -307,19 +321,26 @@ const CompetenciesPage = () => {
                   <td className="px-4 py-3 text-center text-slate-300">{competency.evidence_count ?? 0}</td>
                   <td className="px-4 py-3">
                     <div className="flex justify-end gap-2">
-                      <button
-                        onClick={() => openEdit(competency)}
-                        className="inline-flex items-center gap-1 rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 transition hover:bg-slate-800"
-                      >
-                        <Pencil size={13} /> Edit
-                      </button>
-                      <button
-                        onClick={() => remove(competency)}
-                        disabled={deletingId === competency.id}
-                        className="inline-flex items-center gap-1 rounded-lg border border-red-500/25 bg-red-500/10 px-2.5 py-1.5 text-xs text-red-200 transition hover:bg-red-500/20 disabled:opacity-50"
-                      >
-                        <Trash2 size={13} /> {deletingId === competency.id ? 'Deleting…' : 'Delete'}
-                      </button>
+                      {canEdit ? (
+                        <button
+                          onClick={() => openEdit(competency)}
+                          className="inline-flex items-center gap-1 rounded-lg border border-slate-700 px-2.5 py-1.5 text-xs text-slate-300 transition hover:bg-slate-800"
+                        >
+                          <Pencil size={13} /> Edit
+                        </button>
+                      ) : null}
+                      {canDelete ? (
+                        <button
+                          onClick={() => remove(competency)}
+                          disabled={deletingId === competency.id}
+                          className="inline-flex items-center gap-1 rounded-lg border border-red-500/25 bg-red-500/10 px-2.5 py-1.5 text-xs text-red-200 transition hover:bg-red-500/20 disabled:opacity-50"
+                        >
+                          <Trash2 size={13} /> {deletingId === competency.id ? 'Deleting…' : 'Delete'}
+                        </button>
+                      ) : null}
+                      {!canEdit && !canDelete ? (
+                        <span className="text-xs text-slate-500">View only</span>
+                      ) : null}
                     </div>
                   </td>
                 </tr>

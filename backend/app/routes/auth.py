@@ -28,6 +28,7 @@ def _user_payload(user: User) -> dict:
         "role_name": user.role.role_name if user.role else None,
         "permissions": user.role.permissions if user.role else {},
         "institution_id": str(user.institution_id) if user.institution_id else None,
+        "institution_name": user.institution.name if user.institution else None,
         "user_type": user_type,
         "student_id": student_id,
         "trainer_id": trainer_id,

@@ -27,6 +27,7 @@ from ..services.scoping import term_match_clause
 from ..models.assessment import Assessment
 from ..models.course import Course
 from ..models.department import Department
+from ..models.module import Module
 from ..models.practical_assessment_report import PracticalAssessmentReport
 from ..models.score import Score
 from ..models.student import Student
@@ -95,6 +96,29 @@ def _scope_trainer(user: User) -> Trainer | None:
     if _is_admin(user) or not _is_trainer(user):
         return None
     return db.session.query(Trainer).filter(Trainer.user_id == user.id).first()
+
+
+def _taught_module_ids(scope_trainer: Trainer):
+    """Modules behind the trainer's assigned subjects, as a subquery."""
+    taught_subject_ids = db.session.query(TrainerSubject.subject_id).filter(
+        TrainerSubject.trainer_id == scope_trainer.id,
+        TrainerSubject.deleted_at.is_(None),
+    )
+    return db.session.query(Subject.module_id).filter(Subject.id.in_(taught_subject_ids))
+
+
+def _scope_courses_to_trainer(courses_query, scope_trainer: Trainer):
+    """
+    Only the courses the trainer's own subjects sit under. The report data is
+    already held to their teaching load, so a course picker listing the whole
+    institution offered dozens of filters that could only ever return an empty
+    report — and read as if the trainer could see every cohort.
+    """
+    course_ids = db.session.query(Module.course_id).filter(
+        Module.id.in_(_taught_module_ids(scope_trainer)),
+        Module.course_id.isnot(None),
+    )
+    return courses_query.filter(Course.id.in_(course_ids))
 
 
 def _school_info(user: User) -> dict:
@@ -322,6 +346,8 @@ def _practical_filter_options(user: User, scope_trainer: Trainer | None) -> dict
         courses_query = courses_query.join(
             Department, Department.id == Course.department_id
         ).filter(Department.institution_id == user.institution_id)
+    if scope_trainer:
+        courses_query = _scope_courses_to_trainer(courses_query, scope_trainer)
 
     return {
         "courses": [
@@ -648,6 +674,16 @@ def _exam_filter_options(user: User, scope_trainer: Trainer | None) -> dict:
         courses_query = courses_query.join(
             Department, Department.id == Course.department_id
         ).filter(Department.institution_id == user.institution_id)
+    if scope_trainer:
+        courses_query = _scope_courses_to_trainer(courses_query, scope_trainer)
+
+    # Assessments follow the same boundary as the subjects above: a trainer
+    # picks from the assessments sat in their own modules, not everyone's.
+    assessments_query = db.session.query(Assessment).filter(Assessment.deleted_at.is_(None))
+    if scope_trainer:
+        assessments_query = assessments_query.filter(
+            Assessment.module_id.in_(_taught_module_ids(scope_trainer))
+        )
 
     return {
         "terms": [
@@ -667,10 +703,7 @@ def _exam_filter_options(user: User, scope_trainer: Trainer | None) -> dict:
         ],
         "assessments": [
             {"id": str(item.id), "name": item.name, "assessment_type": item.assessment_type}
-            for item in db.session.query(Assessment)
-            .filter(Assessment.deleted_at.is_(None))
-            .order_by(Assessment.name.asc())
-            .all()
+            for item in assessments_query.order_by(Assessment.name.asc()).all()
         ],
         "assessment_types": ["exam", "assignment", "quiz", "project"],
     }
