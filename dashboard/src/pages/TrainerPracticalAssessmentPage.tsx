@@ -1115,10 +1115,10 @@ export default function TrainerPracticalAssessmentPage() {
           <div className="max-w-3xl">
             <div className="inline-flex items-center gap-2 rounded-full border border-teal-400/20 bg-teal-400/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.24em] text-teal-200">
               <Sparkles size={13} />
-              TVET CDACC workspace
+              {user?.institution_name ? `${user.institution_name} · TVET CDACC workspace` : 'TVET CDACC workspace'}
             </div>
             <h1 className="mt-5 text-3xl font-black tracking-tight text-white sm:text-4xl">
-              {isAdmin ? 'All Practical Assessments' : 'Practical Assessment Studio'}
+              {isAdmin ? 'All Practical Assessments' : 'Practical Assessment Platform'}
             </h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-400 sm:text-base">
               Review every candidate assessment at a glance, preview official records safely, and move into editing only when you choose to.

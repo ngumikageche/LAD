@@ -10,6 +10,7 @@ type User = {
   role_name: string | null;
   permissions: Record<string, boolean>;
   institution_id: string | null;
+  institution_name: string | null;
   user_type: string;
   student_id: string | null;
   trainer_id: string | null;

@@ -74,9 +74,20 @@ from app.models.user import User
 from app.services.trainer_portal import assessment_grade
 
 
-# Weighted so a register reads like a real one instead of a coin flip.
-ATTENDANCE_STATUSES = ["present", "present", "present", "present", "late", "absent"]
+# Weighted so a register reads like a real one instead of a coin flip. Nine in
+# ten sittings count as attended ("present" or "late"), so the attendance tiles
+# a demonstration is judged on sit clearly above the 65% mark stakeholders
+# flagged, while every learner still has the odd absence to explain.
+ATTENDANCE_STATUSES = ["present"] * 8 + ["late", "absent"]
 ASSESSMENT_TYPES = ["quiz", "assignment", "test", "project", "exam"]
+
+# Marks are drawn per learner from one of two bands. Most learners sit in the
+# strong band, whose spread keeps the cohort's high-mastery share (cells at or
+# above the 75% threshold) around 70%; the weak share keeps the at-risk
+# watchlist, alerts, and support panels populated instead of empty.
+WEAK_LEARNER_SHARE = 0.15
+STRONG_MARK_RANGE = (70.0, 97.0)
+WEAK_MARK_RANGE = (38.0, 72.0)
 REPORT_TYPES = ["academic", "progress", "attendance", "support"]
 FEEDBACK_CATEGORIES = ["general", "teaching", "materials", "communication", "support"]
 
@@ -175,7 +186,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=99, help="Random seed, for reproducible output.")
     parser.add_argument("--attendance-days", type=int, default=12, help="Weekdays of register attendance per module.")
     parser.add_argument("--sessions-per-module", type=int, default=2, help="QR attendance sessions to create per module.")
-    parser.add_argument("--max-terms", type=int, default=3, help="How many recent terms to generate marks for.")
+    parser.add_argument(
+        "--max-terms",
+        type=int,
+        default=3,
+        help="How many terms to generate marks for, counting back from the active term (1 = current term only).",
+    )
     parser.add_argument("--portfolio-rate", type=float, default=0.7, help="Share of competencies that get portfolio evidence.")
     parser.add_argument("--feedback-rate", type=float, default=0.5, help="Share of learners who rate a trainer.")
     parser.add_argument("--risk-threshold", type=float, default=50.0, help="Mastery percentage below which alerts fire.")
@@ -289,15 +305,27 @@ def select_students(args: argparse.Namespace) -> list[Student]:
 
 
 def get_terms(max_terms: int, summary: Summary) -> list[Term]:
-    """Return the most recent terms, creating a year's worth when there are none."""
+    """
+    The terms marks may be generated for, creating a year's worth when there
+    are none.
+
+    Counts back from the active term, never past it: a mark filed under a term
+    that has not been delivered yet reads as data from the future, and on a
+    system deployed mid-year the stakeholders expect every generated record to
+    sit in the term it went live in. `--max-terms 1` therefore means "the
+    current term only".
+    """
     terms = (
         db.session.query(Term)
         .filter(Term.deleted_at.is_(None))
         .order_by(Term.start_date.desc())
-        .limit(max(1, max_terms))
         .all()
     )
     if terms:
+        active = next((term for term in terms if term.is_active), None)
+        if active:
+            terms = [term for term in terms if term.start_date <= active.start_date]
+        terms = terms[: max(1, max_terms)]
         return sorted(terms, key=lambda term: term.start_date)
 
     year = utcnow().year
@@ -367,6 +395,19 @@ def pick_subject_trainer(
 
 
 # ── Small helpers ─────────────────────────────────────────────────────────────
+
+def marks_band(streams: "Streams", student_id) -> tuple[float, float]:
+    """
+    Which of the two mark bands a learner draws from, stable per learner.
+
+    Keyed on the learner alone so the same person is consistently strong or
+    consistently struggling across modules and terms — a learner who flips
+    band per subject averages out to the middle, which is exactly the flat
+    profile the two bands exist to avoid.
+    """
+    weak = streams.for_("achiever", student_id).random() < WEAK_LEARNER_SHARE
+    return WEAK_MARK_RANGE if weak else STRONG_MARK_RANGE
+
 
 def competency_status(mastery: float, competency: Competency | None) -> str:
     threshold = competency.mastery_threshold if competency else 75.0
@@ -603,7 +644,7 @@ def ensure_check_ins(
             continue
         rng = streams.for_("check-in", session.id, student.id)
         # A few learners scan from outside the fence; the portal shows them as failed.
-        distance = round(rng.uniform(5, 90) if rng.random() > 0.12 else rng.uniform(120, 400), 1)
+        distance = round(rng.uniform(5, 90) if rng.random() > 0.08 else rng.uniform(120, 400), 1)
         status = "success" if distance <= session.allowed_radius_meters else "failed_gps"
         offset_degrees = distance / 111_000
         db.session.add(
@@ -766,6 +807,7 @@ def process_module(
                 )
                 summary.attendance_created += 1
 
+        band = marks_band(streams, student.id)
         competency_percentages: dict[uuid.UUID, float] = {}
         if "scores" in stages and student_subjects:
             known_marks = {
@@ -779,52 +821,90 @@ def process_module(
                 )
             }
             for term in terms:
-                picker = streams.for_("sitting", student.id, module.id, term.id)
-                subject = picker.choice(student_subjects)
+                # One assessment per competency per term, laid out over the
+                # module's subjects. A single random sitting per term left most
+                # competencies with no linked assessment — the Competencies page
+                # called them out as "none linked" and their heatmap columns
+                # stayed unassessed, holding the Mastery Rate tile to whatever
+                # fraction of the module the draw happened to cover.
+                if competencies:
+                    sittings = [
+                        (
+                            module_subjects[index % len(module_subjects)],
+                            ASSESSMENT_TYPES[(index // len(module_subjects)) % len(ASSESSMENT_TYPES)],
+                            competency,
+                        )
+                        for index, competency in enumerate(competencies)
+                    ]
+                else:
+                    picker = streams.for_("sitting", student.id, module.id, term.id)
+                    sittings = [(picker.choice(student_subjects), None, None)]
 
-                cache_key = (module.id, term.id, subject.id)
-                if cache_key not in assessment_cache:
-                    # Keyed on the assessment itself, so every learner sitting it
-                    # agrees on what it is called and which competency it covers.
-                    shape = streams.for_("assessment", module.id, term.id, subject.id)
-                    assessment_cache[cache_key] = ensure_assessment(
-                        course_id=course_id,
-                        module=module,
+                notified_subject: Subject | None = None
+                for subject, assessment_type, competency in sittings:
+                    # A learner only sits papers for the subjects they take.
+                    if subject not in student_subjects:
+                        continue
+
+                    if competency is not None:
+                        cache_key = (module.id, term.id, subject.id, assessment_type, competency.id)
+                        if cache_key not in assessment_cache:
+                            assessment_cache[cache_key] = ensure_assessment(
+                                course_id=course_id,
+                                module=module,
+                                subject=subject,
+                                term=term,
+                                competency=competency,
+                                assessment_type=assessment_type,
+                                summary=summary,
+                            )
+                        marker = streams.for_("marks", student.id, module.id, term.id, subject.id, assessment_type)
+                    else:
+                        cache_key = (module.id, term.id, subject.id)
+                        if cache_key not in assessment_cache:
+                            # Keyed on the assessment itself, so every learner
+                            # sitting it agrees on what it is called.
+                            shape = streams.for_("assessment", module.id, term.id, subject.id)
+                            assessment_cache[cache_key] = ensure_assessment(
+                                course_id=course_id,
+                                module=module,
+                                subject=subject,
+                                term=term,
+                                competency=None,
+                                assessment_type=shape.choice(ASSESSMENT_TYPES),
+                                summary=summary,
+                            )
+                        marker = streams.for_("marks", student.id, module.id, term.id, subject.id)
+                    assessment = assessment_cache[cache_key]
+
+                    marks = round(max(20.0, min(98.0, marker.uniform(*band))), 2)
+                    if assessment.competency and assessment.competency.mastery_threshold > 80:
+                        marks = round(max(20.0, marks - marker.uniform(0, 10)), 2)
+
+                    marks = ensure_score(
+                        student=student,
+                        enrollment=enrollment,
+                        assessment=assessment,
                         subject=subject,
+                        trainer=pick_trainer(subject.id, course_id, by_subject, by_course),
                         term=term,
-                        competency=shape.choice(competencies) if competencies else None,
-                        assessment_type=shape.choice(ASSESSMENT_TYPES),
+                        marks=marks,
+                        risk_threshold=args.risk_threshold,
+                        known_marks=known_marks,
                         summary=summary,
                     )
-                assessment = assessment_cache[cache_key]
+                    if assessment.competency_id:
+                        competency_percentages[assessment.competency_id] = marks
+                    notified_subject = notified_subject or subject
 
-                marker = streams.for_("marks", student.id, module.id, term.id, subject.id)
-                marks = round(max(20.0, min(98.0, marker.uniform(35, 92))), 2)
-                if assessment.competency and assessment.competency.mastery_threshold > 80:
-                    marks = round(max(20.0, marks - marker.uniform(0, 10)), 2)
-
-                marks = ensure_score(
-                    student=student,
-                    enrollment=enrollment,
-                    assessment=assessment,
-                    subject=subject,
-                    trainer=pick_trainer(subject.id, course_id, by_subject, by_course),
-                    term=term,
-                    marks=marks,
-                    risk_threshold=args.risk_threshold,
-                    known_marks=known_marks,
-                    summary=summary,
-                )
-                if assessment.competency_id:
-                    competency_percentages[assessment.competency_id] = marks
-
-                ensure_notification(
-                    user_id=student.user_id,
-                    title="Assessment Data Uploaded",
-                    message=f"New {subject.name} performance data was uploaded for {term.name}.",
-                    seen=notification_keys,
-                    summary=summary,
-                )
+                if notified_subject is not None:
+                    ensure_notification(
+                        user_id=student.user_id,
+                        title="Assessment Data Uploaded",
+                        message=f"New {notified_subject.name} performance data was uploaded for {term.name}.",
+                        seen=notification_keys,
+                        summary=summary,
+                    )
 
         if competencies and {"competencies", "portfolio", "alerts"} & stages:
             existing_records = {
@@ -850,7 +930,9 @@ def process_module(
 
             for competency in competencies:
                 grader = streams.for_("mastery", student.id, competency.id)
-                mastery = competency_percentages.get(competency.id, round(grader.uniform(40, 95), 2))
+                # Where no mark reached this competency, the fallback draws from
+                # the learner's own band so records and marks tell one story.
+                mastery = competency_percentages.get(competency.id, round(grader.uniform(*band), 2))
 
                 if "competencies" in stages and competency.id not in existing_records:
                     db.session.add(
