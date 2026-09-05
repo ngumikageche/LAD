@@ -23,7 +23,7 @@ interface ProgressRow {
   pass_rate: number;
   term: string | null;
   trend: 'improving' | 'stable' | 'declining' | null;
-  status: 'excellent' | 'good' | 'average' | 'at_risk' | 'critical';
+  status: 'excellent' | 'good' | 'average' | 'below_average' | 'at_risk';
 }
 
 /**
@@ -57,32 +57,32 @@ function deriveStatus(avg: number): ProgressRow['status'] {
   if (avg >= 80) return 'excellent';
   if (avg >= 70) return 'good';
   if (avg >= 60) return 'average';
-  if (avg >= 50) return 'at_risk';
-  return 'critical';
+  if (avg >= 50) return 'below_average';
+  return 'at_risk';
 }
 
 const STATUS_STYLES: Record<ProgressRow['status'], string> = {
   excellent: 'bg-teal-500/15 text-teal-300 border border-teal-500/30',
   good:      'bg-green-500/15 text-green-300 border border-green-500/30',
-  average:   'bg-amber-500/15 text-amber-300 border border-amber-500/30',
-  at_risk:   'bg-orange-500/15 text-orange-300 border border-orange-500/30',
-  critical:  'bg-red-500/15 text-red-300 border border-red-500/30',
+  average:   'bg-blue-500/15 text-blue-300 border border-blue-500/30',
+  below_average: 'bg-amber-500/15 text-amber-300 border border-amber-500/30',
+  at_risk:   'bg-red-500/15 text-red-300 border border-red-500/30',
 };
 
 const STATUS_LABELS: Record<ProgressRow['status'], string> = {
   excellent: 'Excellent',
   good:      'Good',
   average:   'Average',
+  below_average: 'Below Average',
   at_risk:   'At Risk',
-  critical:  'Critical',
 };
 
 const BAR_COLORS: Record<ProgressRow['status'], string> = {
   excellent: 'bg-teal-400',
   good:      'bg-green-400',
-  average:   'bg-amber-400',
-  at_risk:   'bg-orange-400',
-  critical:  'bg-red-400',
+  average:   'bg-blue-400',
+  below_average: 'bg-amber-400',
+  at_risk:   'bg-red-400',
 };
 
 function TrendIcon({ trend }: { trend: ProgressRow['trend'] }) {
@@ -146,7 +146,7 @@ async function fetchScores(token: string | null, userId: string, userType: strin
         module_name: s.module_name ?? '—',
         subject_id: s.subject_id ?? UNASSIGNED_SUBJECT,
         subject_name: s.subject_name ?? 'Unassigned',
-        marks: s.marks_obtained ?? 0,
+        marks: s.percentage ?? s.marks_obtained ?? 0,
         is_passed: s.is_passed ?? null,
         term: s.term ?? null,
         created_at: s.created_at ?? s.date ?? null,
@@ -166,7 +166,7 @@ async function fetchScores(token: string | null, userId: string, userType: strin
     module_name: s.subject?.module?.name ?? '—',
     subject_id: s.subject?.id ?? s.subject_id ?? UNASSIGNED_SUBJECT,
     subject_name: s.subject?.name ?? s.subject_name ?? 'Unassigned',
-    marks: s.score ?? 0,
+    marks: s.percentage ?? s.marks_obtained ?? 0,
     is_passed: s.is_passed ?? null,
     term: s.term ?? null,
     created_at: s.created_at ?? s.date ?? null,
@@ -220,13 +220,13 @@ function SummaryCards({ rows }: { rows: ProgressRow[] }) {
   if (rows.length === 0) return null;
   const avg = rows.length ? rows.reduce((s, r) => s + r.avg_score, 0) / rows.length : 0;
   const passRate = rows.length ? rows.reduce((s, r) => s + r.pass_rate, 0) / rows.length : 0;
-  const atRisk = rows.filter((r) => r.status === 'at_risk' || r.status === 'critical').length;
+  const atRisk = rows.filter((r) => r.status === 'at_risk').length;
   const excellent = rows.filter((r) => r.status === 'excellent').length;
 
   const cards = [
     { label: 'Avg Score', value: `${Math.min(100, Math.max(0, avg)).toFixed(1)}%`, color: 'text-blue-400' },
     { label: 'Avg Pass Rate', value: `${Math.min(100, Math.max(0, passRate)).toFixed(1)}%`, color: 'text-green-400' },
-    { label: 'At Risk', value: atRisk, color: 'text-orange-400' },
+    { label: 'At Risk', value: atRisk, color: 'text-red-400' },
     { label: 'Excellent', value: excellent, color: 'text-teal-400' },
   ];
 
@@ -361,8 +361,8 @@ const ProgressTable = () => {
               <option value="excellent">Excellent</option>
               <option value="good">Good</option>
               <option value="average">Average</option>
+              <option value="below_average">Below Average</option>
               <option value="at_risk">At Risk</option>
-              <option value="critical">Critical</option>
             </select>
             <select
               value={subjectFilter}

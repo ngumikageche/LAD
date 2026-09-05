@@ -13,7 +13,14 @@ from ..models.subject import Subject
 from ..models.trainer import Trainer
 from ..models.trainer_subject import TrainerSubject
 from ..models.user import User
-from ..services.scoping import can_access_score, can_view_master_data, scope_scores
+from ..services.scoping import (
+    can_access_score,
+    can_view_master_data,
+    grade_for_percentage,
+    passing_percentage,
+    percentage,
+    scope_scores,
+)
 from .permissions import require_permission, log_view
 
 
@@ -137,11 +144,13 @@ def update_score(score_id: str):
             if assessment and (marks < 0 or marks > assessment.total_marks):
                 return {"error": f"marks_obtained must be between 0 and {assessment.total_marks}"}, 400
         score.marks_obtained = marks
-        # Recalculate pass flag
-        if score.assessment_id:
-            assessment = db.session.get(Assessment, score.assessment_id)
-            if assessment and assessment.pass_marks is not None:
-                score.is_passed = marks >= assessment.pass_marks
+        # Recalculate the verdict AND the grade — both describe the mark, and
+        # leaving the grade meant an edited 85→45 kept its "A" beside "Fail".
+        # An explicit grade in the same payload still wins, below.
+        assessment = db.session.get(Assessment, score.assessment_id) if score.assessment_id else None
+        pct = percentage(marks, assessment.total_marks if assessment else None)
+        score.is_passed = pct >= passing_percentage(assessment) if pct is not None else None
+        score.grade = grade_for_percentage(pct)
 
     if "grade" in payload:
         score.grade = payload.get("grade")

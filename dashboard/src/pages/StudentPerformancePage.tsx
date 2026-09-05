@@ -104,7 +104,8 @@ export default function StudentPerformancePage() {
       if (!name) return;
       const bucket = buckets.get(name) || { total: 0, present: 0 };
       bucket.total += 1;
-      if (record.status === 'success') bucket.present += 1;
+      // Both registers count: QR 'success', roll-call 'present'/'late'.
+      if (record.status === 'success' || record.status === 'present' || record.status === 'late') bucket.present += 1;
       buckets.set(name, bucket);
     });
     return buckets;

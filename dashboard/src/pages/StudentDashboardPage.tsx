@@ -25,6 +25,12 @@ const CACHE_KEY = 'lad.student.dashboard.v2';
 
 const fmtPct = (value: number | null | undefined) => `${Number(value ?? 0).toFixed(1)}%`;
 
+// Attendance history mixes two registers: QR check-ins ('success'/'failed_gps')
+// and the manual roll call ('present'/'late'/'absent'). Counting only 'success'
+// treated every roll-call row as an absence.
+const isAttended = (status: string | null | undefined) =>
+  status === 'success' || status === 'present' || status === 'late';
+
 const StudentDashboardPage = () => {
   const [dashboard, setDashboard] = useState<StudentDashboardResponse | null>(null);
   const [subjects, setSubjects] = useState<StudentSubject[]>([]);
@@ -102,7 +108,9 @@ const StudentDashboardPage = () => {
       competency_id: subject.subject_name,
       competency_name: subject.subject_name,
       score: subject.average_score,
-      mastery_level: subject.average_score >= 70 ? 'high' : subject.average_score >= 50 ? 'medium' : 'low',
+      // The backend's mastery bands: high from 75, medium from 50 — a 72%
+      // used to paint green here while the same mark read amber everywhere else.
+      mastery_level: subject.average_score >= 75 ? 'high' : subject.average_score >= 50 ? 'medium' : 'low',
     }));
   }, [dashboard]);
 
@@ -113,7 +121,7 @@ const StudentDashboardPage = () => {
       const subjectName = record.subject_name?.trim() || 'General';
       const bucket = subjectBuckets.get(subjectName) || { total: 0, present: 0 };
       bucket.total += 1;
-      if (record.status === 'success') {
+      if (isAttended(record.status)) {
         bucket.present += 1;
       }
       subjectBuckets.set(subjectName, bucket);
@@ -148,7 +156,7 @@ const StudentDashboardPage = () => {
       if (!subjectName) return;
       const bucket = attendanceBySubject.get(subjectName) || { total: 0, present: 0 };
       bucket.total += 1;
-      if (record.status === 'success') bucket.present += 1;
+      if (isAttended(record.status)) bucket.present += 1;
       attendanceBySubject.set(subjectName, bucket);
     });
 

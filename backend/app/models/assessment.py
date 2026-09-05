@@ -36,7 +36,10 @@ class Assessment(BaseModel):
     )  # formative only for institution-managed evidence
     total_marks: Mapped[int] = mapped_column(Integer, nullable=False)
     pass_marks: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    weight: Mapped[int | None] = mapped_column(Integer, nullable=True)  # Percentage contribution to final grade
+    # Informational only. No average or report applies it — every aggregate is
+    # an unweighted mean of per-score percentages. If weighting is ever wanted,
+    # it belongs in `scoping.score_percentage_expr` so all screens move at once.
+    weight: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     course = relationship("Course", back_populates="assessments")
     term = relationship("Term", back_populates="assessments")

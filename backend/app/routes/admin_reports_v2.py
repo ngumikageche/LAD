@@ -6,6 +6,7 @@ import uuid
 
 from flask import Blueprint, request
 from sqlalchemy import and_, false, func, or_
+from sqlalchemy.orm import selectinload
 
 from ..extensions import cache, db
 from ..models.assessment import Assessment
@@ -21,6 +22,8 @@ from ..models.user import User
 from ..services.scoping import (
     oversight_scope,
     scope_scores,
+    score_is_passed,
+    score_percentage,
     term_match_clause,
     trainer_subject_ids,
 )
@@ -29,6 +32,18 @@ from .permissions import get_current_user, log_view, _has_permission, _is_admin,
 bp = Blueprint("admin_reports_v2", __name__, url_prefix="/reports/admin")
 
 PASS_MARK = 50.0
+
+
+def _mark_values(scores):
+    """
+    Each mark as a percentage of its assessment's total.
+
+    The report used to average raw `marks_obtained` and count a pass as raw
+    marks ≥ 50 — a 45/50 paper (90%) read as a fail, and the figures here
+    disagreed with the Admin Dashboard, which averages percentages. Marks with
+    no percentage (none in practice) are simply skipped.
+    """
+    return [value for value in (score_percentage(s) for s in scores) if value is not None]
 
 
 def _require_report_access(permission_key: str):
@@ -154,8 +169,13 @@ def exam_results():
         ):
             return {"error": "Subject is outside your institution"}, 403
 
-    # Base score query filtered by term
-    score_q = db.session.query(Score).filter(Score.deleted_at.is_(None))
+    # Base score query filtered by term. Assessments are eager-loaded because
+    # every mark is normalised against its assessment's total below.
+    score_q = (
+        db.session.query(Score)
+        .options(selectinload(Score.assessment))
+        .filter(Score.deleted_at.is_(None))
+    )
 
     def _student_course_clause(course_ids):
         return or_(
@@ -246,13 +266,13 @@ def exam_results():
         # and rebinding it here silently changed which course the previous-term
         # trend baseline was measured against.
         row_course = course_map.get(cid)
-        marks = [s.marks_obtained for s in scores]
-        passed = sum(1 for s in scores if (s.is_passed is True or s.marks_obtained >= PASS_MARK))
+        marks = _mark_values(scores)
+        passed = sum(1 for s in scores if score_is_passed(s))
         avg = round(sum(marks) / len(marks), 1) if marks else 0
         pass_pct = round(passed / len(scores) * 100, 1) if scores else 0
 
-        # Top student in this course
-        top_score = max(scores, key=lambda s: s.marks_obtained) if scores else None
+        # Top student in this course, by percentage so paper sizes compare
+        top_score = max(scores, key=lambda s: score_percentage(s) or 0) if scores else None
         top_student = None
         top_score_student = _score_student(top_score) if top_score else None
         if top_score_student and top_score_student.user:
@@ -293,8 +313,8 @@ def exam_results():
     by_subject = []
     for sid, scores in subject_scores.items():
         subj = subject_map.get(sid)
-        marks = [s.marks_obtained for s in scores]
-        passed = sum(1 for s in scores if (s.is_passed is True or s.marks_obtained >= PASS_MARK))
+        marks = _mark_values(scores)
+        passed = sum(1 for s in scores if score_is_passed(s))
         avg = round(sum(marks) / len(marks), 1) if marks else 0
         pass_pct = round(passed / len(scores) * 100, 1) if scores else 0
         fail_pct = round(100 - pass_pct, 1)
@@ -309,8 +329,8 @@ def exam_results():
     by_subject.sort(key=lambda x: x["avg_marks"], reverse=True)
 
     # ── Overall summary ──
-    all_marks = [s.marks_obtained for s in all_scores]
-    total_passed = sum(1 for s in all_scores if (s.is_passed is True or s.marks_obtained >= PASS_MARK))
+    all_marks = _mark_values(all_scores)
+    total_passed = sum(1 for s in all_scores if score_is_passed(s))
     school_avg = round(sum(all_marks) / len(all_marks), 1) if all_marks else 0
     pass_rate = round(total_passed / len(all_scores) * 100, 1) if all_scores else 0
     top_course = by_course[0]["course_name"] if by_course else None
@@ -321,9 +341,9 @@ def exam_results():
         prev = _prev_term(term)
         if prev:
             prev_query = scope_scores(
-                db.session.query(Score).filter(
-                    term_match_clause(prev), Score.deleted_at.is_(None)
-                ),
+                db.session.query(Score)
+                .options(selectinload(Score.assessment))
+                .filter(term_match_clause(prev), Score.deleted_at.is_(None)),
                 user,
             )
             if permitted_course_ids is not None:
@@ -335,10 +355,10 @@ def exam_results():
             if subject:
                 prev_query = prev_query.filter(Score.subject_id == subject.id)
             prev_scores = prev_query.all()
-            if prev_scores:
-                prev_marks = [s.marks_obtained for s in prev_scores]
+            prev_marks = _mark_values(prev_scores)
+            if prev_marks:
                 prev_avg = sum(prev_marks) / len(prev_marks)
-                prev_pass = sum(1 for s in prev_scores if (s.is_passed is True or s.marks_obtained >= PASS_MARK))
+                prev_pass = sum(1 for s in prev_scores if score_is_passed(s))
                 prev_pass_rate = prev_pass / len(prev_scores) * 100
                 trend = {
                     "prev_term": prev.name,

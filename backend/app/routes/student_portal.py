@@ -83,11 +83,26 @@ def get_student_documents():
     ], 200
 
 
+ATTENDED_STATUSES = {"success", "present", "late"}
+
+
 @bp.get("/attendance")
 @student_required()
 def get_student_attendance():
-    """Student's own QR attendance check-in history."""
-    from ..models.attendance_session import AttendanceRecord, AttendanceSession
+    """
+    Student's own attendance history, from both registers.
+
+    Attendance lives in two places — QR/GPS check-ins against a session, and
+    the manual roll call a trainer marks by hand — and the analytics combine
+    them (see `get_attendance_performance`). This endpoint used to return only
+    the QR register, so the dashboard's heatmap and history disagreed with the
+    Attendance Rate tile, and a class taking attendance by roll call alone
+    showed an empty page. A row's register is named so the UI can tell a scan
+    from a roll call; "attended" means success, present, or late in either.
+    """
+    from ..models.attendance import Attendance
+    from ..models.attendance_session import AttendanceRecord
+    from ..models.module import Module
     from ..models.subject import Subject
     from sqlalchemy.orm import joinedload
     student = g.current_student
@@ -107,6 +122,7 @@ def get_student_attendance():
             subject_name = subj.name if subj else None
         result.append({
             "id": str(r.id),
+            "register": "qr",
             "session_id": str(r.attendance_session_id),
             "session_code": r.session.session_code if r.session else None,
             "subject_name": subject_name,
@@ -114,15 +130,40 @@ def get_student_attendance():
             "checked_in_at": r.checked_in_at.isoformat(),
             "distance_from_trainer": r.distance_from_trainer,
         })
+
+    manual_rows = (
+        db.session.query(Attendance, Module.name)
+        .outerjoin(Module, Module.id == Attendance.module_id)
+        .filter(Attendance.student_id == student.id, Attendance.deleted_at.is_(None))
+        .order_by(Attendance.date.desc())
+        .limit(200)
+        .all()
+    )
+    for row, module_name in manual_rows:
+        result.append({
+            "id": str(row.id),
+            "register": "manual",
+            "session_id": None,
+            "session_code": None,
+            # The roll call is kept per module; its name is the bucket the
+            # heatmap can group by, the way QR rows group by subject.
+            "subject_name": module_name,
+            "status": row.status,
+            "checked_in_at": row.date.isoformat(),
+            "distance_from_trainer": None,
+        })
+
+    result.sort(key=lambda item: item["checked_in_at"], reverse=True)
+    result = result[:200]
     total = len(result)
-    successful = sum(1 for r in result if r["status"] == "success")
+    attended = sum(1 for r in result if r["status"] in ATTENDED_STATUSES)
     return {
         "records": result,
         "summary": {
             "total": total,
-            "successful": successful,
-            "failed": total - successful,
-            "attendance_rate": round(successful / total * 100, 1) if total else 0,
+            "successful": attended,
+            "failed": total - attended,
+            "attendance_rate": round(attended / total * 100, 1) if total else 0,
         },
     }, 200
 

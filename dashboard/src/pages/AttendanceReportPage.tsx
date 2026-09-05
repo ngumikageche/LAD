@@ -28,6 +28,10 @@ const STATUS_BADGE: Record<string, string> = {
   failed_gps: 'bg-yellow-100 text-yellow-700',
   failed_duplicate: 'bg-orange-100 text-orange-700',
   failed_not_enrolled: 'bg-red-100 text-red-700',
+  // Manual roll-call statuses — the endpoint returns both registers.
+  present: 'bg-green-100 text-green-700',
+  late: 'bg-amber-100 text-amber-700',
+  absent: 'bg-red-100 text-red-700',
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -35,7 +39,12 @@ const STATUS_LABEL: Record<string, string> = {
   failed_gps: 'GPS Failed',
   failed_duplicate: 'Duplicate',
   failed_not_enrolled: 'Not Enrolled',
+  present: 'Present',
+  late: 'Late',
+  absent: 'Absent',
 };
+
+const ATTENDED = new Set(['success', 'present', 'late']);
 
 export default function AttendanceReportPage() {
   const [data, setData] = useState<AttResponse | null>(null);
@@ -127,7 +136,7 @@ export default function AttendanceReportPage() {
                     <td className="px-6 py-3 text-slate-400 font-mono text-xs">{r.session_code ?? '—'}</td>
                     <td className="px-6 py-3">
                       <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${STATUS_BADGE[r.status] ?? 'bg-slate-700 text-slate-300'}`}>
-                        {r.status === 'success'
+                        {ATTENDED.has(r.status)
                           ? <CheckCircle size={11} />
                           : <XCircle size={11} />}
                         {STATUS_LABEL[r.status] ?? r.status}

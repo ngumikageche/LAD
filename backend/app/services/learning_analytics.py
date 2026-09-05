@@ -556,8 +556,10 @@ def get_attendance_performance(
         score_query = (
             db.session.query(
                 Score.student_id.label("student_id"),
-                func.avg(Score.marks_obtained).label("average_score"),
+                # Percentage of each paper's total, like every other average.
+                func.avg(score_percentage_expr()).label("average_score"),
             )
+            .outerjoin(Assessment, Assessment.id == Score.assessment_id)
             .filter(
                 Score.deleted_at.is_(None),
                 Score.student_id.in_(list(tally.keys())),
@@ -712,15 +714,21 @@ def get_at_risk_analytics(
     )["items"]
     attendance_by_student = {item["student_id"]: item for item in attendance}
 
+    # The average is a mean of percentages — the rule every other average in
+    # the application follows — so the 50 threshold means 50%, whatever each
+    # paper was out of. (The alerts service applies the same thresholds with a
+    # 90-day attendance window and minimum-event floors; this view is the
+    # all-time picture, so the two can legitimately disagree at the margins.)
     query = (
         db.session.query(
             Student.id.label("student_id"),
             User.name.label("student_name"),
-            func.avg(Score.marks_obtained).label("average_score"),
+            func.avg(score_percentage_expr()).label("average_score"),
             func.count(Score.id).label("scores_count"),
         )
         .join(User, User.id == Student.user_id)
         .join(Score, (Score.student_id == Student.id) & (Score.deleted_at.is_(None)))
+        .outerjoin(Assessment, Assessment.id == Score.assessment_id)
         .filter(Student.deleted_at.is_(None))
     )
     subject_ids = _resolve_subject_ids(department_id, course_id, module_id, subject_id, trainer_id, student_id)
@@ -730,7 +738,7 @@ def get_at_risk_analytics(
     if student_ids is not None:
         query = query.filter(Student.id.in_(student_ids))
 
-    rows = query.group_by(Student.id, User.name).order_by(func.avg(Score.marks_obtained).asc()).all()
+    rows = query.group_by(Student.id, User.name).order_by(func.avg(score_percentage_expr()).asc()).all()
     items = []
     for row in rows:
         student_key = str(row.student_id)
@@ -924,10 +932,12 @@ def get_cohort_comparison(
         db.session.query(
             Subject.id.label("subject_id"),
             Subject.name.label("subject_name"),
-            func.avg(Score.marks_obtained).label("avg_score"),
+            # Percentage of each paper's total, like every other average.
+            func.avg(score_percentage_expr()).label("avg_score"),
             func.count(func.distinct(Score.student_id)).label("students_count"),
         )
         .join(Score, (Score.subject_id == Subject.id) & (Score.deleted_at.is_(None)))
+        .outerjoin(Assessment, Assessment.id == Score.assessment_id)
         .filter(Subject.id.in_(ids), Subject.deleted_at.is_(None))
         .group_by(Subject.id, Subject.name)
         .order_by(Subject.name.asc())

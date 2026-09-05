@@ -733,6 +733,64 @@ def score_percentage(score) -> float | None:
     return percentage(getattr(score, "marks_obtained", None), total)
 
 
+# ── Grades and passing ───────────────────────────────────────────────────────
+#
+# One definition each, because three had grown: entry paths graded A–F while a
+# report backfilled missing grades on an A–E scale, and a mark could read Pass
+# on one screen and Fail on another depending on which fallback that screen
+# reached for. Every route and service grades and passes through these two.
+
+GRADE_BANDS = ((80.0, "A"), (70.0, "B"), (60.0, "C"), (50.0, "D"))
+FAIL_GRADE = "F"
+DEFAULT_PASS_PERCENTAGE = 50.0
+
+
+def grade_for_percentage(pct: float | None) -> str | None:
+    """Letter grade for a mark expressed as a percentage; None stays ungraded."""
+    if pct is None:
+        return None
+    for floor, letter in GRADE_BANDS:
+        if pct >= floor:
+            return letter
+    return FAIL_GRADE
+
+
+def passing_percentage(assessment) -> float:
+    """
+    The percentage a mark must reach to pass its assessment.
+
+    A recorded pass mark is expressed against the assessment's own total; with
+    no pass mark (or no usable total) the platform-wide 50% line applies —
+    the same fallback whether the mark arrives singly, in bulk, or is being
+    re-judged on a report.
+    """
+    pass_marks = getattr(assessment, "pass_marks", None) if assessment else None
+    total = getattr(assessment, "total_marks", None) if assessment else None
+    try:
+        if pass_marks is not None and total:
+            return float(pass_marks) / float(total) * 100.0
+    except (TypeError, ValueError, ZeroDivisionError):
+        pass
+    return DEFAULT_PASS_PERCENTAGE
+
+
+def score_is_passed(score) -> bool | None:
+    """
+    Whether a mark passes, trusting a stored verdict before recomputing.
+
+    `is_passed` was written when the mark was; where it is missing the mark is
+    judged as a percentage against `passing_percentage`, so a 45/50 paper reads
+    as the 90% it is rather than being compared raw against a 50 line.
+    """
+    stored = getattr(score, "is_passed", None)
+    if stored is not None:
+        return bool(stored)
+    pct = score_percentage(score)
+    if pct is None:
+        return None
+    return pct >= passing_percentage(getattr(score, "assessment", None))
+
+
 def average_percentage(scores) -> float:
     """Mean percentage across scores, mixing assessed and out-of-100 marks."""
     values = [value for value in (score_percentage(score) for score in scores) if value is not None]
