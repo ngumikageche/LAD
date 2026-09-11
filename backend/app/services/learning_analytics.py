@@ -13,7 +13,7 @@ from ..extensions import cache, db
 from ..models.assessment import Assessment
 from ..models.course import Course
 from ..models.attendance import Attendance
-from ..models.attendance_session import AttendanceRecord, AttendanceSession
+from ..models.attendance_session import ATTENDED_CHECKIN_STATUSES, AttendanceRecord, AttendanceSession
 from ..models.competency import Competency
 from ..models.portfolio_evidence import PortfolioEvidence
 from ..models.score import Score
@@ -479,7 +479,9 @@ def get_attendance_performance(
     at one alone reports 0% for a cohort that uses the other: `attendance` is a
     manual roll call carrying a status, `attendance_records` is a QR/GPS
     check-in against a session. This is the rule `alerts.attendance_rate`
-    already applies for the same reason.
+    already applies for the same reason, and both read "attended" and "held"
+    from the model (`ATTENDED_CHECKIN_STATUSES`, `counts_as_sitting`) so the
+    dashboard, the alerts, and the learner's own page agree.
     """
     subject_ids = _resolve_subject_ids(department_id, course_id, module_id, subject_id, trainer_id, student_id)
     student_ids = _resolve_student_ids(department_id, course_id, module_id, subject_id, trainer_id, student_id)
@@ -507,8 +509,10 @@ def get_attendance_performance(
         manual_query = manual_query.filter(Attendance.student_id.in_(student_ids))
 
     # ── QR/GPS register ─────────────────────────────────────────────────
-    # Every session run for a subject the learner takes is a sitting they were
-    # expected at; one they have no successful check-in for is an absence.
+    # Every session held for a subject the learner takes is a sitting they were
+    # expected at; one they were not scanned or marked into is an absence.
+    # "Held" is `counts_as_sitting`: closed, with someone recorded — an open or
+    # empty session is not an absence for the whole class.
     expected_query = (
         db.session.query(
             StudentSubject.student_id.label("student_id"),
@@ -516,7 +520,7 @@ def get_attendance_performance(
         )
         .join(AttendanceSession, AttendanceSession.subject_id == StudentSubject.subject_id)
         .filter(
-            AttendanceSession.deleted_at.is_(None),
+            AttendanceSession.counts_as_sitting(),
             StudentSubject.deleted_at.is_(None),
         )
         .group_by(StudentSubject.student_id)
@@ -529,8 +533,8 @@ def get_attendance_performance(
         .join(AttendanceSession, AttendanceSession.id == AttendanceRecord.attendance_session_id)
         .filter(
             AttendanceRecord.deleted_at.is_(None),
-            AttendanceRecord.status == "success",
-            AttendanceSession.deleted_at.is_(None),
+            AttendanceRecord.status.in_(ATTENDED_CHECKIN_STATUSES),
+            AttendanceSession.counts_as_sitting(),
         )
         .group_by(AttendanceRecord.student_id)
     )

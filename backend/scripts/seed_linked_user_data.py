@@ -74,11 +74,14 @@ from app.models.user import User
 from app.services.trainer_portal import assessment_grade
 
 
-# Weighted so a register reads like a real one instead of a coin flip. Nine in
-# ten sittings count as attended ("present" or "late"), so the attendance tiles
-# a demonstration is judged on sit clearly above the 65% mark stakeholders
-# flagged, while every learner still has the odd absence to explain.
-ATTENDANCE_STATUSES = ["present"] * 8 + ["late", "absent"]
+# Weighted so a register reads like a real one instead of a coin flip. Eleven in
+# twelve sittings count as attended ("present" or "late") and about one QR scan
+# in twelve lands outside the fence (CHECK_IN_MISS_RATE), so the Attendance
+# Signal lands around the 90% stakeholders expect of a functioning class, while
+# every learner still has the odd absence to explain. Rows seeded under older
+# weights are re-drawn by scripts/repair_attendance_signal.py.
+ATTENDANCE_STATUSES = ["present"] * 10 + ["late", "absent"]
+CHECK_IN_MISS_RATE = 0.08
 ASSESSMENT_TYPES = ["quiz", "assignment", "test", "project", "exam"]
 
 # Marks are drawn per learner from one of two bands. Most learners sit in the
@@ -575,6 +578,46 @@ def ensure_alert(student: Student, competency: Competency, message: str, seen: s
 
 # ── QR attendance sessions ────────────────────────────────────────────────────
 
+def is_generated_session_code(session_code: str | None) -> bool:
+    """
+    Whether a QR session was written by this generator rather than run in class.
+
+    Sessions here are named MODULE-NN (see `ensure_attendance_sessions`); the
+    app issues six letters and digits with no dash, so the dash is enough to
+    keep a repair off anything a trainer actually ran.
+    """
+    return "-" in (session_code or "")
+
+
+def register_status(streams: "Streams", student_id, module_id, day: date) -> str:
+    """The roll-call status the generator gives one learner, module, and day."""
+    return streams.for_("attendance", student_id, module_id, day).choice(ATTENDANCE_STATUSES)
+
+
+def draw_check_in(session: AttendanceSession, student_id, streams: "Streams") -> dict:
+    """
+    The QR check-in the generator gives one learner at one session.
+
+    Keyed by session and learner, so the same pair always draws the same
+    outcome — which is what lets a repair re-draw old rows into exactly what a
+    fresh run would have written.
+    """
+    rng = streams.for_("check-in", session.id, student_id)
+    # A few learners scan from outside the fence; the portal shows them as failed.
+    distance = round(
+        rng.uniform(5, 90) if rng.random() > CHECK_IN_MISS_RATE else rng.uniform(120, 400), 1
+    )
+    offset_degrees = distance / 111_000
+    return {
+        "status": "success" if distance <= session.allowed_radius_meters else "failed_gps",
+        "distance_from_trainer": distance,
+        "latitude": round(session.latitude + offset_degrees * rng.uniform(-1, 1), 6),
+        "longitude": round(session.longitude + offset_degrees * rng.uniform(-1, 1), 6),
+        "checked_in_at": session.started_at + timedelta(minutes=rng.randint(1, 45)),
+        "ip_address": f"10.{rng.randint(0, 255)}.{rng.randint(0, 255)}.{rng.randint(2, 254)}",
+    }
+
+
 def ensure_attendance_sessions(
     module: Module,
     subjects: list[Subject],
@@ -642,23 +685,13 @@ def ensure_check_ins(
     for student in students:
         if student.id in already_checked_in:
             continue
-        rng = streams.for_("check-in", session.id, student.id)
-        # A few learners scan from outside the fence; the portal shows them as failed.
-        distance = round(rng.uniform(5, 90) if rng.random() > 0.08 else rng.uniform(120, 400), 1)
-        status = "success" if distance <= session.allowed_radius_meters else "failed_gps"
-        offset_degrees = distance / 111_000
         db.session.add(
             AttendanceRecord(
                 attendance_session_id=session.id,
                 student_id=student.id,
-                latitude=round(session.latitude + offset_degrees * rng.uniform(-1, 1), 6),
-                longitude=round(session.longitude + offset_degrees * rng.uniform(-1, 1), 6),
-                checked_in_at=session.started_at + timedelta(minutes=rng.randint(1, 45)),
                 device_hash=uuid.uuid4().hex,
                 browser_info="Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36",
-                ip_address=f"10.{rng.randint(0, 255)}.{rng.randint(0, 255)}.{rng.randint(2, 254)}",
-                status=status,
-                distance_from_trainer=distance,
+                **draw_check_in(session, student.id, streams),
             )
         )
         summary.check_ins_created += 1
@@ -800,9 +833,7 @@ def process_module(
                         student_id=student.id,
                         module_id=module.id,
                         date=day,
-                        status=streams.for_("attendance", student.id, module.id, day).choice(
-                            ATTENDANCE_STATUSES
-                        ),
+                        status=register_status(streams, student.id, module.id, day),
                     )
                 )
                 summary.attendance_created += 1

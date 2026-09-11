@@ -7,6 +7,7 @@ from werkzeug.exceptions import HTTPException
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from ..extensions import db
+from ..models.attendance_session import ATTENDED_CHECKIN_STATUSES
 from ..models.notification import Notification
 from ..services.student_portal import (
     parse_uuid,
@@ -83,7 +84,7 @@ def get_student_documents():
     ], 200
 
 
-ATTENDED_STATUSES = {"success", "present", "late"}
+ATTENDED_STATUSES = {*ATTENDED_CHECKIN_STATUSES, "present", "late"}
 
 
 @bp.get("/attendance")

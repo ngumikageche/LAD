@@ -18,7 +18,7 @@ from ..models.trainer_subject import TrainerSubject
 from ..models.student_subject import StudentSubject
 from ..models.institution import Institution
 from ..models.student_report import StudentReport
-from ..models.attendance_session import AttendanceRecord, AttendanceSession
+from ..models.attendance_session import ATTENDED_CHECKIN_STATUSES, AttendanceRecord, AttendanceSession
 from ..models.practical_assessment_report import PracticalAssessmentReport
 from ..models.score_evidence import ScoreEvidence
 from ..models.trainer import Trainer
@@ -589,7 +589,9 @@ def admin_compliance():
             row[0]
             for row in db.session.query(AttendanceSession.id).filter(
                 AttendanceSession.subject_id.in_(subject_ids) if subject_ids else False,
-                AttendanceSession.deleted_at.is_(None),
+                # An open or empty session is no one's absence — the rule the
+                # dashboard's attendance signal applies.
+                AttendanceSession.counts_as_sitting(),
             ).all()
         ]
         successful_checkins = (
@@ -597,7 +599,7 @@ def admin_compliance():
             .filter(
                 AttendanceRecord.student_id == student.id,
                 AttendanceRecord.attendance_session_id.in_(session_ids) if session_ids else False,
-                AttendanceRecord.status.in_(["success", "manual"]),
+                AttendanceRecord.status.in_(ATTENDED_CHECKIN_STATUSES),
                 AttendanceRecord.deleted_at.is_(None),
             )
             .scalar()

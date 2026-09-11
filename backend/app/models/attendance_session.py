@@ -3,11 +3,19 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta
 
-from sqlalchemy import ForeignKey, String, Float, Integer, DateTime, Index, UniqueConstraint, func, Enum
+from sqlalchemy import ForeignKey, String, Float, Integer, DateTime, Index, UniqueConstraint, and_, exists, func, or_, Enum
 from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, aliased, mapped_column, relationship
 
 from .base import BaseModel
+
+
+# A check-in that puts the learner in the room: a scan inside the fence, or the
+# trainer marking them present by hand. Every attendance figure reads this one
+# set — the analytics used to accept "success" alone, so a learner the trainer
+# marked present was counted absent on the dashboard while the session report
+# listed them as there.
+ATTENDED_CHECKIN_STATUSES = ("success", "manual")
 
 
 class AttendanceSession(BaseModel):
@@ -84,6 +92,32 @@ class AttendanceSession(BaseModel):
         delta = self.expires_at - datetime.utcnow()
         return max(0, int(delta.total_seconds()))
 
+    @classmethod
+    def counts_as_sitting(cls):
+        """
+        SQL condition for a session a learner can be marked absent from.
+
+        Every session run for a learner's subject is a sitting they were
+        expected at, but two kinds were being counted that should not be. A
+        session still open is not yet an absence for anyone who has not scanned
+        — the class is in progress. And one that closed with nobody recorded at
+        all, not a single scan or hand-marked learner, is a register opened by
+        mistake or to try the feature, not a class the whole cohort skipped.
+        Counting either marked every learner absent from a class that never
+        met, and a demonstration's test sessions pulled the whole cohort's
+        attendance down with them.
+        """
+        # Aliased so the subquery keeps its own FROM when the outer query is
+        # itself reading attendance_records (the check-in count does).
+        recorded = aliased(AttendanceRecord)
+        return and_(
+            cls.deleted_at.is_(None),
+            or_(cls.status == "ended", cls.expires_at <= datetime.utcnow()),
+            exists()
+            .where(recorded.attendance_session_id == cls.id, recorded.deleted_at.is_(None))
+            .correlate(cls),
+        )
+
 
 class AttendanceRecord(BaseModel):
     """
@@ -115,7 +149,8 @@ class AttendanceRecord(BaseModel):
     # IP address of check-in
     ip_address: Mapped[str] = mapped_column(String(45), nullable=False)  # IPv6 max 45 chars
     
-    # Status: success, failed_gps (outside radius), failed_duplicate, failed_not_enrolled
+    # Status: success, manual (marked present by the trainer), failed_gps (outside radius),
+    # failed_duplicate, failed_not_enrolled — see ATTENDED_CHECKIN_STATUSES
     status: Mapped[str] = mapped_column(String(32), default="success", nullable=False, index=True)
     
     # Distance from trainer in meters (for analytics)
