@@ -23,7 +23,7 @@ import uuid
 from flask import Blueprint, request
 
 from ..extensions import db
-from ..services.scoping import term_match_clause
+from ..services.scoping import grade_for_percentage, score_is_passed, term_match_clause
 from ..models.assessment import Assessment
 from ..models.course import Course
 from ..models.department import Department
@@ -55,7 +55,6 @@ from .practical_assessments import (
 
 bp = Blueprint("assessment_reports", __name__, url_prefix="/reports/assessments")
 
-PASS_MARK = 50.0
 PRACTICAL_PERMISSION = "reports.practical.assessment"
 EXAM_PERMISSION = "reports.admin.pass_rate"
 
@@ -535,17 +534,9 @@ def practical_detailed():
 # ── Exam results ─────────────────────────────────────────────────────────────
 
 def _grade_band(percentage: float | None) -> str:
-    if percentage is None:
-        return "—"
-    if percentage >= 80:
-        return "A"
-    if percentage >= 70:
-        return "B"
-    if percentage >= 60:
-        return "C"
-    if percentage >= 50:
-        return "D"
-    return "E"
+    # The canonical A–F scale. This used to be its own copy ending in "E", so
+    # the same failing mark lettered differently here than at entry.
+    return grade_for_percentage(percentage) or "—"
 
 
 def _exam_query(user: User, scope_trainer: Trainer | None):
@@ -599,8 +590,9 @@ def _exam_row(score: Score) -> dict:
     assessment = score.assessment
     total_marks = float(assessment.total_marks) if assessment and assessment.total_marks else 100.0
     percentage = round(score.marks_obtained / total_marks * 100, 1) if total_marks else None
-    pass_mark = float(assessment.pass_marks) if assessment and assessment.pass_marks else PASS_MARK
-    passed = score.is_passed if score.is_passed is not None else score.marks_obtained >= pass_mark
+    # One passing rule everywhere: stored verdict first, else the mark as a
+    # percentage against the assessment's pass line (default 50%).
+    passed = score_is_passed(score)
 
     return {
         "score_id": str(score.id),

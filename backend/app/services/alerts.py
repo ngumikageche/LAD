@@ -22,7 +22,7 @@ from sqlalchemy import func
 from ..extensions import db
 from ..models.alert import Alert
 from ..models.attendance import Attendance
-from ..models.attendance_session import AttendanceRecord, AttendanceSession
+from ..models.attendance_session import ATTENDED_CHECKIN_STATUSES, AttendanceRecord, AttendanceSession
 from ..models.notification import Notification
 from ..models.score import Score
 from ..models.student import Student
@@ -83,8 +83,9 @@ def attendance_rate(student_id: uuid.UUID, since: date | None = None) -> tuple[f
     present = sum(1 for row in manual if (row.status or "").lower() in {"present", "late"})
     total = len(manual)
 
-    # Every session the learner's subjects ran counts as an expected sitting;
-    # a session with no record for them is an absence.
+    # Every session held for the learner's subjects counts as an expected
+    # sitting; one they were not scanned or marked into is an absence. Open and
+    # empty sessions are not sittings — see `AttendanceSession.counts_as_sitting`.
     subject_ids = [
         row[0] for row in db.session.query(StudentSubject.subject_id)
         .filter(StudentSubject.student_id == student_id)
@@ -95,7 +96,7 @@ def attendance_rate(student_id: uuid.UUID, since: date | None = None) -> tuple[f
             db.session.query(AttendanceSession.id)
             .filter(
                 AttendanceSession.subject_id.in_(subject_ids),
-                AttendanceSession.deleted_at.is_(None),
+                AttendanceSession.counts_as_sitting(),
                 func.date(AttendanceSession.started_at) >= since,
             )
             .all()
@@ -107,7 +108,8 @@ def attendance_rate(student_id: uuid.UUID, since: date | None = None) -> tuple[f
                 .filter(
                     AttendanceRecord.attendance_session_id.in_(session_ids),
                     AttendanceRecord.student_id == student_id,
-                    AttendanceRecord.status == "success",
+                    AttendanceRecord.status.in_(ATTENDED_CHECKIN_STATUSES),
+                    AttendanceRecord.deleted_at.is_(None),
                 )
                 .scalar()
             ) or 0

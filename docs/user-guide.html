@@ -173,12 +173,12 @@
   records you see.</div>
   <div class="stats">
     <div class="stat"><div class="n">3</div><div class="l">Portals</div></div>
-    <div class="stat"><div class="n">62</div><div class="l">Destinations</div></div>
+    <div class="stat"><div class="n">63</div><div class="l">Destinations</div></div>
     <div class="stat"><div class="n">4</div><div class="l">Scope levels</div></div>
   </div>
   <div class="meta">
     <strong>User Guide</strong><br>
-    Generated 30 August 2026 from the live navigation map
+    Generated 03 September 2026 from the live navigation map
   </div>
 </div>
 
@@ -188,7 +188,8 @@
   <ol class="toc">
     <li>Getting started <span class="s">— signing in and finding your way</span></li>
     <li>What you can see <span class="s">— the four scope levels</span></li>
-    <li>For learners <span class="s">— attendance, marks, subjects, portfolio</span></li>
+    <li>How the record fits together <span class="s">— structure, terms, marks, and mastery</span></li>
+    <li>For learners <span class="s">— dashboard, attendance, marks, subjects, portfolio</span></li>
     <li>For trainers <span class="s">— attendance, enrolment, marks, reports</span></li>
     <li>For administrators <span class="s">— people, structure, oversight</span></li>
     <li>Reports and exports <span class="s">— every report, and how to get it out</span></li>
@@ -314,7 +315,90 @@
 
 <section>
   <div class="eyebrow">Section 3</div>
+  <h2>How the record fits together</h2>
+
+  <p>Every number LAD shows — an average, a pass rate, a mastery percentage — is computed
+  from a small set of records that reference each other. Knowing the chain explains most
+  of what the dashboards do, and most of what looks odd when a link is missing.</p>
+
+  <h3>Structure, and where everything hangs</h3>
+  <p>The academic hierarchy runs
+  <code>Institution → Department → Course → Module → Subject</code>. Learners enrol on a
+  course and are attached to subjects; trainers are assigned subjects. Everything else —
+  marks, attendance, documents, reports — hangs off those attachments, which is why scope
+  (section 2) is resolved by walking this chain.</p>
+
+  <h3>Terms</h3>
+  <p>Marks carry a <strong>term label</strong>, and every report groups by it. Exactly one
+  term is active at a time and reports default to it — so a mark filed under a different
+  term, or under a mistyped label, silently drops off the default view. Keeping term labels
+  consistent is what keeps the term trend and the report tables telling one story.</p>
+
+  <h3>Marks</h3>
+  <p>A mark always belongs to an <strong>assessment</strong> — a specific piece of marked
+  work with a total, a pass mark, a type (quiz, CAT, exam…), and a term. Marks are stored
+  as raw scores but compared as <strong>percentages of their assessment's total</strong>,
+  so a paper out of 40 and one out of 100 sit fairly in the same average. The pass
+  threshold is 50%.</p>
+
+  <h3 class="keep">Competencies, and how mastery is measured</h3>
+  <p>A <strong>competency</strong> is a unit of skill defined on a module: a name, what the
+  learner should be able to do, and a <strong>mastery threshold</strong> — the percentage
+  that counts as having mastered it. The definition is curriculum, maintained by an
+  administrator; trainers grade against it but do not edit it.</p>
+  <p>A competency never receives a mark directly. The chain is:</p>
+  <pre><code>mark → assessment (linked to a competency) → competency → mastery</code></pre>
+  <ol class="steps">
+    <li>An assessment is <strong>linked to a competency</strong> when it is created — the
+    competency dropdown on the Bulk Upload Marks screen's new-assessment form.</li>
+    <li>Every mark recorded against that assessment then counts toward that competency.
+    A learner's level in a competency is their average percentage across its linked
+    assessments.</li>
+    <li>That level, against the threshold, grades the learner's heatmap cell low, medium,
+    or high — and the <strong>Mastery Rate</strong> tile is the share of assessed cells
+    graded high.</li>
+  </ol>
+  <div class="callout warn">
+    <div class="t">"none linked" on the Competencies screen</div>
+    <p>A competency with no assessment linked to it can never be measured: no mark has a
+    path to it, its heatmap column stays unassessed, and the Competencies screen calls it
+    out as <em>none linked</em>. The fix is to link an assessment — create one against it
+    on Bulk Upload Marks — not to re-mark anything.</p>
+  </div>
+  <p>Two more honest states on the Mastery Rate tile: where a scope has marks but
+  <strong>no competency evidence</strong>, the tile falls back to grading learners by their
+  averages and says so beneath the figure; where there are no marks either, it shows
+  <strong>—</strong> rather than a fake zero, because nothing measured is not a score of
+  nothing.</p>
+
+  <h3>Portfolio evidence</h3>
+  <p>Alongside marks, learners upload <strong>portfolio evidence</strong> — files proving
+  a competency in practice — which a trainer can verify. <strong>Portfolio
+  Completion</strong> counts evidence submitted against the competencies a course requires;
+  where no requirement is defined, it says so rather than reporting 0%.</p>
+
+  <h3>Attendance</h3>
+  <p>Attendance comes from two registers that are counted together: the live
+  <strong>QR check-in sessions</strong> trainers run in class, and the
+  <strong>manual register</strong> for everything the QR flow missed. Present and late both
+  count as attended; every session run for a subject a learner takes counts as a sitting
+  they were expected at.</p>
+</section>
+
+<section>
+  <div class="eyebrow">Section 4</div>
   <h2>For learners</h2>
+
+  <h3>Your dashboard</h3>
+  <p>The <strong>Academic Progress Overview</strong> opens with five tiles — average score,
+  enrolled subjects, mastery rate, attendance rate, unread alerts — and reads them for you:
+  <strong>Learning Pulse</strong> says where you stand, <strong>Next Best Actions</strong>
+  says what to do about it. Below sit your term trend, subject performance map, recent
+  results, heatmaps, and announcements.</p>
+  <p><strong>Your Focus Areas</strong> names the competencies you are still below target
+  in and what to concentrate on next — revise this, attend more consistently — generated
+  from your own marks, attendance, and competency levels. <strong>Portfolio
+  Tracking</strong> beside it shows the evidence still outstanding.</p>
 
   <h3 class="keep">Check in to class</h3>
   <p><strong>Attendance → Check In.</strong> Your trainer displays a QR code that changes
@@ -378,14 +462,19 @@
 </section>
 
 <section>
-  <div class="eyebrow">Section 4</div>
+  <div class="eyebrow">Section 5</div>
   <h2>For trainers</h2>
 
   <h3>Your dashboard</h3>
   <p>The <strong>Teaching Performance Hub</strong> opens on all your assigned subjects.
   The <strong>Assigned subject scope</strong> selector at the top narrows every metric,
   chart, and panel below it to one subject — class average, mastery, attendance signal,
-  at-risk learners, the competency heatmap, and the cohort comparison all follow it.</p>
+  at-risk learners, the competency heatmap, and the cohort comparison all follow it.
+  <strong>Instructional Recommendations</strong> turns the same signals into teaching
+  actions — which competency to re-teach, and whether group remediation is due — and the
+  <strong>Practical Assessment Score Sheet</strong> lists what you have entered so you can
+  check it before release. Report and analysis filters across the portal offer only your
+  own subjects and courses, because that is all the data behind them covers.</p>
 
   <h3 class="keep">Take attendance</h3>
   <p><strong>Attendance → Take Attendance</strong> runs a live QR session.</p>
@@ -419,10 +508,11 @@
   <p>For a handful of marks, use the score form on your dashboard. For a whole class, use
   <strong>Academics → Bulk Upload Marks</strong>, which works down the page in four steps.</p>
   <ol class="steps">
-    <li><strong>Select Assessment.</strong> Pick the assessment the marks belong to, then
-    <strong>Download Class List</strong> — an Excel file already filled in with your
-    learners and the codes the importer needs. Its assessment code is shown with a
-    <em>Copy Code</em> button.</li>
+    <li><strong>Select Assessment.</strong> Pick the assessment the marks belong to — or
+    create one here, choosing the <strong>competency</strong> it evidences so the marks
+    count toward mastery (section 3) — then <strong>Download Class List</strong>, an Excel
+    file already filled in with your learners and the codes the importer needs. Its
+    assessment code is shown with a <em>Copy Code</em> button.</li>
     <li><strong>Select Subject</strong> (optional). Sets the subject for every row that does
     not name its own. Applies to the whole batch.</li>
     <li><strong>Upload Marks File.</strong> Fill in the marks column of the downloaded class
@@ -456,11 +546,18 @@
 
   <h3>Assessments and material</h3>
   <ul>
-    <li><strong>Practical Assess.</strong> — author practical assessments and record
-    competency outcomes against them.</li>
+    <li><strong>Practical Assess.</strong> — the Practical Assessment Platform: author
+    CDACC-style practical assessments (a template loads the standard task and oral-question
+    layout), mark tasks and orals per candidate, and move each record from
+    <em>draft</em> to <em>complete</em> to <em>released</em>. The workspace badge names
+    your institution. These are internal formative records — never upload KNEC, CDACC, or
+    other externally owned summative scripts.</li>
     <li><strong>Online Exams</strong> — build an exam, publish it, and review submissions.</li>
     <li><strong>Documents</strong> — share material with the learners on your subjects.</li>
-    <li><strong>Competencies</strong> — the competency framework your assessments evidence.</li>
+    <li><strong>Competencies</strong> — the framework your assessments evidence, shown
+    view-only: definitions and thresholds are maintained by your administrator, and the
+    screen also shows which competencies still have <em>none linked</em> — no assessment
+    feeding them marks (section 3 explains the fix).</li>
   </ul>
 
   <h3>Your reports</h3>
@@ -481,7 +578,7 @@
 </section>
 
 <section>
-  <div class="eyebrow">Section 5</div>
+  <div class="eyebrow">Section 6</div>
   <h2>For administrators</h2>
 
   <h3>People</h3>
@@ -507,6 +604,13 @@
   walking this chain, so a course left without a department, or a module without a course,
   will drop cohorts out of reports. <strong>Terms</strong> defines the academic periods that
   reports group by; exactly one is active, and reports default to it.</p>
+  <p><strong>Competencies</strong> is where the mastery framework is authored: each
+  competency belongs to a module and carries the threshold learners are graded against.
+  This is an administrator's screen — trainers see it read-only — and the Mastery Rate and
+  Portfolio Completion tiles across the system report nothing until competencies exist and
+  assessments are linked to them (section 3). The screen flags any competency with
+  <em>none linked</em>, and refuses to delete one that assessments or evidence still point
+  at.</p>
 
   <h3>Marks and oversight</h3>
   <ul>
@@ -535,7 +639,7 @@
 </section>
 
 <section>
-  <div class="eyebrow">Section 6</div>
+  <div class="eyebrow">Section 7</div>
   <h2>Reports and exports</h2>
 
   <table>
@@ -583,7 +687,7 @@
 </section>
 
 <section>
-  <div class="eyebrow">Section 7</div>
+  <div class="eyebrow">Section 8</div>
   <h2>Troubleshooting</h2>
 
   <table>
@@ -615,6 +719,15 @@
       <tr><td><strong>Marks uploaded but missing from a report</strong></td>
         <td>They are probably filed under another term, or the learners are not attached to a
         course, so they cannot be grouped into a class. The Exam Results report says which.</td></tr>
+      <tr><td><strong>Mastery Rate shows "—" or looks too low</strong></td>
+        <td>Mastery is measured per competency, through linked assessments. "—" means nothing
+        is measured yet; a low figure with few competencies covered usually means assessments
+        are not linked. Check the Competencies screen for <em>none linked</em> — section 3
+        explains the chain.</td></tr>
+      <tr><td><strong>A competency reads "none linked"</strong></td>
+        <td>No assessment feeds it, so no mark can count toward it. Create an assessment
+        against it on Bulk Upload Marks (the new-assessment form has a competency dropdown).
+        Marks recorded from then on flow to it automatically.</td></tr>
     </tbody>
   </table>
 
@@ -628,15 +741,15 @@
 </section>
 
 <section>
-  <div class="eyebrow">Section 8</div>
+  <div class="eyebrow">Section 9</div>
   <h2>Navigation reference</h2>
   <p>Every entry in each portal's sidebar, in the order it appears. An entry is shown only
   when the role holds the key beside it — entries with no key are always shown to that
   portal. Several destinations appear in more than one portal; it is the same screen,
   scoped to whoever opened it.</p>
 
-  <h3 class="keep">Learner portal <span class="count">17 entries</span></h3>
-  <table class="nav"><thead><tr><th style="width:30%">Menu entry</th><th style="width:32%">Address</th><th>Shown when the role holds</th></tr></thead><tbody><tr class="grp"><td colspan="3">Overview</td></tr><tr><td><strong>Dashboard</strong></td><td><code>/student/dashboard</code></td><td><span class="always">Always shown</span></td></tr><tr><td><strong>Notifications</strong></td><td><code>/student/notifications</code></td><td><span class="always">Always shown</span></td></tr><tr><td><strong>Trainer Feedback</strong></td><td><code>/student/feedback</code></td><td><span class="always">Always shown</span></td></tr><tr><td><strong>Rate My Trainers</strong></td><td><code>/student/rate-trainers</code></td><td><span class="always">Always shown</span></td></tr><tr><td><strong>My Profile</strong></td><td><code>/student/profile</code></td><td><span class="always">Always shown</span></td></tr><tr class="grp"><td colspan="3">Academics</td></tr><tr><td><strong>My Scores</strong></td><td><code>/student/scores</code></td><td><span class="always">Always shown</span></td></tr><tr><td><strong>My Subjects</strong></td><td><code>/student/subjects</code></td><td><span class="always">Always shown</span></td></tr><tr><td><strong>Online Exams</strong></td><td><code>/student/online-exams</code></td><td><span class="always">Always shown</span></td></tr><tr><td><strong>Documents</strong></td><td><code>/student/documents</code></td><td><span class="always">Always shown</span></td></tr><tr><td><strong>My Portfolio</strong></td><td><code>/student/portfolio</code></td><td><span class="always">Always shown</span></td></tr><tr><td><strong>Course Coverage</strong></td><td><code>/student/course-coverage</code></td><td><span class="always">Always shown</span></td></tr><tr class="grp"><td colspan="3">Reports</td></tr><tr><td><strong>All Reports</strong></td><td><code>/reports</code></td><td><code>reports.*</code></td></tr><tr><td><strong>Report Card</strong></td><td><code>/student/report-card</code></td><td><code>reports.student.term</code></td></tr><tr><td><strong>Practical Reports</strong></td><td><code>/student/practical-assessments</code></td><td><span class="always">Always shown</span></td></tr><tr><td><strong>Attendance</strong></td><td><code>/student/attendance-report</code></td><td><code>reports.student.attendance</code></td></tr><tr><td><strong>Disciplinary Records</strong></td><td><code>/student/disciplinary-records</code></td><td><span class="always">Always shown</span></td></tr><tr class="grp"><td colspan="3">Attendance</td></tr><tr><td><strong>Check In</strong></td><td><code>/student/attendance/checkin</code></td><td><span class="always">Always shown</span></td></tr></tbody></table>
+  <h3 class="keep">Learner portal <span class="count">18 entries</span></h3>
+  <table class="nav"><thead><tr><th style="width:30%">Menu entry</th><th style="width:32%">Address</th><th>Shown when the role holds</th></tr></thead><tbody><tr class="grp"><td colspan="3">Overview</td></tr><tr><td><strong>Dashboard</strong></td><td><code>/student/dashboard</code></td><td><span class="always">Always shown</span></td></tr><tr><td><strong>Notifications</strong></td><td><code>/student/notifications</code></td><td><span class="always">Always shown</span></td></tr><tr><td><strong>Trainer Feedback</strong></td><td><code>/student/feedback</code></td><td><span class="always">Always shown</span></td></tr><tr><td><strong>Rate My Trainers</strong></td><td><code>/student/rate-trainers</code></td><td><span class="always">Always shown</span></td></tr><tr><td><strong>My Profile</strong></td><td><code>/student/profile</code></td><td><span class="always">Always shown</span></td></tr><tr class="grp"><td colspan="3">Academics</td></tr><tr><td><strong>My Scores</strong></td><td><code>/student/scores</code></td><td><span class="always">Always shown</span></td></tr><tr><td><strong>My Subjects</strong></td><td><code>/student/subjects</code></td><td><span class="always">Always shown</span></td></tr><tr><td><strong>Online Exams</strong></td><td><code>/student/online-exams</code></td><td><span class="always">Always shown</span></td></tr><tr><td><strong>Documents</strong></td><td><code>/student/documents</code></td><td><span class="always">Always shown</span></td></tr><tr><td><strong>My Portfolio</strong></td><td><code>/student/portfolio</code></td><td><span class="always">Always shown</span></td></tr><tr><td><strong>Course Coverage</strong></td><td><code>/student/course-coverage</code></td><td><span class="always">Always shown</span></td></tr><tr class="grp"><td colspan="3">Reports</td></tr><tr><td><strong>All Reports</strong></td><td><code>/reports</code></td><td><code>reports.*</code></td></tr><tr><td><strong>Report Card</strong></td><td><code>/student/report-card</code></td><td><code>reports.student.term</code></td></tr><tr><td><strong>Performance</strong></td><td><code>/student/performance</code></td><td><code>reports.student.term</code></td></tr><tr><td><strong>Practical Reports</strong></td><td><code>/student/practical-assessments</code></td><td><span class="always">Always shown</span></td></tr><tr><td><strong>Attendance</strong></td><td><code>/student/attendance-report</code></td><td><code>reports.student.attendance</code></td></tr><tr><td><strong>Disciplinary Records</strong></td><td><code>/student/disciplinary-records</code></td><td><span class="always">Always shown</span></td></tr><tr class="grp"><td colspan="3">Attendance</td></tr><tr><td><strong>Check In</strong></td><td><code>/student/attendance/checkin</code></td><td><span class="always">Always shown</span></td></tr></tbody></table>
 
   <h3 class="keep">Trainer portal <span class="count">34 entries</span></h3>
   <table class="nav"><thead><tr><th style="width:30%">Menu entry</th><th style="width:32%">Address</th><th>Shown when the role holds</th></tr></thead><tbody><tr class="grp"><td colspan="3">Overview</td></tr><tr><td><strong>Dashboard</strong></td><td><code>/trainer-hub</code></td><td><span class="always">Always shown</span></td></tr><tr><td><strong>Analytics</strong></td><td><code>/admin/analytics</code></td><td><code>admin.analytics.read</code></td></tr><tr><td><strong>Notifications</strong></td><td><code>/admin/notifications</code></td><td><code>notifications.read</code></td></tr><tr class="grp"><td colspan="3">People</td></tr><tr><td><strong>Students</strong></td><td><code>/students</code></td><td><code>students.read</code></td></tr><tr><td><strong>Student Reports</strong></td><td><code>/student-reports</code></td><td><code>reports.student.write</code></td></tr><tr><td><strong>My Feedback</strong></td><td><code>/trainer/feedback-received</code></td><td><span class="always">Always shown</span></td></tr><tr><td><strong>Users</strong></td><td><code>/users</code></td><td><code>users.read</code></td></tr><tr><td><strong>Student Profile</strong></td><td><code>/trainer/student-profile</code></td><td><span class="always">Always shown</span></td></tr><tr><td><strong>Learner Enrollment</strong></td><td><code>/trainer/enrollment</code></td><td><span class="always">Always shown</span></td></tr><tr class="grp"><td colspan="3">Academics</td></tr><tr><td><strong>My Modules</strong></td><td><code>/modules</code></td><td><code>modules.read</code></td></tr><tr><td><strong>My Subjects</strong></td><td><code>/subjects</code></td><td><code>subjects.read</code></td></tr><tr><td><strong>Competencies</strong></td><td><code>/competencies</code></td><td><code>competencies.read</code></td></tr><tr><td><strong>Terms</strong></td><td><code>/terms</code></td><td><code>terms.read</code></td></tr><tr><td><strong>Score Management</strong></td><td><code>/admin/scores</code></td><td><code>admin.scores.read</code></td></tr><tr><td><strong>Bulk Upload Marks</strong></td><td><code>/scores/bulk-upload</code></td><td><code>scores.create</code></td></tr><tr><td><strong>Practical Assess.</strong></td><td><code>/trainer/practical-assessments</code></td><td><span class="always">Always shown</span></td></tr><tr><td><strong>Online Exams</strong></td><td><code>/trainer/online-exams</code></td><td><span class="always">Always shown</span></td></tr><tr><td><strong>Documents</strong></td><td><code>/trainer/documents</code></td><td><span class="always">Always shown</span></td></tr><tr><td><strong>Progress</strong></td><td><code>/progress</code></td><td><code>scores.read</code></td></tr><tr class="grp"><td colspan="3">Reports</td></tr><tr><td><strong>Exam Results</strong></td><td><code>/admin/reports/exam-results</code></td><td><code>reports.admin.pass_rate</code></td></tr><tr><td><strong>Exam Analysis</strong></td><td><code>/reports/assessments/exams</code></td><td><code>reports.admin.pass_rate</code></td></tr><tr><td><strong>Practical Reports</strong></td><td><code>/reports/assessments/practical</code></td><td><code>reports.practical.assessment</code></td></tr><tr><td><strong>Enrolment</strong></td><td><code>/admin/reports/enrolment</code></td><td><code>reports.admin.enrolment</code></td></tr><tr><td><strong>Disciplinary Records</strong></td><td><code>/disciplinary-records</code></td><td><code>reports.student.discipline</code></td></tr><tr><td><strong>All Reports</strong></td><td><code>/reports</code></td><td><code>reports.*</code></td></tr><tr><td><strong>Compliance</strong></td><td><code>/admin/compliance</code></td><td><code>reports.admin.compliance</code></td></tr><tr><td><strong>Trainer Reports</strong></td><td><code>/trainer/reports</code></td><td><code>reports.class.performance</code></td></tr><tr><td><strong>Class Performance</strong></td><td><code>/trainer/class-performance</code></td><td><code>reports.class.performance</code></td></tr><tr><td><strong>Syllabus Coverage</strong></td><td><code>/trainer/syllabus</code></td><td><code>reports.teacher.syllabus</code></td></tr><tr><td><strong>Coverage Validation</strong></td><td><code>/reports/course-coverage</code></td><td><code>reports.teacher.syllabus</code></td></tr><tr><td><strong>Learner Attendance</strong></td><td><code>/trainer/attendance</code></td><td><code>reports.teacher.attendance</code></td></tr><tr class="grp"><td colspan="3">Attendance</td></tr><tr><td><strong>Take Attendance</strong></td><td><code>/trainer/attendance-session</code></td><td><span class="always">Always shown</span></td></tr><tr><td><strong>Manual Attendance</strong></td><td><code>/trainer/attendance/manual</code></td><td><span class="always">Always shown</span></td></tr><tr><td><strong>Attendance Report</strong></td><td><code>/admin/attendance</code></td><td><code>attendance.report.view</code></td></tr></tbody></table>
@@ -646,7 +759,7 @@
 </section>
 
 <section>
-  <div class="eyebrow">Section 9</div>
+  <div class="eyebrow">Section 10</div>
   <h2>Glossary</h2>
 
   <table>
@@ -659,7 +772,10 @@
       <tr><td><strong>Subject</strong></td><td>The unit actually taught. Trainers are assigned subjects, and it is the assignment that decides what they see.</td></tr>
       <tr><td><strong>Assessment</strong></td><td>A specific piece of marked work, with a total and a pass mark. Marks belong to assessments.</td></tr>
       <tr><td><strong>CAT</strong></td><td>Continuous assessment test. Three of them can be combined into one final mark by a chosen formula.</td></tr>
-      <tr><td><strong>Competency</strong></td><td>A skill a learner must evidence. Practical assessments and portfolio evidence are recorded against these.</td></tr>
+      <tr><td><strong>Competency</strong></td><td>A skill a learner must evidence, defined on a module with a mastery threshold. Marks reach it through linked assessments; portfolio evidence is uploaded against it directly.</td></tr>
+      <tr><td><strong>Mastery threshold</strong></td><td>The percentage on a competency that counts as having mastered it. A learner's average across the competency's linked assessments is graded against it.</td></tr>
+      <tr><td><strong>Mastery Rate</strong></td><td>The share of assessed learner-by-competency cells graded high. Falls back to grading by averages where a scope holds no competency evidence, and shows "—" where nothing is measured.</td></tr>
+      <tr><td><strong>Portfolio evidence</strong></td><td>A file a learner uploads to prove a competency in practice, verifiable by a trainer. Portfolio Completion counts these against what the course requires.</td></tr>
       <tr><td><strong>Term</strong></td><td>The academic period reports group by. One is active at a time, and reports default to it.</td></tr>
       <tr><td><strong>Scope</strong></td><td>Whose records a screen shows you, decided separately from whether you may open it.</td></tr>
       <tr><td><strong>Session</strong></td><td>One live attendance sitting, with a rotating QR code, a time limit, and a radius.</td></tr>

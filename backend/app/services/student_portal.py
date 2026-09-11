@@ -14,10 +14,11 @@ from ..models.score import Score
 from ..models.student import Student
 from ..models.student_subject import StudentSubject
 from ..models.subject import Subject
+from ..models.term import Term
 from ..models.trainer_subject import TrainerSubject
 from ..models.user import User
 from .learning_analytics import build_role_dashboard
-from .scoping import score_percentage
+from .scoping import loose_term_key, score_percentage
 
 
 def pagination_meta(page: int, per_page: int, total: int) -> dict:
@@ -217,6 +218,20 @@ def performance_payload(student: Student) -> dict:
         else:
             untermed += 1
 
+    # The trend axis is chronological, taken from the terms on record — sorting
+    # the labels as strings put "Term 1 2027" before "Term 2 2026" and flipped
+    # the improving/declining verdict the first time two years met. A label
+    # matching no term sorts after the dated ones, alphabetically.
+    term_starts = {
+        loose_term_key(term.name): term.start_date
+        for term in db.session.query(Term).filter(Term.deleted_at.is_(None))
+        if term.name and term.start_date
+    }
+
+    def term_order(term_name: str):
+        start = term_starts.get(loose_term_key(term_name))
+        return (start is None, start.isoformat() if start else "", term_name)
+
     return {
         "average_score": average_score,
         "subject_performance": [
@@ -233,7 +248,7 @@ def performance_payload(student: Student) -> dict:
                 "average_score": round(sum(values) / len(values), 2),
                 "scores_count": len(values),
             }
-            for term_name, values in sorted(term_buckets.items())
+            for term_name, values in sorted(term_buckets.items(), key=lambda item: term_order(item[0]))
         ],
         "untermed_scores_count": untermed,
     }

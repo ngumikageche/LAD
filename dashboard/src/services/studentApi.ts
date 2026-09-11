@@ -57,7 +57,9 @@ export type StudentNotification = {
 
 export type StudentAttendanceRecord = {
   id: string;
-  session_id: string;
+  // 'qr' rows are session check-ins; 'manual' rows are the trainer's roll call.
+  register?: 'qr' | 'manual';
+  session_id: string | null;
   session_code: string | null;
   subject_name: string | null;
   status: string;

@@ -18,23 +18,16 @@ from ..models.trainer import Trainer
 from ..models.trainer_subject import TrainerSubject
 from ..models.user import User
 from .learning_analytics import build_role_dashboard
-from .scoping import average_percentage, percentage, score_percentage_expr
+from .scoping import average_percentage, grade_for_percentage, percentage, score_percentage_expr
 from .subject_enrollment import link_student_to_subject
 
 PASS_MARK = 50.0
 
 
 def assessment_grade(score: float, total_marks: int) -> str:
-    percentage = (score / total_marks * 100) if total_marks else 0
-    if percentage >= 80:
-        return "A"
-    if percentage >= 70:
-        return "B"
-    if percentage >= 60:
-        return "C"
-    if percentage >= 50:
-        return "D"
-    return "F"
+    # `percentage` treats a missing/zero total as a mark already out of 100 —
+    # the rule every average follows — where this used to grade such marks F.
+    return grade_for_percentage(percentage(score, total_marks)) or "F"
 
 
 def parse_uuid(value: str | None, field: str) -> uuid.UUID:
@@ -442,8 +435,10 @@ def calculate_student_trend(student_id: uuid.UUID, subject_id: uuid.UUID, min_sc
     first_half = scores[:mid]
     second_half = scores[mid:]
     
-    avg_first = sum(s.marks_obtained for s in first_half) / len(first_half) if first_half else 0
-    avg_second = sum(s.marks_obtained for s in second_half) / len(second_half) if second_half else 0
+    # Percentages, not raw marks: a half full of out-of-40 papers next to a
+    # half of out-of-100 ones read as a huge swing that never happened.
+    avg_first = average_percentage(first_half) if first_half else 0
+    avg_second = average_percentage(second_half) if second_half else 0
     
     diff = avg_second - avg_first
     change_percent = abs(diff / avg_first * 100) if avg_first > 0 else 0

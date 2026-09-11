@@ -1,0 +1,233 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><title>LAD Prototype Development Cycle</title><style>
+  @page { size: A4; margin: 18mm 16mm 20mm 16mm; }
+
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    font-family: "Source Sans 3", "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 10.2pt; line-height: 1.55; color: #1e2433; margin: 0;
+  }
+  code {
+    font-family: "SFMono-Regular", "JetBrains Mono", Consolas, monospace;
+    font-size: 0.88em; background: #eef1f7; color: #1b3a6b;
+    padding: 0.09em 0.34em; border-radius: 3px; white-space: nowrap;
+  }
+  pre {
+    background: #12182a; color: #dfe6f5; padding: 11px 14px; border-radius: 7px;
+    font-family: "SFMono-Regular", "JetBrains Mono", Consolas, monospace;
+    font-size: 8.6pt; line-height: 1.5; overflow-x: auto; white-space: pre-wrap;
+  }
+  pre code { background: none; color: inherit; padding: 0; white-space: pre-wrap; }
+
+  /* ── Cover ── */
+  /* Chrome ignores `@page:first`, so rather than fighting the margin box the
+     cover is a panel sized to exactly fill it: 297mm less the 18mm top and
+     20mm bottom margins. */
+  .cover {
+    height: 259mm; padding: 30mm 20mm 16mm; border-radius: 4mm;
+    page-break-after: always;
+    background: linear-gradient(160deg, #0d1b3e 0%, #14345f 55%, #0f4a52 100%);
+    color: #fff; display: flex; flex-direction: column;
+  }
+  .cover .mark {
+    font-size: 9pt; letter-spacing: 0.34em; text-transform: uppercase;
+    color: #6fe3d0; font-weight: 700;
+  }
+  .cover h1 { font-size: 34pt; line-height: 1.1; margin: 14mm 0 0; font-weight: 700; }
+  .cover .sub { font-size: 13pt; color: #b9cbe6; margin-top: 6mm; max-width: 120mm; }
+  .cover .rule { height: 3px; width: 46mm; background: #6fe3d0; margin: 10mm 0; }
+  .cover .meta { margin-top: auto; font-size: 9.5pt; color: #9fb6d4; }
+  .cover .meta strong { color: #fff; font-weight: 600; }
+  .cover .stats { display: flex; gap: 14mm; margin-top: 12mm; }
+  .cover .stat .n { font-size: 22pt; font-weight: 700; color: #6fe3d0; }
+  .cover .stat .l { font-size: 8.5pt; letter-spacing: 0.13em; text-transform: uppercase; color: #9fb6d4; }
+
+  /* ── Structure ── */
+  h2 {
+    font-size: 16pt; margin: 0 0 4mm; padding-bottom: 2mm; color: #0d1b3e;
+    border-bottom: 2px solid #0d1b3e; page-break-after: avoid;
+  }
+  h3 { font-size: 11.6pt; margin: 7mm 0 2.5mm; color: #14345f; page-break-after: avoid; }
+  h4 { font-size: 10.2pt; margin: 5mm 0 1.5mm; color: #1e2433; page-break-after: avoid; }
+  section { page-break-before: always; }
+  section.first { page-break-before: avoid; }
+  .keep { page-break-inside: avoid; }
+  p { margin: 0 0 3mm; }
+  ul, ol { margin: 0 0 3mm; padding-left: 5.5mm; }
+  li { margin-bottom: 1.4mm; }
+  .eyebrow {
+    font-size: 8pt; letter-spacing: 0.22em; text-transform: uppercase;
+    color: #5b7ba6; font-weight: 700; margin-bottom: 1.5mm;
+  }
+
+  /* ── Tables ── */
+  table { width: 100%; border-collapse: collapse; margin: 2mm 0 4mm; font-size: 9.2pt; }
+  th {
+    background: #0d1b3e; color: #fff; text-align: left; padding: 2mm 2.6mm;
+    font-weight: 600; font-size: 8.6pt; letter-spacing: 0.04em;
+  }
+  td { padding: 1.8mm 2.6mm; border-bottom: 1px solid #dde3ec; vertical-align: top; }
+  tbody tr:nth-child(even) { background: #f6f8fb; }
+  thead { display: table-header-group; }
+  tr { page-break-inside: avoid; }
+
+  /* ── Callouts ── */
+  .callout {
+    border-left: 4px solid #14345f; background: #f2f6fc; padding: 3mm 4mm;
+    margin: 3mm 0 4mm; border-radius: 0 5px 5px 0; page-break-inside: avoid;
+  }
+  .callout.warn { border-left-color: #c2410c; background: #fdf3ec; }
+  .callout.good { border-left-color: #0f766e; background: #eef8f6; }
+  .callout .t {
+    font-weight: 700; font-size: 8.4pt; letter-spacing: 0.13em;
+    text-transform: uppercase; color: #14345f; margin-bottom: 1.2mm;
+  }
+  .callout.warn .t { color: #c2410c; }
+  .callout.good .t { color: #0f766e; }
+  .callout p:last-child { margin-bottom: 0; }
+
+  /* ── Side-by-side panels ── */
+  .layers { display: flex; gap: 4mm; margin: 4mm 0 5mm; page-break-inside: avoid; }
+  .layer { flex: 1; border: 1.5px solid #14345f; border-radius: 7px; padding: 3.5mm 4mm; }
+  .layer.two { border-color: #0f766e; }
+  .layer .n {
+    font-size: 8pt; letter-spacing: 0.18em; text-transform: uppercase;
+    font-weight: 700; color: #14345f; margin-bottom: 1.5mm;
+  }
+  .layer.two .n { color: #0f766e; }
+  .layer .q { font-size: 11pt; font-weight: 700; margin-bottom: 2mm; color: #0d1b3e; }
+  .layer p { font-size: 9.2pt; margin-bottom: 2mm; }
+  .layer .ex { font-size: 8.6pt; color: #5b7ba6; margin-bottom: 0; }
+
+  /* ── Numbered steps ── */
+  ol.steps { counter-reset: s; list-style: none; padding-left: 0; margin: 3mm 0 4mm; }
+  ol.steps > li {
+    counter-increment: s; position: relative; padding-left: 9mm; margin-bottom: 3.2mm;
+    page-break-inside: avoid;
+  }
+  ol.steps > li::before {
+    content: counter(s); position: absolute; left: 0; top: 0.2mm;
+    width: 6mm; height: 6mm; border-radius: 50%; background: #14345f; color: #fff;
+    font-size: 8.4pt; font-weight: 700; display: flex; align-items: center; justify-content: center;
+  }
+
+  .count {
+    font-size: 8pt; font-weight: 600; color: #5b7ba6; letter-spacing: 0.04em;
+    text-transform: none; margin-left: 2mm;
+  }
+
+  .toc li { margin-bottom: 1.8mm; font-size: 10pt; }
+  .toc .s { color: #5b7ba6; }
+
+
+  @page {
+    @bottom-left { content: "LAD · Prototype Development Cycle";
+      font: 8pt Arial, sans-serif; color: #64748b; }
+    @bottom-right { content: counter(page);
+      font: 8pt Arial, sans-serif; color: #64748b; }
+  }
+  h1 { font-size: 24pt; line-height: 1.18; color: #0d1b3e;
+       margin: 0 0 7mm; padding-bottom: 5mm; border-bottom: 3px solid #0f766e; }
+  p { orphans: 3; widows: 3; }
+  p > strong:first-child { color: #14345f; }
+  code { white-space: normal; overflow-wrap: anywhere; }
+  li { break-inside: avoid; }
+  table { table-layout: fixed; font-size: 8.8pt; }
+  th:first-child { width: 21%; }
+  th:last-child { width: 29%; }
+  td { overflow-wrap: anywhere; }
+</style></head><body><h1>LAD Prototype Development Cycle — From Backend Foundation to Frontend Experience</h1>
+<p>This account describes how I developed the LAD learning and academic management prototype through successive working versions. It is based on the 91 commits reachable from the reviewed repository revision, covering 5 April to 5 September 2026, together with the application code and development notes. The reviewed revision is <code>cc15bf5</code>.</p>
+<p>I began by establishing the backend data structure and user-management foundation, then introduced the frontend and connected it to the API. Backend and frontend development subsequently progressed together: each new academic workflow required supporting data, processing rules, access controls, and screens. The history therefore supports an iterative development cycle, with repeated implementation, integration, testing, demonstration, and refinement.</p>
+<p><strong>1. Defining the prototype around academic workflows.</strong> The system was organised around the work of administrators, trainers, and learners. Administrators needed to manage institutions, academic structures, users, and reports. Trainers needed to manage assigned learners, assessments, marks, attendance, and feedback. Learners needed access to their subjects, results, attendance, practical work, and progress information.</p>
+<p>These needs became the functional structure of the prototype. I used shared academic records so that an action in one area could support another—for example, a trainer's recorded assessment could contribute to a learner's results and an authorised administrator's report. This description of the initial scope is reconstructed from the implemented modules; the reviewed material does not establish a separate requirements-sign-off date.</p>
+<p><strong>2. Building the backend and database foundation.</strong> The first substantive backend commit, <code>e9ddf64</code> on 5 April 2026, introduced the Flask application, user and academic models, authentication routes, database migrations, and initial tests. The early models included institutions, departments, courses, students, trainers, users, and roles.</p>
+<p>I used Python and Flask to expose application functions through an API, with PostgreSQL for persistent records and SQLAlchemy to express their relationships. Flask-Migrate and Alembic migrations recorded changes to the database structure as the prototype expanded. Later additions included subjects, modules, enrolments, assessments, scores, attendance sessions, practical assessment records, and learner feedback.</p>
+<p>The backend grew into three main responsibilities: models define stored information; routes receive requests and return responses; services contain shared processing and reporting logic. This structure allowed multiple screens to use the same academic records and calculations.</p>
+<p><strong>3. Establishing authentication and permissions.</strong> User access was part of the early implementation. The 6 April commit <code>aa7f4e5</code> expanded authentication, role management, user administration, and permission-aware screens. The application uses password hashing and signed, time-limited authentication tokens. The frontend sends the token with API requests, and the backend checks the requesting user and applicable permissions.</p>
+<p>As reporting became more detailed, access control also developed beyond permission to open a page. Reporting queries were refined to restrict the records included according to the user's teaching assignments or oversight responsibilities. This distinction matters because someone may be allowed to view a report while being entitled to see only their own learners, department, or institution.</p>
+<p><strong>4. Creating the frontend and connecting it to the API.</strong> Frontend work began on 5 April in commit <code>47eb7e2</code>, after the initial backend foundation. I used React and TypeScript, with Vite for development and builds. The first interface included login and registration screens, a dashboard layout, navigation, summary cards, tables, and charts. Trainer-management and trainer-dashboard pages followed on 6 April in <code>73fe071</code>.</p>
+<p>I connected the screens to the backend through API request helpers and authentication state. TypeScript definitions added on 11 April in <code>c0f155a</code> helped the interface work with the backend's data structures. Shared components for forms, tables, modals, navigation, and charts provided a consistent interface as more modules were added.</p>
+<p>The current interface uses protected routes and permission-aware navigation to direct users to relevant functions. Backend checks also apply to API requests. A typical interaction follows this sequence:</p>
+<ol>
+<li>A user opens a screen or submits a form in the React dashboard.</li>
+<li>The frontend sends an authenticated request to the Flask API.</li>
+<li>The backend checks access, validates the request, and reads or updates PostgreSQL records.</li>
+<li>Shared services calculate any required summaries or report values.</li>
+<li>The API returns data or an error response, and the frontend updates the relevant table, card, chart, or form.</li>
+</ol>
+<p><strong>5. Expanding into complete academic workflows.</strong> During May and June, I extended the initial management screens into connected workflows. The 11 May commit <code>9b541ea</code> improved table controls, common styling, dashboard API integration, and summary panels. On 13 May, <code>6510ca4</code> introduced an attendance-session structure with backend models and services, trainer session screens, and learner check-in screens, including QR and location-related functionality.</p>
+<p>By 14 June, commit <code>1ae3f9c</code> added or expanded online examination support, student reports, score evidence, and report-permission services. These changes connected assessment records with supporting documents and reporting functions. Further iterations expanded practical assessments, competency tracking, portfolio evidence, notifications, and feedback.</p>
+<p>Bulk entry also became an important workflow. On 2 August, <code>f50fcfe</code> added an Excel marks-upload template, while <code>057f895</code> enabled trainers to create assessments for bulk marks. Together, these changes supported entering class results through an assessment-linked upload process.</p>
+<p><strong>6. Developing analytics and improving the meaning of reports.</strong> As academic records accumulated, I added dashboards and reports to present performance, attendance, competency mastery, enrolment, and learners who might need support. The implementation includes shared analytics services and chart components so that recorded activity can be presented as useful summaries. Recommendations in the reviewed code are rule-based suggestions derived from academic signals.</p>
+<p>Later work focused on whether the figures were both correctly calculated and correctly scoped. On 28 August, <code>44eed1a</code> refined cross-cohort reporting access and mastery calculations. On 5 September, <code>cc15bf5</code> standardised more of the percentage, grading, and pass-status logic across entry and reporting paths.</p>
+<p>One concrete example appears in <code>backend/app/routes/admin_reports_v2.py</code>: earlier report logic could compare a raw mark of 45 against a pass threshold of 50 even when the assessment was marked out of 50. The revised calculation converts 45/50 to 90%, allowing different assessment totals to be compared on a common percentage scale. This illustrates how development moved from displaying data to checking that the displayed figures had the intended academic meaning.</p>
+<p><strong>7. Testing with linked demonstration data.</strong> Automated tests were present in the initial backend work and expanded alongside the application. The current test files cover areas including authentication, user and role creation, permissions, record scoping, bulk imports, marks calculations, online exams, practical assessments, notifications, and syllabus-coverage calculations.</p>
+<p>I also added scripts to create linked demonstration records. Early seeding scripts were committed on 6 May in <code>b807283</code>. On 1 September, <code>afdb118</code> added a trainer-showcase script covering a trainer account, subjects, learners, marks, attendance, practical assessments, competencies, portfolio records, reports, and feedback. These linked scenarios provided data with which to demonstrate workflows across several screens.</p>
+<p>Demonstration records are synthetic and do not establish real learner outcomes or measured improvements. The repository also documents backend test, frontend type-check, and frontend build commands. Test presence and these documented commands establish the available validation process; this development-history review did not execute the application checks or independently confirm historical pass results.</p>
+<p><strong>8. Refining the prototype through stakeholder review.</strong> The existing development journey records a stakeholder review dated 13 August 2026. Subsequent commits show how review feedback became changes to both the backend and the interface.</p>
+<p>On 30 August, <code>fa84c59</code> removed redundant navigation and repeated guidance, clarified labels, refined report scoping, and introduced learner validation of syllabus coverage. Trainers could report topics as taught, learners could confirm whether those topics had been covered, and staff could compare the two perspectives. The calculation treats missing learner responses separately from disagreement, avoiding an automatic negative judgement where no feedback has been submitted.</p>
+<p>September refinements continued this cycle. The 1 September update improved learner performance screens and demonstration coverage. On 3 September, <code>bd8267c</code> changed recommendations into language a learner could act on—for example, revision guidance instead of instructions to re-teach a topic—and scoped assessment-report filters to a trainer's teaching responsibilities. It also adjusted demonstration data to the active academic term. These changes addressed the clarity of the experience as well as the underlying data.</p>
+<p><strong>Recorded development milestones.</strong> These dates are Git author dates. Phase boundaries are descriptive groupings of the work, rather than evidence of formally scheduled sprints.</p>
+<table>
+<thead>
+<tr>
+<th>Period</th>
+<th>Recorded development</th>
+<th>Representative commits</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>5 April 2026</td>
+<td>Backend models, authentication routes, migrations, initial tests, and first frontend scaffold</td>
+<td><code>e9ddf64</code>, <code>47eb7e2</code></td>
+</tr>
+<tr>
+<td>6–11 April</td>
+<td>User and role management, trainer screens, API integration, and typed data structures</td>
+<td><code>aa7f4e5</code>, <code>73fe071</code>, <code>c0f155a</code></td>
+</tr>
+<tr>
+<td>May</td>
+<td>Linked demonstration data, dashboard integration, table improvements, and attendance sessions</td>
+<td><code>b807283</code>, <code>9b541ea</code>, <code>6510ca4</code></td>
+</tr>
+<tr>
+<td>June</td>
+<td>Online exams, score evidence, student reporting, and finer report permissions</td>
+<td><code>1ae3f9c</code></td>
+</tr>
+<tr>
+<td>July–early August</td>
+<td>Continued workflow fixes and assessment-linked bulk marks entry</td>
+<td><code>a45a70a</code>, <code>f316a18</code>, <code>f50fcfe</code>, <code>057f895</code></td>
+</tr>
+<tr>
+<td>28–30 August</td>
+<td>Reporting and mastery corrections, user guidance, simpler navigation, and learner coverage validation</td>
+<td><code>44eed1a</code>, <code>fa84c59</code></td>
+</tr>
+<tr>
+<td>1–5 September</td>
+<td>Fuller demonstrations, learner-facing refinements, scoped filters, and more consistent grading calculations</td>
+<td><code>afdb118</code>, <code>bd8267c</code>, <code>cc15bf5</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>9. Preserving versions and preparing for evaluation.</strong> Git records the incremental changes, and the repository contains two annotated stage tags: <code>v1.0-prototype-baseline</code> and <code>v1.1-review-refinements</code>. User and permissions guides document how the resulting application is intended to be used. Setup instructions, database migrations, and demonstration scripts support recreating the prototype for review.</p>
+<p>The tag dates require a precise distinction: both tags were created on 30 August. The baseline tag points to <code>44eed1a</code>, dated 28 August, and the refinement tag points to <code>fa84c59</code>, dated 30 August. Although the earlier development notes associate the baseline with the 13 August review, the tagged baseline already includes the 28 August changes. It should therefore be described as the preserved baseline before the 30 August refinement commit, rather than an independently verified snapshot of the exact code shown on 13 August.</p>
+<p>The reviewed history establishes an implemented prototype with successive integration and review changes. It does not by itself establish formal customer acceptance, completion of a production rollout, or a completed evaluation period. The existing development notes identify a system freeze for evaluation as a planned step.</p>
+<p><strong>Repository references.</strong> The narrative can be checked against the following materials:</p>
+<ul>
+<li>Project overview and setup (<code>../README.md</code>)</li>
+<li>Existing stakeholder-review development journey (<code>DEVELOPMENT-JOURNEY.md</code>)</li>
+<li>Backend application setup (<code>../backend/app/__init__.py</code>), models (<code>../backend/app/models/</code>), and migrations (<code>../backend/migrations/versions/</code>)</li>
+<li>Authentication (<code>../backend/app/routes/auth.py</code>) and shared reporting calculations and scoping (<code>../backend/app/services/scoping.py</code>)</li>
+<li>Administrative reporting (<code>../backend/app/routes/admin_reports_v2.py</code>) and learning analytics (<code>../backend/app/services/learning_analytics.py</code>)</li>
+<li>Frontend routes (<code>../dashboard/src/App.tsx</code>), API client (<code>../dashboard/src/api/client.ts</code>), and backend data types (<code>../dashboard/src/types/backend.ts</code>)</li>
+<li>Backend tests (<code>../backend/tests/</code>) and trainer demonstration script (<code>../backend/scripts/seed_trainer_showcase.py</code>)</li>
+<li>User guide (<code>LAD-User-Guide.pdf</code>) and permissions guide (<code>LAD-Permissions-Guide.pdf</code>)</li>
+</ul>
+<p>Individual milestones can be inspected with <code>git show &lt;commit&gt;</code>. The preserved refinement round can be compared with <code>git diff v1.0-prototype-baseline..v1.1-review-refinements</code>.</p>
+</body></html>

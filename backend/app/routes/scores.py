@@ -19,7 +19,13 @@ from ..models.subject import Subject
 from ..models.score_evidence import ScoreEvidence
 from .permissions import log_view, require_permission, get_current_user
 from ..services.score_evidence import EVIDENCE_UPLOAD_FOLDER, can_access_score_evidence
-from ..services.scoping import scope_scores
+from ..services.scoping import (
+    grade_for_percentage,
+    passing_percentage,
+    percentage,
+    scope_scores,
+    score_percentage,
+)
 from ..services.subject_enrollment import link_student_to_subject
 
 bp = Blueprint('scores', __name__, url_prefix='/scores')
@@ -75,6 +81,9 @@ def _score_payload(score: Score) -> dict:
         "subject_id": str(score.subject_id) if score.subject_id else None,
         "subject_name": subject.name if subject else None,
         "marks_obtained": score.marks_obtained,
+        # The mark normalised to its assessment's total — what averages are
+        # built from, so consumers need not redo (and mis-do) the division.
+        "percentage": score_percentage(score),
         "grade": score.grade,
         "feedback": score.feedback,
         "is_passed": score.is_passed,
@@ -130,20 +139,34 @@ def create_score():
             "error": f"'marks_obtained' must be between 0 and {assessment.total_marks}"
         }, 400
 
-    # Verify trainer has access to this course
+    # A trainer's class is defined by their subject assignments everywhere else
+    # in the app, so a subject assignment authorises entry here too; the course
+    # link stays as the fallback for marks not naming a subject. Requiring the
+    # course link alone refused trainers who were assigned the subject but
+    # never a TrainerCourse row — while bulk upload accepted the same mark.
     trainer = db.session.query(Trainer).filter(Trainer.user_id == user.id).first()
     if trainer:  # Only check if user is a trainer
         from ..models.trainer_course import TrainerCourse
-        has_access = db.session.query(TrainerCourse).filter(
+        from ..models.trainer_subject import TrainerSubject
+        teaches_subject = bool(subject_id) and db.session.query(TrainerSubject).filter(
+            and_(
+                TrainerSubject.trainer_id == trainer.id,
+                TrainerSubject.subject_id == subject_id,
+                TrainerSubject.deleted_at.is_(None),
+            )
+        ).first() is not None
+        has_course = db.session.query(TrainerCourse).filter(
             and_(TrainerCourse.trainer_id == trainer.id, TrainerCourse.course_id == enrollment.course_id)
-        ).first()
-        if not has_access:
+        ).first() is not None
+        if not teaches_subject and not has_course:
             return {"error": "You don't have access to this course"}, 403
 
-    # Calculate grade if pass_marks is defined
-    is_passed = None
-    if assessment.pass_marks is not None:
-        is_passed = marks_obtained >= assessment.pass_marks
+    # Grade and pass verdict at entry, on the canonical percentage rules —
+    # this path used to store no grade at all and no verdict when the
+    # assessment had no pass mark, leaving both to differ per screen.
+    pct = percentage(marks_obtained, assessment.total_marks)
+    is_passed = pct >= passing_percentage(assessment) if pct is not None else None
+    grade = grade_for_percentage(pct)
 
     # A mark against a subject means the learner takes it, so attach them if the
     # roster never had them — otherwise the mark lands but the learner is
@@ -159,6 +182,7 @@ def create_score():
         trainer_id=trainer.id if trainer else None,
         term=assessment.term.name if assessment.term else payload.get("term"),
         marks_obtained=marks_obtained,
+        grade=grade,
         is_passed=is_passed,
         feedback=payload.get("feedback"),
     )
@@ -240,9 +264,11 @@ def update_score(score_id: str):
             }, 400
         score.marks_obtained = marks
 
-        # Recalculate pass status
-        if score.assessment.pass_marks is not None:
-            score.is_passed = marks >= score.assessment.pass_marks
+        # The grade and verdict describe the mark, so they move with it — an
+        # edit used to leave the old letter beside the new outcome.
+        pct = percentage(marks, score.assessment.total_marks)
+        score.is_passed = pct >= passing_percentage(score.assessment) if pct is not None else None
+        score.grade = grade_for_percentage(pct)
 
     # Update feedback if provided
     if "feedback" in payload:

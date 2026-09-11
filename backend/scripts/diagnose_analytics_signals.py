@@ -39,7 +39,7 @@ from app import create_app  # noqa: E402
 from app.extensions import db  # noqa: E402
 from app.models.assessment import Assessment  # noqa: E402
 from app.models.attendance import Attendance  # noqa: E402
-from app.models.attendance_session import AttendanceRecord, AttendanceSession  # noqa: E402
+from app.models.attendance_session import ATTENDED_CHECKIN_STATUSES, AttendanceRecord, AttendanceSession  # noqa: E402
 from app.models.competency import Competency  # noqa: E402
 from app.models.portfolio_evidence import PortfolioEvidence  # noqa: E402
 from app.models.score import Score  # noqa: E402
@@ -162,7 +162,7 @@ def diagnose(email: str | None, trainer_id: str | None) -> int:
         .join(AttendanceSession, AttendanceSession.id == AttendanceRecord.attendance_session_id)
         .filter(
             AttendanceSession.subject_id.in_(subject_ids),
-            AttendanceRecord.status == "success",
+            AttendanceRecord.status.in_(ATTENDED_CHECKIN_STATUSES),
             AttendanceRecord.deleted_at.is_(None),
         )
     )

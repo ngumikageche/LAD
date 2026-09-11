@@ -21,6 +21,7 @@ from ..models.department import Department
 from ..models.term import Term
 from .permissions import require_permission, log_view
 from ..services.learning_analytics import build_role_dashboard, _resolve_student_ids, _resolve_subject_ids
+from ..services.scoping import score_percentage_expr
 
 bp = Blueprint("admin_analytics", __name__, url_prefix="/admin/analytics")
 
@@ -39,8 +40,8 @@ def _score_agg(filter_clause):
     row = db.session.query(
         func.count(Score.id).label("total"),
         func.sum(case((Score.is_passed == True, 1), else_=0)).label("passed"),
-        func.avg(Score.marks_obtained).label("avg_marks"),
-    ).filter(filter_clause, Score.deleted_at.is_(None)).one()
+        func.avg(score_percentage_expr()).label("avg_marks"),
+    ).outerjoin(Assessment, Assessment.id == Score.assessment_id).filter(filter_clause, Score.deleted_at.is_(None)).one()
     total = int(row.total or 0)
     passed = int(row.passed or 0)
     avg = round(float(row.avg_marks or 0), 2)
@@ -144,8 +145,8 @@ def admin_dashboard():
     score_query = db.session.query(
         func.count(Score.id).label("total"),
         func.sum(case((Score.is_passed == True, 1), else_=0)).label("passed"),
-        func.avg(Score.marks_obtained).label("avg_marks"),
-    ).filter(Score.deleted_at.is_(None))
+        func.avg(score_percentage_expr()).label("avg_marks"),
+    ).outerjoin(Assessment, Assessment.id == Score.assessment_id).filter(Score.deleted_at.is_(None))
     if subject_ids is not None:
         score_query = score_query.filter(Score.subject_id.in_(subject_ids))
     if student_ids is not None:
@@ -188,16 +189,17 @@ def admin_dashboard():
         db.session.query(
             Student.id,
             User.name,
-            func.avg(Score.marks_obtained).label("avg"),
+            func.avg(score_percentage_expr()).label("avg"),
         )
         .join(User, User.id == Student.user_id)
         .join(Score, Score.student_id == Student.id)
+        .outerjoin(Assessment, Assessment.id == Score.assessment_id)
         .filter(Score.deleted_at.is_(None), Student.deleted_at.is_(None))
         .filter(Score.subject_id.in_(subject_ids) if subject_ids is not None else True)
         .filter(Student.id.in_(student_ids) if student_ids is not None else True)
         .group_by(Student.id, User.name)
-        .having(func.avg(Score.marks_obtained) < 50)
-        .order_by(func.avg(Score.marks_obtained).asc())
+        .having(func.avg(score_percentage_expr()) < 50)
+        .order_by(func.avg(score_percentage_expr()).asc())
         .limit(10)
         .all()
     )
@@ -210,10 +212,11 @@ def admin_dashboard():
     term_trend_rows = (
         db.session.query(
             Score.term,
-            func.avg(Score.marks_obtained).label("avg"),
+            func.avg(score_percentage_expr()).label("avg"),
             func.count(Score.id).label("count"),
             func.sum(case((Score.is_passed == True, 1), else_=0)).label("passed"),
         )
+        .outerjoin(Assessment, Assessment.id == Score.assessment_id)
         .filter(Score.deleted_at.is_(None), Score.term.isnot(None))
         .filter(Score.subject_id.in_(subject_ids) if subject_ids is not None else True)
         .filter(Score.student_id.in_(student_ids) if student_ids is not None else True)
@@ -286,12 +289,13 @@ def list_institution_analytics():
             Institution.id,
             func.count(Score.id).label("total"),
             func.sum(case((Score.is_passed == True, 1), else_=0)).label("passed"),
-            func.avg(Score.marks_obtained).label("avg"),
+            func.avg(score_percentage_expr()).label("avg"),
         )
         .join(Department, Department.institution_id == Institution.id)
         .join(Course, Course.department_id == Department.id)
         .join(Student, Student.course_id == Course.id)
         .join(Score, Score.student_id == Student.id)
+        .outerjoin(Assessment, Assessment.id == Score.assessment_id)
         .filter(Institution.deleted_at.is_(None), Score.deleted_at.is_(None))
         .group_by(Institution.id)
         .all()
@@ -350,11 +354,12 @@ def list_department_analytics():
             Department.id,
             func.count(Score.id).label("total"),
             func.sum(case((Score.is_passed == True, 1), else_=0)).label("passed"),
-            func.avg(Score.marks_obtained).label("avg"),
+            func.avg(score_percentage_expr()).label("avg"),
         )
         .join(Course, Course.department_id == Department.id)
         .join(Student, Student.course_id == Course.id)
         .join(Score, Score.student_id == Student.id)
+        .outerjoin(Assessment, Assessment.id == Score.assessment_id)
         .filter(Department.deleted_at.is_(None), Score.deleted_at.is_(None))
         .filter(Score.subject_id.in_(subject_ids) if subject_ids is not None else True)
         .filter(Student.id.in_(student_ids) if student_ids is not None else True)
@@ -412,10 +417,11 @@ def list_course_analytics():
             Course.id,
             func.count(Score.id).label("total"),
             func.sum(case((Score.is_passed == True, 1), else_=0)).label("passed"),
-            func.avg(Score.marks_obtained).label("avg"),
+            func.avg(score_percentage_expr()).label("avg"),
         )
         .join(Student, Student.course_id == Course.id)
         .join(Score, Score.student_id == Student.id)
+        .outerjoin(Assessment, Assessment.id == Score.assessment_id)
         .filter(Course.deleted_at.is_(None), Score.deleted_at.is_(None))
         .filter(Score.subject_id.in_(subject_ids) if subject_ids is not None else True)
         .filter(Student.id.in_(student_ids) if student_ids is not None else True)
@@ -458,18 +464,19 @@ def analytics_comparisons():
     inst_rows = (
         db.session.query(
             Institution.id, Institution.name,
-            func.avg(Score.marks_obtained).label("avg"),
+            func.avg(score_percentage_expr()).label("avg"),
             func.count(Score.id).label("count"),
         )
         .join(Department, Department.institution_id == Institution.id)
         .join(Course, Course.department_id == Department.id)
         .join(Student, Student.course_id == Course.id)
         .join(Score, Score.student_id == Student.id)
+        .outerjoin(Assessment, Assessment.id == Score.assessment_id)
         .filter(Institution.deleted_at.is_(None), Score.deleted_at.is_(None))
         .filter(Score.subject_id.in_(subject_ids) if subject_ids is not None else True)
         .filter(Student.id.in_(student_ids) if student_ids is not None else True)
         .group_by(Institution.id, Institution.name)
-        .order_by(func.avg(Score.marks_obtained).desc())
+        .order_by(func.avg(score_percentage_expr()).desc())
         .all()
     )
     inst_list = [{"institution_id": str(r.id), "name": r.name, "avg_score": round(float(r.avg), 2), "scores_count": int(r.count)} for r in inst_rows]
@@ -477,17 +484,18 @@ def analytics_comparisons():
     dept_rows = (
         db.session.query(
             Department.id, Department.name,
-            func.avg(Score.marks_obtained).label("avg"),
+            func.avg(score_percentage_expr()).label("avg"),
             func.count(Score.id).label("count"),
         )
         .join(Course, Course.department_id == Department.id)
         .join(Student, Student.course_id == Course.id)
         .join(Score, Score.student_id == Student.id)
+        .outerjoin(Assessment, Assessment.id == Score.assessment_id)
         .filter(Department.deleted_at.is_(None), Score.deleted_at.is_(None))
         .filter(Score.subject_id.in_(subject_ids) if subject_ids is not None else True)
         .filter(Student.id.in_(student_ids) if student_ids is not None else True)
         .group_by(Department.id, Department.name)
-        .order_by(func.avg(Score.marks_obtained).desc())
+        .order_by(func.avg(score_percentage_expr()).desc())
         .all()
     )
     dept_list = [{"department_id": str(r.id), "name": r.name, "avg_score": round(float(r.avg), 2), "scores_count": int(r.count)} for r in dept_rows]
@@ -525,9 +533,10 @@ def system_wide_report():
         db.session.query(
             Score.term,
             func.count(Score.id).label("count"),
-            func.avg(Score.marks_obtained).label("avg"),
+            func.avg(score_percentage_expr()).label("avg"),
             func.sum(case((Score.is_passed == True, 1), else_=0)).label("passed"),
         )
+        .outerjoin(Assessment, Assessment.id == Score.assessment_id)
         .filter(Score.deleted_at.is_(None), Score.term.isnot(None))
         .filter(Score.subject_id.in_(subject_ids) if subject_ids is not None else True)
         .filter(Score.student_id.in_(student_ids) if student_ids is not None else True)

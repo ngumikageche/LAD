@@ -27,7 +27,7 @@ from ..models.term import Term
 from ..models.trainer_subject import TrainerSubject
 from .permissions import _is_admin
 from ..services.bulk_people_import import conflict_response, resolve_conflict_mode
-from ..services.scoping import resolve_term_label
+from ..services.scoping import grade_for_percentage, passing_percentage, percentage, resolve_term_label
 from ..services.subject_enrollment import (
     link_student_to_subject,
     student_subject_link_exists,
@@ -190,12 +190,9 @@ def _normalise_term(
 
 
 def _grade(marks: float, total: float) -> str:
-    pct = (marks / total * 100) if total else 0
-    if pct >= 80: return "A"
-    if pct >= 70: return "B"
-    if pct >= 60: return "C"
-    if pct >= 50: return "D"
-    return "F"
+    # Delegates so bulk uploads, single entry, and report backfills all grade
+    # on the one scale — this used to be a second copy of the bands.
+    return grade_for_percentage(percentage(marks, total)) or "F"
 
 
 def _resolve_student(value: str) -> Student | None:
@@ -699,7 +696,7 @@ def preview_bulk():
         is_passed = None
         if marks is not None and assessment:
             grade = _grade(marks, assessment.total_marks)
-            is_passed = marks >= (assessment.pass_marks or assessment.total_marks * 0.5)
+            is_passed = percentage(marks, assessment.total_marks) >= passing_percentage(assessment)
 
         # Flag learners the commit will pull onto the subject, so attaching them
         # is visible up front rather than a silent side effect of the upload.
@@ -867,7 +864,7 @@ def commit_bulk():
             skipped += 1
             continue
         grade = _grade(marks, assessment.total_marks)
-        is_passed = marks >= (assessment.pass_marks or assessment.total_marks * 0.5)
+        is_passed = percentage(marks, assessment.total_marks) >= passing_percentage(assessment)
         # Snap the uploaded label onto a real term. A label that matches no
         # term is not merely cosmetic: every report filters by term, so those
         # marks land in the database and appear in none of them. Matching is

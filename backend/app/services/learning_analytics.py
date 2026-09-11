@@ -13,7 +13,7 @@ from ..extensions import cache, db
 from ..models.assessment import Assessment
 from ..models.course import Course
 from ..models.attendance import Attendance
-from ..models.attendance_session import AttendanceRecord, AttendanceSession
+from ..models.attendance_session import ATTENDED_CHECKIN_STATUSES, AttendanceRecord, AttendanceSession
 from ..models.competency import Competency
 from ..models.portfolio_evidence import PortfolioEvidence
 from ..models.score import Score
@@ -479,7 +479,9 @@ def get_attendance_performance(
     at one alone reports 0% for a cohort that uses the other: `attendance` is a
     manual roll call carrying a status, `attendance_records` is a QR/GPS
     check-in against a session. This is the rule `alerts.attendance_rate`
-    already applies for the same reason.
+    already applies for the same reason, and both read "attended" and "held"
+    from the model (`ATTENDED_CHECKIN_STATUSES`, `counts_as_sitting`) so the
+    dashboard, the alerts, and the learner's own page agree.
     """
     subject_ids = _resolve_subject_ids(department_id, course_id, module_id, subject_id, trainer_id, student_id)
     student_ids = _resolve_student_ids(department_id, course_id, module_id, subject_id, trainer_id, student_id)
@@ -507,8 +509,10 @@ def get_attendance_performance(
         manual_query = manual_query.filter(Attendance.student_id.in_(student_ids))
 
     # ── QR/GPS register ─────────────────────────────────────────────────
-    # Every session run for a subject the learner takes is a sitting they were
-    # expected at; one they have no successful check-in for is an absence.
+    # Every session held for a subject the learner takes is a sitting they were
+    # expected at; one they were not scanned or marked into is an absence.
+    # "Held" is `counts_as_sitting`: closed, with someone recorded — an open or
+    # empty session is not an absence for the whole class.
     expected_query = (
         db.session.query(
             StudentSubject.student_id.label("student_id"),
@@ -516,7 +520,7 @@ def get_attendance_performance(
         )
         .join(AttendanceSession, AttendanceSession.subject_id == StudentSubject.subject_id)
         .filter(
-            AttendanceSession.deleted_at.is_(None),
+            AttendanceSession.counts_as_sitting(),
             StudentSubject.deleted_at.is_(None),
         )
         .group_by(StudentSubject.student_id)
@@ -529,8 +533,8 @@ def get_attendance_performance(
         .join(AttendanceSession, AttendanceSession.id == AttendanceRecord.attendance_session_id)
         .filter(
             AttendanceRecord.deleted_at.is_(None),
-            AttendanceRecord.status == "success",
-            AttendanceSession.deleted_at.is_(None),
+            AttendanceRecord.status.in_(ATTENDED_CHECKIN_STATUSES),
+            AttendanceSession.counts_as_sitting(),
         )
         .group_by(AttendanceRecord.student_id)
     )
@@ -556,8 +560,10 @@ def get_attendance_performance(
         score_query = (
             db.session.query(
                 Score.student_id.label("student_id"),
-                func.avg(Score.marks_obtained).label("average_score"),
+                # Percentage of each paper's total, like every other average.
+                func.avg(score_percentage_expr()).label("average_score"),
             )
+            .outerjoin(Assessment, Assessment.id == Score.assessment_id)
             .filter(
                 Score.deleted_at.is_(None),
                 Score.student_id.in_(list(tally.keys())),
@@ -712,15 +718,21 @@ def get_at_risk_analytics(
     )["items"]
     attendance_by_student = {item["student_id"]: item for item in attendance}
 
+    # The average is a mean of percentages — the rule every other average in
+    # the application follows — so the 50 threshold means 50%, whatever each
+    # paper was out of. (The alerts service applies the same thresholds with a
+    # 90-day attendance window and minimum-event floors; this view is the
+    # all-time picture, so the two can legitimately disagree at the margins.)
     query = (
         db.session.query(
             Student.id.label("student_id"),
             User.name.label("student_name"),
-            func.avg(Score.marks_obtained).label("average_score"),
+            func.avg(score_percentage_expr()).label("average_score"),
             func.count(Score.id).label("scores_count"),
         )
         .join(User, User.id == Student.user_id)
         .join(Score, (Score.student_id == Student.id) & (Score.deleted_at.is_(None)))
+        .outerjoin(Assessment, Assessment.id == Score.assessment_id)
         .filter(Student.deleted_at.is_(None))
     )
     subject_ids = _resolve_subject_ids(department_id, course_id, module_id, subject_id, trainer_id, student_id)
@@ -730,7 +742,7 @@ def get_at_risk_analytics(
     if student_ids is not None:
         query = query.filter(Student.id.in_(student_ids))
 
-    rows = query.group_by(Student.id, User.name).order_by(func.avg(Score.marks_obtained).asc()).all()
+    rows = query.group_by(Student.id, User.name).order_by(func.avg(score_percentage_expr()).asc()).all()
     items = []
     for row in rows:
         student_key = str(row.student_id)
@@ -924,10 +936,12 @@ def get_cohort_comparison(
         db.session.query(
             Subject.id.label("subject_id"),
             Subject.name.label("subject_name"),
-            func.avg(Score.marks_obtained).label("avg_score"),
+            # Percentage of each paper's total, like every other average.
+            func.avg(score_percentage_expr()).label("avg_score"),
             func.count(func.distinct(Score.student_id)).label("students_count"),
         )
         .join(Score, (Score.subject_id == Subject.id) & (Score.deleted_at.is_(None)))
+        .outerjoin(Assessment, Assessment.id == Score.assessment_id)
         .filter(Subject.id.in_(ids), Subject.deleted_at.is_(None))
         .group_by(Subject.id, Subject.name)
         .order_by(Subject.name.asc())
