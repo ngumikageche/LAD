@@ -164,3 +164,135 @@ def test_alerts_read_the_same_sittings_as_the_signal(app):
 
     assert (scanner_rate, scanner_sittings) == (100.0, 3)
     assert (marked_rate, marked_sittings) == (33.3, 3)
+
+
+def _seed_tried_out_sessions(app):
+    """
+    Eight learners, and the four registers a term leaves behind:
+
+      ended, all 8 recorded     a class that was held and closed   → a sitting
+      ended, 1 of 8 recorded    a badly attended class, closed     → a sitting
+      lapsed, 4 of 8 recorded   left to expire, half the class in  → a sitting
+      lapsed, 1 of 8 recorded   the QR screen opened to try it     → not a sitting
+
+    The last is the one that dragged a live dashboard's Attendance Signal to
+    61.7%: 23 of them, each holding a handful of a 24-learner cohort, read as
+    23 classes the rest of the class had skipped.
+    """
+    from app.extensions import db
+    from app.models.attendance_session import AttendanceRecord, AttendanceSession
+    from app.models.course import Course
+    from app.models.department import Department
+    from app.models.institution import Institution
+    from app.models.module import Module
+    from app.models.role_permission import RolePermission
+    from app.models.student import Student
+    from app.models.student_subject import StudentSubject
+    from app.models.subject import Subject
+    from app.models.trainer import Trainer
+    from app.models.trainer_subject import TrainerSubject
+    from app.models.user import User
+
+    with app.app_context():
+        role = RolePermission(role_name="Trainer", permissions={"analytics.read": True})
+        institution = Institution(name="LAD College", type="College", location="Nairobi")
+        db.session.add_all([role, institution])
+        db.session.flush()
+        department = Department(institution_id=institution.id, name="Engineering")
+        db.session.add(department)
+        db.session.flush()
+        course = Course(department_id=department.id, name="Solar", cbet_level="Level 5")
+        db.session.add(course)
+        db.session.flush()
+        module = Module(course_id=course.id, name="Stand-alone PV")
+        db.session.add(module)
+        db.session.flush()
+        subject = Subject(module_id=module.id, name="Stand-alone Solar PV Systems")
+        db.session.add(subject)
+        db.session.flush()
+
+        def person(name, email):
+            user = User(
+                name=name,
+                email=email,
+                password_hash=generate_password_hash("S3cret!"),
+                role_id=role.id,
+                institution_id=institution.id,
+            )
+            db.session.add(user)
+            db.session.flush()
+            return user
+
+        trainer = Trainer(user_id=person("Trainer", "pv-trainer@example.com").id, department_id=department.id)
+        db.session.add(trainer)
+        db.session.flush()
+        db.session.add(TrainerSubject(trainer_id=trainer.id, subject_id=subject.id))
+
+        learners = []
+        for index in range(8):
+            student = Student(
+                user_id=person(f"Learner {index}", f"learner{index}@example.com").id,
+                registration_number=f"PV-{index:03d}",
+                course_id=course.id,
+                enrollment_year=2026,
+            )
+            db.session.add(student)
+            db.session.flush()
+            db.session.add(StudentSubject(student_id=student.id, subject_id=subject.id))
+            learners.append(student)
+
+        now = datetime.utcnow()
+        yesterday = now - timedelta(days=1)
+
+        def register(code, status, attendees):
+            row = AttendanceSession(
+                trainer_id=trainer.id,
+                subject_id=subject.id,
+                current_token=f"token-{code}",
+                session_code=code,
+                qr_seed=f"seed-{code}",
+                latitude=0.0,
+                longitude=0.0,
+                started_at=yesterday,
+                expires_at=yesterday + timedelta(hours=1),
+                status=status,
+            )
+            db.session.add(row)
+            db.session.flush()
+            for student in attendees:
+                db.session.add(AttendanceRecord(
+                    attendance_session_id=row.id,
+                    student_id=student.id,
+                    latitude=0.0,
+                    longitude=0.0,
+                    ip_address="10.0.0.1",
+                    status="success",
+                ))
+
+        register("CLOSED", "ended", learners)
+        register("SPARSE", "ended", learners[:1])
+        register("LAPSED", "active", learners[:4])
+        register("TRIEDIT", "active", learners[:1])
+
+        db.session.commit()
+        return {
+            "trainer_id": str(trainer.id),
+            "always_in": str(learners[0].id),
+            "only_full_class": str(learners[5].id),
+        }
+
+
+def test_a_lapsed_register_holding_a_handful_of_the_cohort_is_not_a_sitting(app):
+    ids = _seed_tried_out_sessions(app)
+    from app.services.learning_analytics import get_attendance_performance
+
+    with app.app_context():
+        items = get_attendance_performance.uncached(trainer_id=ids["trainer_id"])["items"]
+    rates = {item["student_id"]: item["attendance_rate"] for item in items}
+
+    # Three sittings: both ended registers, and the lapsed one half the class
+    # was on. The register opened to try the feature is not one of them.
+    assert rates[ids["always_in"]] == 100.0
+    # On the full class only. Counting TRIEDIT as a fourth sitting would read
+    # this learner at 25% — the shape of the 61.7% the live dashboard showed.
+    assert rates[ids["only_full_class"]] == 33.33
