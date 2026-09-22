@@ -3,11 +3,12 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timedelta
 
-from sqlalchemy import ForeignKey, String, Float, Integer, DateTime, Index, UniqueConstraint, and_, exists, func, or_, Enum
+from sqlalchemy import ForeignKey, String, Float, Integer, DateTime, Index, UniqueConstraint, and_, exists, func, or_, select, Enum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, aliased, mapped_column, relationship
 
 from .base import BaseModel
+from .student_subject import StudentSubject
 
 
 # A check-in that puts the learner in the room: a scan inside the fence, or the
@@ -16,6 +17,12 @@ from .base import BaseModel
 # marked present was counted absent on the dashboard while the session report
 # listed them as there.
 ATTENDED_CHECKIN_STATUSES = ("success", "manual")
+
+# How much of the cohort a *lapsed* register has to have recorded before it is
+# evidence that a class was held. A session the trainer closed is trusted at any
+# turnout; one left to expire is not, because that is what opening the QR screen
+# to try the feature leaves behind. See `counts_as_sitting`.
+MIN_LAPSED_SITTING_SHARE = 0.5
 
 
 class AttendanceSession(BaseModel):
@@ -98,7 +105,7 @@ class AttendanceSession(BaseModel):
         SQL condition for a session a learner can be marked absent from.
 
         Every session run for a learner's subject is a sitting they were
-        expected at, but two kinds were being counted that should not be. A
+        expected at, but three kinds were being counted that should not be. A
         session still open is not yet an absence for anyone who has not scanned
         — the class is in progress. And one that closed with nobody recorded at
         all, not a single scan or hand-marked learner, is a register opened by
@@ -106,16 +113,50 @@ class AttendanceSession(BaseModel):
         Counting either marked every learner absent from a class that never
         met, and a demonstration's test sessions pulled the whole cohort's
         attendance down with them.
+
+        The third is the one those two guards let through. Opening the QR
+        screen to try it out leaves behind a register that *does* have someone
+        on it — whoever was standing there — and that expires on its own rather
+        than being closed. One trainer's 23 of those, each holding 1 to 9 of 24
+        learners, put 23 phantom classes in front of the whole cohort and read
+        as a 16% attendance rate against a register that was actually at 92%,
+        dragging the dashboard's Attendance Signal to 61.7%.
+
+        So a lapsed register — left to expire instead of closed — now has to
+        show MIN_LAPSED_SITTING_SHARE of the learners taking its subject before
+        it counts as a class. A session the trainer deliberately ended is still
+        trusted at any turnout: a badly attended lesson is exactly what this
+        figure exists to show, and only the trainer can tell it apart from an
+        abandoned register. Where a subject has no enrolments recorded at all
+        the share is unmeasurable, and the old "at least one person" rule
+        stands rather than discarding the session.
         """
-        # Aliased so the subquery keeps its own FROM when the outer query is
+        # Aliased so the subqueries keep their own FROM when the outer query is
         # itself reading attendance_records (the check-in count does).
         recorded = aliased(AttendanceRecord)
+        enrolled = aliased(StudentSubject)
+        recorded_learners = (
+            select(func.count(func.distinct(recorded.student_id)))
+            .where(recorded.attendance_session_id == cls.id, recorded.deleted_at.is_(None))
+            .correlate(cls)
+            .scalar_subquery()
+        )
+        cohort = (
+            select(func.count(func.distinct(enrolled.student_id)))
+            .where(enrolled.subject_id == cls.subject_id, enrolled.deleted_at.is_(None))
+            .correlate(cls)
+            .scalar_subquery()
+        )
         return and_(
             cls.deleted_at.is_(None),
             or_(cls.status == "ended", cls.expires_at <= datetime.utcnow()),
             exists()
             .where(recorded.attendance_session_id == cls.id, recorded.deleted_at.is_(None))
             .correlate(cls),
+            or_(
+                cls.status == "ended",
+                recorded_learners >= cohort * MIN_LAPSED_SITTING_SHARE,
+            ),
         )
 
 
